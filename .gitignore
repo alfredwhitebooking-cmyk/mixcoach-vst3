@@ -1,0 +1,26 @@
+# Build
+build/
+cmake-build-*/
+out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.vcxproj.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# JUCE
+JuceLibraryCode/
+
+# Logs & temp
+*.log
+errores.txt
+compilar.bat
