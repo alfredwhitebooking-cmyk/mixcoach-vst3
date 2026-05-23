@@ -65,7 +65,7 @@ Write-Host @"
 Write-Host "  Modo: $Config | Clean: $Clean | Deploy: $(-not $NoDeploy)" -ForegroundColor $Gray
 
 # ─── 0. Verificar git status ───────────────────────────────────────────────
-Write-Step "PASO 0/5: Verificando estado del repositorio"
+Write-Step "PASO 1/6: Verificando estado del repositorio"
 $gitStatus = git -C $ProjectRoot status --porcelain 2>&1
 if ($gitStatus -and $gitStatus -isnot [System.ComponentModel.Win32Exception]) {
     Write-Warn "Hay cambios sin commit:"
@@ -77,7 +77,7 @@ if ($gitStatus -and $gitStatus -isnot [System.ComponentModel.Win32Exception]) {
 }
 
 # ─── 1. Verificar JUCE ──────────────────────────────────────────────────────
-Write-Step "PASO 1/5: Verificando JUCE"
+Write-Step "PASO 2/6: Verificando JUCE"
 
 # Leer ruta de JUCE desde CMakeLists.txt (fuente única de verdad)
 $juceRoot = Select-String -Path "$ProjectRoot/CMakeLists.txt" -Pattern 'set\(JUCE_ROOT "(.+)"\)' | ForEach-Object { $_.Matches.Groups[1].Value }
@@ -97,7 +97,7 @@ if ($juceOk) {
 }
 
 # ─── 2. Configurar CMake ──────────────────────────────────────────────────────
-Write-Step "PASO 2/5: Configurando CMake"
+Write-Step "PASO 3/6: Configurando CMake"
 
 $cmakeCache = Join-Path $BuildDir "CMakeCache.txt"
 $needsConfig = $Clean -or -not (Test-Path $cmakeCache)
@@ -127,7 +127,7 @@ if ($needsConfig) {
 }
 
 # ─── 3. Compilar ──────────────────────────────────────────────────────────────
-Write-Step "PASO 3/5: Compilando ($Config)"
+Write-Step "PASO 4/6: Compilando ($Config)"
 
 $buildLog = Join-Path $ProjectRoot "build_output.txt"
 $buildResult = cmake --build $BuildDir --config $Config 2>&1 | Tee-Object -FilePath $buildLog
@@ -143,7 +143,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-OK "Compilacion exitosa ($Config)"
 
 # ─── 4. Verificar artefactos ──────────────────────────────────────────────────
-Write-Step "PASO 4/5: Verificando artefactos"
+Write-Step "PASO 5/6: Verificando artefactos"
 
 $mixCoachVST3 = Join-Path $BuildDir "MixCoach_artefacts\$Config\VST3\MixCoach.vst3"
 $messengerVST3 = Join-Path $BuildDir "Messenger_artefacts\$Config\VST3\Messenger.vst3"
@@ -172,7 +172,7 @@ if (-not $NoDeploy) {
         Write-Warn "DeployVST3.ps1 no encontrado - copia manual"
     }
 } else {
-    Write-Step "PASO 5/5: Omitido (-NoDeploy)"
+    Write-Step "PASO 6/6: Omitido (-NoDeploy)"
     Write-OK "VST3 disponibles en:"
     Write-Host "  MixCoach:  $mixCoachVST3" -ForegroundColor $Gray
     Write-Host "  Messenger: $messengerVST3" -ForegroundColor $Gray
