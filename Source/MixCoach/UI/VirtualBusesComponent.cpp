@@ -43,11 +43,11 @@ void VirtualBusesComponent::paint(juce::Graphics& g)
 
     if (buses_.empty()) return;
 
-    float busHeight = (float)contentArea.getHeight() / (float)buses_.size();
+    float busHeight = static_cast<float>(contentArea.getHeight()) / static_cast<float>(buses_.size());
 
-    for (int i = 0; i < (int)buses_.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(buses_.size()); ++i) {
         auto& bus = buses_[i];
-        auto busArea = contentArea.removeFromTop((int)busHeight).reduced(6, 4);
+        auto busArea = contentArea.removeFromTop(static_cast<int>(busHeight)).reduced(6, 4);
 
         // Glass card background
         MixCoachTheme::fillGlassPanel(g, busArea.toFloat(), 6.0f);
@@ -99,16 +99,16 @@ void VirtualBusesComponent::paint(juce::Graphics& g)
 
         if (norm > 0.0f) {
             g.setColour(bus.colour);
-            auto fillBar = meterArea.withWidth((int)(meterArea.getWidth() * norm));
+            auto fillBar = meterArea.withWidth(juce::roundToInt(meterArea.getWidth() * norm));
             if (fillBar.getWidth() > 1)
                 g.fillRoundedRectangle(fillBar.toFloat(), 3.0f);
 
             // Glow
             juce::ColourGradient glow(
                 bus.colour.withAlpha(0.2f),
-                juce::Point<float>(fillBar.getCentreX(), fillBar.getY()),
+                juce::Point<float>(static_cast<float>(fillBar.getCentreX()), static_cast<float>(fillBar.getY())),
                 juce::Colour(0x00000000),
-                juce::Point<float>(fillBar.getRight(), fillBar.getCentreY()),
+                juce::Point<float>(static_cast<float>(fillBar.getRight()), static_cast<float>(fillBar.getCentreY())),
                 false);
             g.setGradientFill(glow);
             g.fillRect(fillBar);

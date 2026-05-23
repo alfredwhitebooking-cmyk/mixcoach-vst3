@@ -22,7 +22,7 @@ public:
     [[nodiscard]] float getPhaseProgress(MentorPhase phase) const;
 
     // Eventos
-    [[nodiscard]] int getAchievementCount() const noexcept { return achievements_.size(); }
+    [[nodiscard]] int getAchievementCount() const noexcept { return static_cast<int>(achievements_.size()); }
     bool              unlockAchievement(Achievement achievement);
 
     // Criterios de cada fase

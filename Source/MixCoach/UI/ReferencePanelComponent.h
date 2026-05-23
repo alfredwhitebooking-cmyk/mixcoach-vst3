@@ -53,7 +53,7 @@ public:
     void removeReference(int index);
     void clearReferences();
 
-    [[nodiscard]] int getNumReferences() const { return references_.size(); }
+    [[nodiscard]] int getNumReferences() const { return static_cast<int>(references_.size()); }
     [[nodiscard]] const MixReference& getReference(int index) const { return references_[index]; }
 
     std::function<void()> onReferencesChanged;

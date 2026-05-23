@@ -66,12 +66,10 @@ struct SlotInfo {
     // Acceso trackName como std::string
     [[nodiscard]] std::string getTrackName() const { return std::string(trackName); }
     void setTrackName(const std::string& name) {
-        std::strncpy(trackName, name.c_str(), sizeof(trackName) - 1);
-        trackName[sizeof(trackName) - 1] = '\0';
+        strncpy_s(trackName, sizeof(trackName), name.c_str(), _TRUNCATE);
     }
     void setTrackName(const char* name) {
-        std::strncpy(trackName, name, sizeof(trackName) - 1);
-        trackName[sizeof(trackName) - 1] = '\0';
+        strncpy_s(trackName, sizeof(trackName), name, _TRUNCATE);
     }
 };
 

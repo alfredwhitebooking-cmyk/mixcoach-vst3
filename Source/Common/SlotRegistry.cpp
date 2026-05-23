@@ -51,8 +51,7 @@ void SlotRegistry::readFromShared(int slotIndex)
     local.active    = entry.active != 0;
     local.bus       = static_cast<BusType>(entry.bus);
     local.colour    = juce::Colour(entry.colourARGB);
-    std::strncpy(local.trackName, entry.trackName, sizeof(local.trackName) - 1);
-    local.trackName[sizeof(local.trackName) - 1] = '\0';
+    strncpy_s(local.trackName, sizeof(local.trackName), entry.trackName, _TRUNCATE);
 }
 
 bool SlotRegistry::syncFromShared()
@@ -87,8 +86,7 @@ bool SlotRegistry::syncFromShared()
             local.active    = true;
             local.bus       = static_cast<BusType>(entry.bus);
             local.colour = juce::Colour(entry.colourARGB);
-            std::strncpy(local.trackName, entry.trackName, sizeof(local.trackName) - 1);
-            local.trackName[sizeof(local.trackName) - 1] = '\0';
+            strncpy_s(local.trackName, sizeof(local.trackName), entry.trackName, _TRUNCATE);
 
             if (!wasActive) {
                 logSlot("SYNC_NEW", i, "name=" + juce::String(local.trackName));
@@ -163,8 +161,7 @@ int SlotRegistry::registerSlot(const std::string& trackName, const juce::Colour&
         entry.bus       = static_cast<int>(bus);
         entry.colourARGB = colour.getARGB();
         entry.slotIndex = -1; // será asignado por registerSlot()
-        std::strncpy(entry.trackName, trackName.c_str(), kSharedTrackNameLen - 1);
-        entry.trackName[kSharedTrackNameLen - 1] = '\0';
+        strncpy_s(entry.trackName, kSharedTrackNameLen, trackName.c_str(), _TRUNCATE);
 
         assignedSlot = shm_->registerSlot(entry);
         if (assignedSlot < 0) {
@@ -287,8 +284,7 @@ void SlotRegistry::updateSlotName(int slotIndex, const std::string& name)
             entry.active    = 1;
             entry.bus       = static_cast<int>(slots_[slotIndex].bus);
             entry.colourARGB = slots_[slotIndex].colour.getARGB();
-            std::strncpy(entry.trackName, name.c_str(), kSharedTrackNameLen - 1);
-            entry.trackName[kSharedTrackNameLen - 1] = '\0';
+            strncpy_s(entry.trackName, kSharedTrackNameLen, name.c_str(), _TRUNCATE);
             shm_->writeSlot(slotIndex, entry);
         }
 
@@ -313,8 +309,7 @@ void SlotRegistry::updateSlotColour(int slotIndex, const juce::Colour& colour)
             entry.active    = 1;
             entry.bus       = static_cast<int>(slots_[slotIndex].bus);
             entry.colourARGB = colour.getARGB();
-            std::strncpy(entry.trackName, slots_[slotIndex].trackName, kSharedTrackNameLen - 1);
-            entry.trackName[kSharedTrackNameLen - 1] = '\0';
+            strncpy_s(entry.trackName, kSharedTrackNameLen, slots_[slotIndex].trackName, _TRUNCATE);
             shm_->writeSlot(slotIndex, entry);
         }
 
@@ -339,8 +334,7 @@ void SlotRegistry::updateSlotBus(int slotIndex, BusType bus)
             entry.active    = 1;
             entry.bus       = static_cast<int>(bus);
             entry.colourARGB = slots_[slotIndex].colour.getARGB();
-            std::strncpy(entry.trackName, slots_[slotIndex].trackName, kSharedTrackNameLen - 1);
-            entry.trackName[kSharedTrackNameLen - 1] = '\0';
+            strncpy_s(entry.trackName, kSharedTrackNameLen, slots_[slotIndex].trackName, _TRUNCATE);
             shm_->writeSlot(slotIndex, entry);
         }
 

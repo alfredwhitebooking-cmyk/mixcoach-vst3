@@ -26,6 +26,10 @@ errores.txt
 errores_compilacion.txt
 compilar.bat
 nul
+build_output.txt
 
 # Scripts
 CompileAndSave.ps1
+
+# Build artefacts
+# Nota: build/ ya esta ignorado arriba
