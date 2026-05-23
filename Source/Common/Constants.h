@@ -20,14 +20,22 @@ inline constexpr float  kSilenceThreshold = -60.0f;// dB
 inline constexpr const char* kAppName    = "MixCoach";
 inline constexpr const char* kAppVersion = "1.0.0";
 
-// Colores de bus virtual
-inline const juce::Colour kBusColours[] = {
-    juce::Colour(0xFFE74C3C),  // Rojo     - Drums
-    juce::Colour(0xFF3498DB),  // Azul     - Bass
-    juce::Colour(0xFF2ECC71),  // Verde    - Guitarras
-    juce::Colour(0xFFF39C12),  // Naranja  - Teclados
-    juce::Colour(0xFF9B59B6),  // Púrpura  - Vocals
-    juce::Colour(0xFF1ABC9C),  // Turquesa - FX/Ambientes
+// Colores de bus virtual (usar uint32 y convertir a Colour en runtime)
+// Nota: no se puede usar constexpr con juce::Colour porque su constructor no es constexpr
+inline const juce::uint32 kBusColourARGB[] = {
+    0xFFE74C3C,  // Rojo     - Drums
+    0xFF3498DB,  // Azul     - Bass
+    0xFF2ECC71,  // Verde    - Guitarras
+    0xFFF39C12,  // Naranja  - Teclados
+    0xFF9B59B6,  // Púrpura  - Vocals
+    0xFF1ABC9C,  // Turquesa - FX/Ambientes
 };
+
+// Helper para obtener el color como juce::Colour
+inline juce::Colour getBusColour(int index) {
+    if (index >= 0 && index < static_cast<int>(sizeof(kBusColourARGB) / sizeof(kBusColourARGB[0])))
+        return juce::Colour(kBusColourARGB[index]);
+    return juce::Colours::grey;
+}
 
 } // namespace mixcoach

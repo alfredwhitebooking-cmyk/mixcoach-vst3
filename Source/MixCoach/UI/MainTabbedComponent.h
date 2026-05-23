@@ -5,13 +5,11 @@
 #include "MixCoachTheme.h"
 #include "../../Common/Types.h"
 #include "CoachChatComponent.h"
-#include "TrackDashboardComponent.h"
 #include "AnalyzersPanelComponent.h"
-#include "VirtualBusesComponent.h"
 
 namespace mixcoach {
 
-// ─── Tabbed component principal ─────────────────────────────────────────────
+// ─── Tabbed component principal (2 tabs rediseñadas) ────────────────────────
 class MainTabbedComponent : public juce::TabbedComponent
 {
 public:
@@ -20,19 +18,15 @@ public:
 
     void resized() override;
 
-    CoachChatComponent&       getCoachPanel()       { return *coachPanel_; }
-    TrackDashboardComponent&  getDashboard()        { return *dashboard_; }
-    AnalyzersPanelComponent&  getAnalyzersPanel()   { return analyzersPanel_; }
-    VirtualBusesComponent&    getVirtualBuses()     { return virtualBuses_; }
+    MixCoachPanel&           getCoachPanel()       { return *coachPanel_; }
+    AnalyzersPanelComponent& getAnalyzersPanel()   { return analyzersPanel_; }
 
 private:
     juce::AudioProcessor&           processorRef_;
     SharedData&                     sharedData_;
 
-    std::unique_ptr<CoachChatComponent>      coachPanel_;
-    std::unique_ptr<TrackDashboardComponent> dashboard_;
+    std::unique_ptr<MixCoachPanel>           coachPanel_;
     AnalyzersPanelComponent                  analyzersPanel_;
-    VirtualBusesComponent                    virtualBuses_;
 };
 
 } // namespace mixcoach

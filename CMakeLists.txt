@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
 # ─── JUCE Integration ─────────────────────────────────────────────────────────
-set(JUCE_ROOT "C:/MIX COACH SYSTEM/juce-8.0.13-windows/JUCE")
+set(JUCE_ROOT "C:/MIX COACH SYSTEM/juce-8.0.13-windows/MixCoachAI/JUCE")
 
 if(NOT EXISTS "${JUCE_ROOT}/CMakeLists.txt")
     message(WARNING "JUCE no encontrado en ${JUCE_ROOT}. Configura: -DJUCE_ROOT=<ruta>")
@@ -47,6 +47,9 @@ set(COMMON_SOURCES
     Source/Common/TelemetryData.h
     Source/Common/SlotRegistry.h
     Source/Common/SlotRegistry.cpp
+    Source/Common/SharedMemory.h
+    Source/Common/SharedMemory.cpp
+    Source/Common/LogHelper.h
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +58,7 @@ set(COMMON_SOURCES
 juce_add_plugin(MixCoach
     PLUGIN_MANUFACTURER_CODE  MixC
     PLUGIN_CODE               MCch
-    FORMATS                   VST3
+    FORMATS                   VST3 Standalone
     PRODUCT_NAME              "MixCoach"
     COMPANY_NAME              "MixCoachLabs"
     IS_SYNTH                  FALSE
@@ -87,14 +90,6 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/CoachEngine.cpp
     Source/MixCoach/AudioAnalyzer.h
     Source/MixCoach/AudioAnalyzer.cpp
-    Source/MixCoach/Analyzers/SpectrumAnalyzer.h
-    Source/MixCoach/Analyzers/SpectrumAnalyzer.cpp
-    Source/MixCoach/Analyzers/PhaseMeter.h
-    Source/MixCoach/Analyzers/PhaseMeter.cpp
-    Source/MixCoach/Analyzers/LevelMeter.h
-    Source/MixCoach/Analyzers/LevelMeter.cpp
-    Source/MixCoach/Analyzers/TargetMarkers.h
-    Source/MixCoach/Analyzers/TargetMarkers.cpp
     Source/MixCoach/UI/MixCoachTheme.h
     Source/MixCoach/UI/MainTabbedComponent.h
     Source/MixCoach/UI/MainTabbedComponent.cpp
@@ -106,6 +101,8 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/UI/AnalyzersPanelComponent.cpp
     Source/MixCoach/UI/VirtualBusesComponent.h
     Source/MixCoach/UI/VirtualBusesComponent.cpp
+    Source/MixCoach/UI/ReferencePanelComponent.h
+    Source/MixCoach/UI/ReferencePanelComponent.cpp
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -114,7 +111,7 @@ target_sources(MixCoach PRIVATE
 juce_add_plugin(Messenger
     PLUGIN_MANUFACTURER_CODE  MixC
     PLUGIN_CODE               Msgr
-    FORMATS                   VST3
+    FORMATS                   VST3 Standalone
     PRODUCT_NAME              "Messenger"
     COMPANY_NAME              "MixCoachLabs"
     DESCRIPTION               "Nodo de telemetria MixCoach - Picos, RMS, FFT, Fase"
@@ -155,9 +152,78 @@ set_target_properties(MixCoach Messenger PROPERTIES
 # Forzar desactivacion de VST2 (JUCE 8 bug: VST3_CAN_REPLACE_VST2 no funciona via juce_add_plugin)
 target_compile_definitions(MixCoach PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0)
 target_compile_definitions(Messenger PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0)
+target_compile_definitions(MixCoach_VST3 PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0)
+target_compile_definitions(Messenger_VST3 PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(MixCoach PUBLIC JUCE_IGNORE_VST3_MISMATCHED_PARAMETER_ID_WARNING=1)
+target_compile_definitions(Messenger PUBLIC JUCE_IGNORE_VST3_MISMATCHED_PARAMETER_ID_WARNING=1)
+target_compile_definitions(MixCoach_VST3 PRIVATE JUCE_IGNORE_VST3_MISMATCHED_PARAMETER_ID_WARNING=1)
+target_compile_definitions(Messenger_VST3 PRIVATE JUCE_IGNORE_VST3_MISMATCHED_PARAMETER_ID_WARNING=1)
+
+# ─── Post-build: Copiar VST3 a C:\Program Files\Common Files\VST3 ──────────
+# UNA SOLA ubicacion. FL Studio detecta duplicados si el mismo UID aparece en
+# dos carpetas diferentes, creando entradas con sufijos -1, _2, etc.
+#
+# Usamos un script batch (.bat) externo en vez de comandos inline para evitar
+# problemas de escaping de comillas con cmd.exe.
+# El batch siempre retorna 0 incluso si la copia falla (VST3 bloqueado por DAW).
+#
+# Para deploy manual: ejecutar DeployVST3.ps1 (despues de cerrar el DAW)
+set(VST3_SYSTEM "C:/Program Files/Common Files/VST3")
+set(DEPLOY_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/scripts/deploy_vst3_postbuild.bat")
+
+# ├── Post-build MixCoach ────────────────────────────────────────────────
+add_custom_command(TARGET MixCoach_VST3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${VST3_SYSTEM}"
+    COMMAND "${DEPLOY_SCRIPT}"
+        "${CMAKE_COMMAND}"
+        "${CMAKE_BINARY_DIR}/MixCoach_artefacts/$<CONFIG>/VST3/MixCoach.vst3"
+        "${VST3_SYSTEM}/MixCoach.vst3"
+    COMMENT "Deploy MixCoach.vst3"
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+)
+
+# ├── Post-build Messenger ───────────────────────────────────────────────
+add_custom_command(TARGET Messenger_VST3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${VST3_SYSTEM}"
+    COMMAND "${DEPLOY_SCRIPT}"
+        "${CMAKE_COMMAND}"
+        "${CMAKE_BINARY_DIR}/Messenger_artefacts/$<CONFIG>/VST3/Messenger.vst3"
+        "${VST3_SYSTEM}/Messenger.vst3"
+    COMMENT "Deploy Messenger.vst3"
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+)
+
+# ─── Target deploy_vst3 manual ────────────────────────────────────────
+# Uso: cmake --build build --target deploy_vst3 (cerrar FL Studio primero)
+# Tambien se puede usar: .\DeployVST3.ps1
+add_custom_target(deploy_vst3
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${VST3_SYSTEM}"
+    COMMAND "${DEPLOY_SCRIPT}"
+        "${CMAKE_COMMAND}"
+        "${CMAKE_BINARY_DIR}/MixCoach_artefacts/$<CONFIG>/VST3/MixCoach.vst3"
+        "${VST3_SYSTEM}/MixCoach.vst3"
+    COMMAND "${DEPLOY_SCRIPT}"
+        "${CMAKE_COMMAND}"
+        "${CMAKE_BINARY_DIR}/Messenger_artefacts/$<CONFIG>/VST3/Messenger.vst3"
+        "${VST3_SYSTEM}/Messenger.vst3"
+    # Limpiar duplicados viejos (sufijos -1, _2)
+    COMMAND powershell -Command "@('MixCoach_2.vst3','MixCoach-2.vst3','MixCoach-1.vst3','Messenger_2.vst3','Messenger-2.vst3','Messenger-1.vst3') | %% { $$p = Join-Path '${VST3_SYSTEM}' $$_; if (Test-Path $$p) { Remove-Item $$p -Recurse -Force -ErrorAction SilentlyContinue; Write-Host ('[Cleanup] ' + $$_) } }"
+    COMMENT "Desplegar VST3 manualmente (cerrar FL Studio primero)"
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+)
 
 # Optimización para MSVC
 if(MSVC)
     target_compile_options(MixCoach PRIVATE /W4 /permissive- /MP)
     target_compile_options(Messenger PRIVATE /W4 /permissive- /MP)
+endif()
+
+# Flags de linker para Release: eliminar símbolos de depuración y minimizar tamaño
+if(MSVC)
+    target_link_options(MixCoach PRIVATE "$<$<CONFIG:Release>:/LTCG /OPT:REF /OPT:ICF>")
+    target_link_options(Messenger PRIVATE "$<$<CONFIG:Release>:/LTCG /OPT:REF /OPT:ICF>")
 endif()

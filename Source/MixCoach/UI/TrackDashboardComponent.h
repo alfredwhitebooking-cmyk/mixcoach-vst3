@@ -6,7 +6,7 @@
 
 namespace mixcoach {
 
-// ─── Dashboard de todas las pistas ──────────────────────────────────────────
+// ─── Dashboard de pistas — Rediseño visual ──────────────────────────────────
 class TrackDashboardComponent : public juce::Component
 {
 public:
@@ -19,8 +19,8 @@ public:
     void updateTrackData(const SlotInfo& info, const TrackTelemetry& telemetry);
 
 private:
-    void drawTrackRow(juce::Graphics& g, juce::Rectangle<int> bounds,
-                      const SlotInfo& info, const TrackTelemetry& telemetry);
+    void drawTrackCard(juce::Graphics& g, juce::Rectangle<int> bounds,
+                       const SlotInfo& info, const TrackTelemetry& telemetry);
 
     juce::Label titleLabel_;
     juce::Label infoLabel_;

@@ -1,7 +1,7 @@
 #pragma once
 #include <juce_dsp/juce_dsp.h>
 #include <array>
-#include <complex>
+#include <cmath>
 #include <cstdint>
 #include "Constants.h"
 #include "Types.h"

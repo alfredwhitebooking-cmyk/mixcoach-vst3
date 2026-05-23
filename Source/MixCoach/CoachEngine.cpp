@@ -79,6 +79,29 @@ void CoachEngine::checkProgress()
     }
 }
 
+void CoachEngine::announceNewTrack(int slotIndex, const juce::String& trackName, const juce::Colour& colour)
+{
+    juce::ignoreUnused(slotIndex);
+    
+    auto colourHex = colour.toDisplayString(false);
+    juce::String colourBlock = "[" + colourHex + "]";
+    
+    respondWith("! He detectado un nuevo Messenger en el mixer!\n\n"
+                "**Pista:** " + trackName + "\n"
+                "**Color:" + colourBlock + "\n\n"
+                "Ya estoy recibiendo telemetria de esta pista. "
+                "Puedes ver sus datos en el Dashboard y Analizadores.",
+                MentorMessage::Type::Info);
+    
+    // Si estamos en Welcome, avanzar automaticamente a GainStaging
+    if (phaseManager_.getCurrentPhase() == MentorPhase::Welcome) {
+        respondWith("!Excelente! Como ya tienes pistas en el mezclador, "
+                    "vamos directo a la fase de Gain Staging para ajustar niveles.",
+                    MentorMessage::Type::Tip);
+        phaseManager_.advanceToNextPhase();
+    }
+}
+
 void CoachEngine::executeCommand(const juce::String& command)
 {
     auto lower = command.toLowerCase();

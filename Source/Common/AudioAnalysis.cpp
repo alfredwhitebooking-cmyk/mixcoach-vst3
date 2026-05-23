@@ -1,18 +1,23 @@
 #include "AudioAnalysis.h"
 #include <algorithm>
 #include <cmath>
-#include <complex>
 
 namespace mixcoach {
 
-AudioAnalysis::AudioAnalysis()
-{
-    fft_ = std::make_unique<juce::dsp::FFT>(9); // 512-point FFT
-}
+// ─── AudioAnalysis constructor ───────────────────────────────────────────────
+// NOTA: NO creamos el FFT aquí porque juce::dsp::FFT aloca memoria interna
+// que puede crashear durante el escaneo V3 en FL Studio (sandbox).
+// El FFT se crea lazy en prepare().
+AudioAnalysis::AudioAnalysis() = default;
 
 void AudioAnalysis::prepare(double sampleRate, int /*samplesPerBlock*/)
 {
     sampleRate_ = sampleRate;
+
+    // Crear FFT (lazy — no en constructor para evitar crashes durante escaneo VST3)
+    if (!fft_)
+        fft_ = std::make_unique<juce::dsp::FFT>(9); // 512-point FFT
+
     rms_ = -100.0f;
     peak_ = -100.0f;
     correlation_ = 1.0f;
@@ -21,6 +26,8 @@ void AudioAnalysis::prepare(double sampleRate, int /*samplesPerBlock*/)
 
 void AudioAnalysis::process(const float* channelData, int numSamples)
 {
+    if (!fft_) return; // No preparado aún, skip
+
     computeRMS(channelData, numSamples);
     computeFFT(channelData, numSamples);
     // correlation needs two channels; handled externally
@@ -43,31 +50,25 @@ void AudioAnalysis::computeFFT(const float* data, int numSamples)
 {
     if (!fft_) return;
 
-    // Copiar datos a un buffer temporal y aplicar ventana Hann
-    std::array<float, kFFTSize> windowed{};
+    // Copiar datos a buffer temporal y aplicar ventana Hann.
+    // JUCE requiere 2 * kFFTSize floats para la transformacion real in-place.
+    std::array<float, kFFTSize * 2> fftData{};
     int copyLen = std::min(numSamples, kFFTSize);
-    std::copy(data, data + copyLen, windowed.begin());
 
-    // Aplicar ventana Hann manualmente
     for (int i = 0; i < kFFTSize; ++i) {
         float hann = 0.5f * (1.0f - std::cos(2.0f * juce::MathConstants<float>::pi * i / kFFTSize));
-        windowed[i] *= hann;
+        fftData[i] = (i < copyLen) ? data[i] * hann : 0.0f;
     }
 
-    // Llenar buffer FFT como std::complex<float>
-    std::array<std::complex<float>, kFFTSize> complexData{};
-    for (int i = 0; i < kFFTSize; ++i) {
-        complexData[i] = std::complex<float>(windowed[i], 0.0f);
-    }
+    // FFT in-place (real-only forward transform)
+    fft_->performRealOnlyForwardTransform(fftData.data());
 
-    auto* inPtr = complexData.data();
-    auto* outPtr = complexData.data();
-    fft_->perform(inPtr, outPtr, false);
-
-    // Magnitudes
+    // Extraer magnitudes: salida es [re(0), im(0), re(1), im(1), ... re(N/2), im(N/2)]
     const int numBins = std::min(kNumSpectrumBins, kFFTSize / 2);
     for (int i = 0; i < numBins; ++i) {
-        spectrum_[i] = std::abs(complexData[i]);
+        float real = fftData[i * 2];
+        float imag = fftData[i * 2 + 1];
+        spectrum_[i] = std::sqrt(real * real + imag * imag);
     }
 }
 

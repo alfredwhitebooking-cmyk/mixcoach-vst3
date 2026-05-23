@@ -5,7 +5,7 @@
 
 namespace mixcoach {
 
-// ─── Componente de buses virtuales ──────────────────────────────────────────
+// ─── Buses Virtuales — Rediseño visual ──────────────────────────────────────
 class VirtualBusesComponent : public juce::Component
 {
 public:

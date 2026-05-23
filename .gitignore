@@ -23,4 +23,9 @@ JuceLibraryCode/
 # Logs & temp
 *.log
 errores.txt
+errores_compilacion.txt
 compilar.bat
+nul
+
+# Scripts
+CompileAndSave.ps1

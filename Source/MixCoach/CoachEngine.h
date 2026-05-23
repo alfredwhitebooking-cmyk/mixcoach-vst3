@@ -24,6 +24,9 @@ public:
     // Comandos especiales
     void executeCommand(const juce::String& command);
 
+    // Anunciar deteccion de nueva pista (Messenger)
+    void announceNewTrack(int slotIndex, const juce::String& trackName, const juce::Colour& colour);
+
 private:
     PhaseManager& phaseManager_;
     SharedData&   sharedData_;

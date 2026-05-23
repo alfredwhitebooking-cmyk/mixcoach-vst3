@@ -5,8 +5,10 @@
 namespace mixcoach {
 
 class MessengerAudioProcessor;
-class LevelBar;
+class VUMeter;
+class WaveformView;
 class ColourSwatch;
+class ColourPresetStrip;
 
 // ─── Change listener interno para el selector de color ─────────────────────
 class ColourSelectorListener : public juce::ChangeListener
@@ -50,17 +52,21 @@ private:
     juce::Label      iconLabel_;
     juce::TextEditor nameEditor_;
     std::unique_ptr<ColourSwatch> colourSwatch_;
+    std::unique_ptr<juce::Component> colourPresetStrip_;
+    ColourPresetStrip* colourPresetStripRaw_{nullptr};
 
     juce::Label      statusLabel_;
     juce::Label      routingLabel_;
+    juce::ComboBox   busComboBox_;
 
     juce::Label      levelLeftLabel_;
     juce::Label      levelRightLabel_;
     juce::Label      correlationLabel_;
     juce::Label      rmsLabel_;
 
-    std::unique_ptr<LevelBar> levelBarLeft_;
-    std::unique_ptr<LevelBar> levelBarRight_;
+    std::unique_ptr<VUMeter> vuMeterLeft_;
+    std::unique_ptr<VUMeter> vuMeterRight_;
+    std::unique_ptr<WaveformView> waveformView_;
 
     // Datos de telemetria para el timer
     float lastPeakLeft_{-100.0f};
@@ -72,6 +78,8 @@ private:
 
     // Listener de cambio de color
     ColourSelectorListener colourListener_;
+
+    void applyPresetColour(juce::Colour colour);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MessengerAudioProcessorEditor)
 };
