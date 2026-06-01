@@ -12,6 +12,7 @@ struct MixCoachTheme
     static juce::Colour bgPanel()    { return juce::Colour(0xFF181825); }  // panel principal
     static juce::Colour bgGlass()    { return juce::Colour(0xFF1E1E32); }  // efecto glass
     static juce::Colour bgSurface()  { return juce::Colour(0xFF22223A); }  // superficie elevada
+    static juce::Colour bgCanvas()    { return juce::Colour(0xFF0D0D1A); }  // fondo canvas profundo
 
     // ─── Texto ─────────────────────────────────────────────────────────────
     static juce::Colour textPrimary(){ return juce::Colour(0xFFEEEEF0); }
@@ -26,6 +27,11 @@ struct MixCoachTheme
 
     static juce::Colour accent2()    { return juce::Colour(0xFF7B2FFF); }  // violeta
     static juce::Colour accent3()    { return juce::Colour(0xFFFF2D55); }  // rosa/rojo
+    static juce::Colour accentAI()   { return juce::Colour(0xFF00E5FF); }  // cyan para marca AI
+    static juce::Colour accentAIGlow(){ return juce::Colour(0xFF66F9FF); }  // glow AI más brillante
+
+    // ─── Divisores ───────────────────────────────────────────────────────────
+    static juce::Colour divider()    { return juce::Colour(0xFF2A2A4A); }  // línea divisoria
 
     // ─── Estados ────────────────────────────────────────────────────────────
     static juce::Colour success()    { return juce::Colour(0xFF00E676); }
@@ -36,9 +42,14 @@ struct MixCoachTheme
     // ─── Bordes ─────────────────────────────────────────────────────────────
     static juce::Colour border()     { return juce::Colour(0xFF2A2A4A); }
     static juce::Colour borderBright(){ return juce::Colour(0xFF3A3A5A); }
+    static juce::Colour dividerBar() { return juce::Colour(0xFF1A1A3A); }
 
     // ─── Niveles de medidor (IK Multimedia style) ──────────────────────────
     static juce::Colour meterGreen()    { return juce::Colour(0xFF00E676); }
+
+    // ─── Colores de canal (L/R) ──────────────────────────────────────────
+    static juce::Colour channelLeft()   { return juce::Colour(0xFF3498DB); }  // azul
+    static juce::Colour channelRight()  { return juce::Colour(0xFF2ECC71); }  // verde
     static juce::Colour meterYellow()   { return juce::Colour(0xFFFFAB00); }
     static juce::Colour meterOrange()   { return juce::Colour(0xFFFF6D00); }
     static juce::Colour meterRed()      { return juce::Colour(0xFFFF1744); }

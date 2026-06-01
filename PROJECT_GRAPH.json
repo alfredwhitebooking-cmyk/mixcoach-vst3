@@ -1,0 +1,581 @@
+{
+  "version": "2.0.0",
+  "generated": "2026-05-31",
+  "description": "Dependency graph for MixCoach JUCE project. Paths updated to use subdirectory structure.",
+
+  "modules": {
+    "Common": {
+      "description": "Shared types, IPC, audio analysis primitives",
+      "criticality": 10
+    },
+    "MixCoach Brain": {
+      "description": "Main VST3 plugin: DSP engine, UI, coaching logic",
+      "criticality": 10
+    },
+    "MixCoach UI": {
+      "description": "UI components for MixCoach (analyzers, chat, dashboard)",
+      "criticality": 8
+    },
+    "Messenger Ears": {
+      "description": "Sidecar VST3: telemetry collector + IPC bridge",
+      "criticality": 9
+    },
+    "Build System": {
+      "description": "CMake, build scripts, deployment",
+      "criticality": 7
+    }
+  },
+
+  "files": {
+    "Source/Common/types/Types.h": {
+      "module": "Common",
+      "role": "foundation",
+      "criticality": 10,
+      "contains_types": ["BusType", "SlotInfo", "MentorMessage", "MentorPhase", "Achievement", "TrackTelemetry"],
+      "depends_on": [],
+      "depended_by": [
+        "Source/Common/types/Constants.h",
+        "Source/Common/types/TelemetryData.h",
+        "Source/Common/memory/SharedMemory.h",
+        "Source/Common/memory/SlotRegistry.h",
+        "Source/Common/memory/SharedData.h",
+        "Source/Common/audio/AudioAnalysis.h",
+        "Source/MixCoach/audio/AudioAnalyzer.h",
+        "Source/MixCoach/engine/PhaseManager.h",
+        "Source/MixCoach/engine/CoachEngine.h",
+        "Source/MixCoach/core/PluginProcessor.h",
+        "Source/Messenger/core/PluginProcessor.h",
+        "Source/Messenger/telemetry/TelemetryCollector.h",
+        "Source/MixCoach/UI/TrackDashboardComponent.h",
+        "Source/MixCoach/UI/VirtualBusesComponent.h",
+        "Source/MixCoach/UI/AnalyzersPanelComponent.h",
+        "Source/MixCoach/UI/CoachChatComponent.h",
+        "Source/MixCoach/UI/MainTabbedComponent.h",
+        "Source/MixCoach/UI/ProfessionalAnalyzersComponent.h"
+      ],
+      "related_modules": ["Common"]
+    },
+    "Source/Common/types/Constants.h": {
+      "module": "Common",
+      "role": "foundation",
+      "criticality": 9,
+      "contains_types": ["busColors", "busNames", "kRmsSmoothCoeff", "kPeakSmoothCoeff", "sampleRates", "fftSizes"],
+      "depends_on": ["Source/Common/types/Types.h"],
+      "depended_by": [
+        "Source/Common/audio/AudioAnalysis.h",
+        "Source/Messenger/core/PluginProcessor.h",
+        "Source/MixCoach/UI/CoachChatComponent.h",
+        "Source/MixCoach/UI/VirtualBusesComponent.h",
+        "Source/MixCoach/UI/AnalyzersPanelComponent.cpp",
+        "Source/MixCoach/UI/CoachChatComponent.cpp"
+      ],
+      "related_modules": ["Common"]
+    },
+    "Source/Common/types/TelemetryData.h": {
+      "module": "Common",
+      "role": "data",
+      "criticality": 7,
+      "contains_types": ["TelemetryBuffer", "AudioRingBuffer"],
+      "depends_on": ["Source/Common/types/Types.h"],
+      "depended_by": [
+        "Source/Common/memory/SlotRegistry.h",
+        "Source/Messenger/core/PluginProcessor.h"
+      ],
+      "related_modules": ["Common", "Messenger Ears"]
+    },
+    "Source/Common/memory/SharedMemory.h": {
+      "module": "Common",
+      "role": "ipc",
+      "criticality": 9,
+      "contains_types": ["SharedMemoryManager", "SharedMemoryBlock", "SharedSlotEntry", "SharedMemoryHeader"],
+      "depends_on": ["Source/Common/types/Types.h"],
+      "depended_by": [
+        "Source/Common/memory/SharedData.h",
+        "Source/Common/memory/SlotRegistry.h",
+        "Source/MixCoach/core/PluginProcessor.h",
+        "Source/Messenger/core/PluginProcessor.h"
+      ],
+      "related_modules": ["Common"]
+    },
+    "Source/Common/memory/SlotRegistry.h": {
+      "module": "Common",
+      "role": "ipc",
+      "criticality": 10,
+      "contains_types": ["SlotRegistry"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/types/TelemetryData.h", "Source/Common/memory/SharedMemory.h"],
+      "depended_by": [
+        "Source/Common/memory/SharedData.h",
+        "Source/MixCoach/core/PluginProcessor.h",
+        "Source/MixCoach/engine/PhaseManager.h",
+        "Source/MixCoach/UI/AnalyzersPanelComponent.h",
+        "Source/MixCoach/UI/CoachChatComponent.h",
+        "Source/MixCoach/UI/TrackDashboardComponent.h",
+        "Source/MixCoach/UI/ProfessionalAnalyzersComponent.h"
+      ],
+      "related_modules": ["Common", "MixCoach Brain", "Messenger Ears"]
+    },
+    "Source/Common/memory/SharedData.h": {
+      "module": "Common",
+      "role": "ipc",
+      "criticality": 9,
+      "contains_types": ["SharedData"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/memory/SlotRegistry.h", "Source/Common/memory/SharedMemory.h"],
+      "depended_by": [
+        "Source/MixCoach/engine/CoachEngine.h",
+        "Source/MixCoach/core/PluginProcessor.h",
+        "Source/MixCoach/core/PluginEditor.h",
+        "Source/Messenger/core/PluginProcessor.h",
+        "Source/MixCoach/UI/MainTabbedComponent.h",
+        "Source/MixCoach/UI/AnalyzersPanelComponent.cpp",
+        "Source/MixCoach/UI/AnalyzersPanelComponent.h",
+        "Source/MixCoach/UI/CoachChatComponent.h",
+        "Source/Messenger/core/PluginProcessor.cpp",
+        "Source/Messenger/ui/PluginEditor.cpp"
+      ],
+      "related_modules": ["Common", "MixCoach Brain", "Messenger Ears"]
+    },
+    "Source/Common/audio/AudioAnalysis.h": {
+      "module": "Common",
+      "role": "dsp",
+      "criticality": 9,
+      "contains_types": ["AudioAnalysis (namespace)"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/types/Constants.h"],
+      "depended_by": [
+        "Source/MixCoach/audio/AudioAnalyzer.h"
+      ],
+      "related_modules": ["Common", "MixCoach Brain"]
+    },
+    "Source/Common/types/LogHelper.h": {
+      "module": "Common",
+      "role": "utility",
+      "criticality": 5,
+      "contains_types": ["LogHelper"],
+      "depends_on": [],
+      "depended_by": [
+        "Source/Common/memory/SharedData.cpp",
+        "Source/Common/memory/SharedMemory.cpp",
+        "Source/Common/memory/SlotRegistry.cpp",
+        "Source/MixCoach/core/PluginProcessor.cpp",
+        "Source/MixCoach/core/PluginEditor.cpp",
+        "Source/MixCoach/UI/MainTabbedComponent.cpp",
+        "Source/MixCoach/UI/CoachChatComponent.cpp",
+        "Source/Messenger/core/PluginProcessor.cpp",
+        "Source/Messenger/ui/PluginEditor.cpp"
+      ],
+      "related_modules": ["Common"]
+    },
+    "Source/Common/audio/AudioAnalysis.cpp": {
+      "module": "Common",
+      "role": "dsp",
+      "criticality": 8,
+      "implements": ["AudioAnalysis (namespace functions)"],
+      "depends_on": ["Source/Common/audio/AudioAnalysis.h"],
+      "related_modules": ["Common", "MixCoach Brain"]
+    },
+    "Source/Common/memory/SharedData.cpp": {
+      "module": "Common",
+      "role": "ipc",
+      "criticality": 8,
+      "implements": ["SharedData methods"],
+      "depends_on": ["Source/Common/memory/SharedData.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["Common"]
+    },
+    "Source/Common/memory/SharedMemory.cpp": {
+      "module": "Common",
+      "role": "ipc",
+      "criticality": 8,
+      "implements": ["SharedMemoryManager methods"],
+      "depends_on": ["Source/Common/memory/SharedMemory.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["Common"]
+    },
+    "Source/Common/memory/SlotRegistry.cpp": {
+      "module": "Common",
+      "role": "ipc",
+      "criticality": 9,
+      "implements": ["SlotRegistry singleton methods"],
+      "depends_on": ["Source/Common/memory/SlotRegistry.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["Common"]
+    },
+    "Source/MixCoach/audio/AudioAnalyzer.h": {
+      "module": "MixCoach Brain",
+      "role": "dsp",
+      "criticality": 8,
+      "contains_types": ["AudioAnalyzer"],
+      "depends_on": ["Source/Common/audio/AudioAnalysis.h"],
+      "depended_by": ["Source/MixCoach/core/PluginProcessor.h"],
+      "related_modules": ["MixCoach Brain", "Common"]
+    },
+    "Source/MixCoach/audio/AudioAnalyzer.cpp": {
+      "module": "MixCoach Brain",
+      "role": "dsp",
+      "criticality": 8,
+      "implements": ["AudioAnalyzer methods"],
+      "depends_on": ["Source/MixCoach/audio/AudioAnalyzer.h"],
+      "related_modules": ["MixCoach Brain"]
+    },
+    "Source/MixCoach/engine/PhaseManager.h": {
+      "module": "MixCoach Brain",
+      "role": "dsp",
+      "criticality": 7,
+      "contains_types": ["PhaseManager"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/memory/SlotRegistry.h"],
+      "depended_by": ["Source/MixCoach/engine/CoachEngine.h", "Source/MixCoach/core/PluginProcessor.h"],
+      "related_modules": ["MixCoach Brain", "Common"]
+    },
+    "Source/MixCoach/engine/PhaseManager.cpp": {
+      "module": "MixCoach Brain",
+      "role": "dsp",
+      "criticality": 7,
+      "implements": ["PhaseManager methods"],
+      "depends_on": ["Source/MixCoach/engine/PhaseManager.h"],
+      "related_modules": ["MixCoach Brain"]
+    },
+    "Source/MixCoach/engine/CoachEngine.h": {
+      "module": "MixCoach Brain",
+      "role": "ai",
+      "criticality": 9,
+      "contains_types": ["CoachEngine"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/memory/SharedData.h", "Source/MixCoach/engine/PhaseManager.h"],
+      "depended_by": ["Source/MixCoach/core/PluginProcessor.h"],
+      "related_modules": ["MixCoach Brain", "Common"]
+    },
+    "Source/MixCoach/engine/CoachEngine.cpp": {
+      "module": "MixCoach Brain",
+      "role": "ai",
+      "criticality": 9,
+      "implements": ["CoachEngine methods"],
+      "depends_on": ["Source/MixCoach/engine/CoachEngine.h"],
+      "related_modules": ["MixCoach Brain"]
+    },
+    "Source/MixCoach/core/PluginProcessor.h": {
+      "module": "MixCoach Brain",
+      "role": "plugin",
+      "criticality": 10,
+      "contains_types": ["MixCoachAudioProcessor"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/memory/SharedData.h", "Source/Common/memory/SlotRegistry.h", "Source/MixCoach/engine/PhaseManager.h", "Source/MixCoach/engine/CoachEngine.h", "Source/MixCoach/audio/AudioAnalyzer.h", "Source/MixCoach/UI/MixCoachTheme.h"],
+      "depended_by": ["Source/MixCoach/core/PluginEditor.h", "Source/MixCoach/core/PluginProcessor.cpp"],
+      "related_modules": ["MixCoach Brain", "Common"]
+    },
+    "Source/MixCoach/core/PluginProcessor.cpp": {
+      "module": "MixCoach Brain",
+      "role": "plugin",
+      "criticality": 10,
+      "implements": ["MixCoachAudioProcessor audio processing + message handling"],
+      "depends_on": ["Source/MixCoach/core/PluginProcessor.h", "Source/MixCoach/core/PluginEditor.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["MixCoach Brain"]
+    },
+    "Source/MixCoach/core/PluginEditor.h": {
+      "module": "MixCoach Brain",
+      "role": "ui",
+      "criticality": 10,
+      "contains_types": ["MixCoachAudioProcessorEditor"],
+      "depends_on": ["Source/MixCoach/core/PluginProcessor.h", "Source/MixCoach/UI/MainTabbedComponent.h", "Source/MixCoach/UI/MixCoachTheme.h", "Source/Common/memory/SharedData.h"],
+      "depended_by": ["Source/MixCoach/core/PluginProcessor.cpp", "Source/MixCoach/core/PluginEditor.cpp"],
+      "related_modules": ["MixCoach Brain", "MixCoach UI"]
+    },
+    "Source/MixCoach/core/PluginEditor.cpp": {
+      "module": "MixCoach Brain",
+      "role": "ui",
+      "criticality": 10,
+      "implements": ["Background worker, timers, slot scanning, editor lifecycle"],
+      "depends_on": ["Source/MixCoach/core/PluginEditor.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["MixCoach Brain", "MixCoach UI"]
+    },
+    "Source/MixCoach/UI/MixCoachTheme.h": {
+      "module": "MixCoach UI",
+      "role": "theme",
+      "criticality": 6,
+      "contains_types": ["MixCoachTheme namespace (colors, fonts)"],
+      "depends_on": [],
+      "depended_by": [
+        "Source/MixCoach/core/PluginProcessor.h",
+        "Source/MixCoach/core/PluginEditor.h",
+        "Source/MixCoach/UI/AnalyzersPanelComponent.h",
+        "Source/MixCoach/UI/CoachChatComponent.h",
+        "Source/MixCoach/UI/MainTabbedComponent.h",
+        "Source/MixCoach/UI/ProfessionalAnalyzersComponent.h",
+        "Source/MixCoach/UI/ReferencePanelComponent.h",
+        "Source/MixCoach/UI/TrackDashboardComponent.h",
+        "Source/MixCoach/UI/VirtualBusesComponent.h"
+      ],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/MainTabbedComponent.h": {
+      "module": "MixCoach UI",
+      "role": "container",
+      "criticality": 8,
+      "contains_types": ["MainTabbedComponent"],
+      "depends_on": ["Source/Common/memory/SharedData.h", "Source/MixCoach/UI/MixCoachTheme.h", "Source/Common/types/Types.h", "Source/MixCoach/UI/CoachChatComponent.h", "Source/MixCoach/UI/AnalyzersPanelComponent.h"],
+      "depended_by": ["Source/MixCoach/core/PluginEditor.h", "Source/MixCoach/UI/MainTabbedComponent.cpp"],
+      "related_modules": ["MixCoach UI", "MixCoach Brain"]
+    },
+    "Source/MixCoach/UI/MainTabbedComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "container",
+      "criticality": 8,
+      "implements": ["Tab switching, layout"],
+      "depends_on": ["Source/MixCoach/UI/MainTabbedComponent.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/AnalyzersPanelComponent.h": {
+      "module": "MixCoach UI",
+      "role": "analyzers",
+      "criticality": 8,
+      "contains_types": ["AnalyzersPanelComponent", "PlaylistComponent", "MeterComponent", "SpectrographComponent", "VectorscopeComponent", "PhaseCorrelationMeter", "CrestHistogram", "AnalogVUMeter", "PhaseScopePanel", "VUMetersPanel", "SmoothValue", "FFTProcessor", "StereoVUMeter", "LUFSMeter", "TrackMiniStrip", "BusGroupHeader"],
+      "depends_on": ["Source/MixCoach/UI/MixCoachTheme.h", "Source/Common/types/Types.h", "Source/Common/memory/SlotRegistry.h"],
+      "depended_by": ["Source/MixCoach/UI/MainTabbedComponent.h"],
+      "related_modules": ["MixCoach UI", "Common"]
+    },
+    "Source/MixCoach/UI/AnalyzersPanelComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "analyzers",
+      "criticality": 8,
+      "implements": ["Meters, spectrograph, phase scope, crest factor, playlist, VU meters"],
+      "depends_on": ["Source/MixCoach/UI/AnalyzersPanelComponent.h", "Source/Common/types/Constants.h", "Source/Common/memory/SharedData.h"],
+      "related_modules": ["MixCoach UI", "Common"]
+    },
+    "Source/MixCoach/UI/CoachChatComponent.h": {
+      "module": "MixCoach UI",
+      "role": "chat",
+      "criticality": 7,
+      "contains_types": ["CoachChatComponent"],
+      "depends_on": ["Source/MixCoach/UI/MixCoachTheme.h", "Source/MixCoach/UI/ReferencePanelComponent.h", "Source/Common/types/Types.h", "Source/Common/types/Constants.h", "Source/Common/memory/SlotRegistry.h"],
+      "depended_by": ["Source/MixCoach/UI/MainTabbedComponent.h"],
+      "related_modules": ["MixCoach UI", "Common"]
+    },
+    "Source/MixCoach/UI/CoachChatComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "chat",
+      "criticality": 7,
+      "implements": ["Chat UI, reference track loading"],
+      "depends_on": ["Source/MixCoach/UI/CoachChatComponent.h", "Source/Common/types/Constants.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/ProfessionalAnalyzersComponent.h": {
+      "module": "MixCoach UI",
+      "role": "analyzers",
+      "criticality": 6,
+      "contains_types": ["ProfessionalAnalyzersComponent"],
+      "depends_on": ["Source/MixCoach/UI/MixCoachTheme.h", "Source/Common/types/Types.h", "Source/Common/memory/SlotRegistry.h"],
+      "depended_by": [],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/ProfessionalAnalyzersComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "analyzers",
+      "criticality": 6,
+      "implements": ["Advanced analyzer UI"],
+      "depends_on": ["Source/MixCoach/UI/ProfessionalAnalyzersComponent.h", "Source/Common/types/Constants.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/ReferencePanelComponent.h": {
+      "module": "MixCoach UI",
+      "role": "reference",
+      "criticality": 5,
+      "contains_types": ["ReferencePanelComponent"],
+      "depends_on": ["Source/MixCoach/UI/MixCoachTheme.h"],
+      "depended_by": ["Source/MixCoach/UI/CoachChatComponent.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/ReferencePanelComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "reference",
+      "criticality": 5,
+      "implements": ["Reference track display"],
+      "depends_on": ["Source/MixCoach/UI/ReferencePanelComponent.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/TrackDashboardComponent.h": {
+      "module": "MixCoach UI",
+      "role": "dashboard",
+      "criticality": 5,
+      "contains_types": ["TrackDashboardComponent"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/memory/SlotRegistry.h", "Source/MixCoach/UI/MixCoachTheme.h"],
+      "depended_by": [],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/TrackDashboardComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "dashboard",
+      "criticality": 5,
+      "implements": ["Track dashboard display"],
+      "depends_on": ["Source/MixCoach/UI/TrackDashboardComponent.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/VirtualBusesComponent.h": {
+      "module": "MixCoach UI",
+      "role": "buses",
+      "criticality": 5,
+      "contains_types": ["VirtualBusesComponent"],
+      "depends_on": ["Source/Common/types/Constants.h", "Source/MixCoach/UI/MixCoachTheme.h"],
+      "depended_by": [],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/MixCoach/UI/VirtualBusesComponent.cpp": {
+      "module": "MixCoach UI",
+      "role": "buses",
+      "criticality": 5,
+      "implements": ["Virtual bus routing display"],
+      "depends_on": ["Source/MixCoach/UI/VirtualBusesComponent.h"],
+      "related_modules": ["MixCoach UI"]
+    },
+    "Source/Messenger/core/PluginProcessor.h": {
+      "module": "Messenger Ears",
+      "role": "plugin",
+      "criticality": 10,
+      "contains_types": ["MessengerAudioProcessor"],
+      "depends_on": ["Source/Common/types/Types.h", "Source/Common/types/TelemetryData.h", "Source/Common/types/Constants.h", "Source/Common/memory/SharedData.h", "Source/Messenger/telemetry/TelemetryCollector.h"],
+      "depended_by": ["Source/Messenger/ui/PluginEditor.h", "Source/Messenger/core/PluginProcessor.cpp"],
+      "related_modules": ["Messenger Ears", "Common"]
+    },
+    "Source/Messenger/core/PluginProcessor.cpp": {
+      "module": "Messenger Ears",
+      "role": "plugin",
+      "criticality": 10,
+      "implements": ["Audio processing, slot registration, real-time data collection"],
+      "depends_on": ["Source/Messenger/core/PluginProcessor.h", "Source/Messenger/ui/PluginEditor.h", "Source/Messenger/telemetry/TelemetryCollector.h", "Source/Common/memory/SharedData.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["Messenger Ears"]
+    },
+    "Source/Messenger/ui/PluginEditor.h": {
+      "module": "Messenger Ears",
+      "role": "ui",
+      "criticality": 7,
+      "contains_types": ["MessengerAudioProcessorEditor"],
+      "depends_on": ["Source/Messenger/core/PluginProcessor.h"],
+      "depended_by": ["Source/Messenger/core/PluginProcessor.cpp", "Source/Messenger/ui/PluginEditor.cpp"],
+      "related_modules": ["Messenger Ears"]
+    },
+    "Source/Messenger/ui/PluginEditor.cpp": {
+      "module": "Messenger Ears",
+      "role": "ui",
+      "criticality": 7,
+      "implements": ["Bus selector UI, slot info display"],
+      "depends_on": ["Source/Messenger/ui/PluginEditor.h", "Source/Messenger/core/PluginProcessor.h", "Source/Common/memory/SharedData.h", "Source/Common/types/LogHelper.h"],
+      "related_modules": ["Messenger Ears"]
+    },
+    "Source/Messenger/telemetry/TelemetryCollector.h": {
+      "module": "Messenger Ears",
+      "role": "data",
+      "criticality": 8,
+      "contains_types": ["TelemetryCollector"],
+      "depends_on": ["Source/Common/types/Types.h"],
+      "depended_by": ["Source/Messenger/core/PluginProcessor.h"],
+      "related_modules": ["Messenger Ears"]
+    },
+    "Source/Messenger/telemetry/TelemetryCollector.cpp": {
+      "module": "Messenger Ears",
+      "role": "data",
+      "criticality": 8,
+      "implements": ["Telemetry collection logic"],
+      "depends_on": ["Source/Messenger/telemetry/TelemetryCollector.h"],
+      "related_modules": ["Messenger Ears"]
+    },
+    "CMakeLists.txt": {
+      "module": "Build System",
+      "role": "build",
+      "criticality": 10,
+      "contains_types": ["CMake project config"],
+      "depends_on": [],
+      "depended_by": ["build.ps1"],
+      "related_modules": ["Build System"]
+    },
+    "build.ps1": {
+      "module": "Build System",
+      "role": "build",
+      "criticality": 9,
+      "contains_types": ["Build script"],
+      "depends_on": ["CMakeLists.txt"],
+      "related_modules": ["Build System"]
+    },
+    "DeployVST3.ps1": {
+      "module": "Build System",
+      "role": "deploy",
+      "criticality": 9,
+      "contains_types": ["Deployment script"],
+      "depends_on": ["CMakeLists.txt"],
+      "related_modules": ["Build System"]
+    },
+    "scripts/validate.ps1": {
+      "module": "Build System",
+      "role": "validate",
+      "criticality": 7,
+      "contains_types": ["Validation script"],
+      "depends_on": ["CMakeLists.txt"],
+      "related_modules": ["Build System"]
+    }
+  },
+
+  "critical_paths": {
+    "hot_files": [
+      "Source/Common/types/Types.h",
+      "Source/Common/memory/SlotRegistry.h",
+      "Source/Common/memory/SharedData.h",
+      "Source/MixCoach/core/PluginProcessor.h",
+      "Source/MixCoach/core/PluginEditor.cpp",
+      "Source/Messenger/core/PluginProcessor.h"
+    ],
+    "bottleneck_modules": ["Common"],
+    "dsp_critical_chain": [
+      "Source/Common/types/Types.h",
+      "Source/Common/audio/AudioAnalysis.h",
+      "Source/MixCoach/audio/AudioAnalyzer.h",
+      "Source/MixCoach/core/PluginProcessor.h"
+    ],
+    "ipc_critical_chain": [
+      "Source/Common/types/Types.h",
+      "Source/Common/memory/SharedMemory.h",
+      "Source/Common/memory/SlotRegistry.h",
+      "Source/MixCoach/core/PluginEditor.cpp"
+    ],
+    "ui_critical_chain": [
+      "Source/Common/types/Types.h",
+      "Source/MixCoach/UI/MixCoachTheme.h",
+      "Source/MixCoach/UI/MainTabbedComponent.h",
+      "Source/MixCoach/core/PluginEditor.h"
+    ],
+    "messenger_critical_chain": [
+      "Source/Common/types/Types.h",
+      "Source/Messenger/telemetry/TelemetryCollector.h",
+      "Source/Messenger/core/PluginProcessor.h"
+    ]
+  },
+
+  "subsystems": {
+    "dsp_pipeline": {
+      "files": [
+        "Source/Common/audio/AudioAnalysis.h",
+        "Source/Common/types/Constants.h",
+        "Source/MixCoach/audio/AudioAnalyzer.h",
+        "Source/MixCoach/engine/PhaseManager.h"
+      ],
+      "description": "Audio analysis chain: FFT -> RMS/Peak/LUFS -> Spectral -> Phase"
+    },
+    "ipc_layer": {
+      "files": [
+        "Source/Common/memory/SharedMemory.h",
+        "Source/Common/memory/SlotRegistry.h",
+        "Source/Common/memory/SharedData.h"
+      ],
+      "description": "Inter-process communication: shared memory + backup files + slot registry"
+    },
+    "messenger_sync": {
+      "files": [
+        "Source/Messenger/core/PluginProcessor.h",
+        "Source/Messenger/telemetry/TelemetryCollector.h",
+        "Source/Common/memory/SlotRegistry.h",
+        "Source/Common/memory/SharedMemory.h",
+        "Source/Common/memory/SharedData.h"
+      ],
+      "description": "Messenger -> MixCoach data pipeline"
+    },
+    "analyzers_ui": {
+      "files": [
+        "Source/MixCoach/UI/AnalyzersPanelComponent.h",
+        "Source/MixCoach/UI/ProfessionalAnalyzersComponent.h",
+        "Source/MixCoach/UI/TrackDashboardComponent.h",
+        "Source/MixCoach/UI/VirtualBusesComponent.h"
+      ],
+      "description": "UI components for track/audio visualization"
+    }
+  }
+}

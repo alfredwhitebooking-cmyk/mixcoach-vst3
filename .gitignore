@@ -30,6 +30,10 @@ build_output.txt
 
 # Scripts
 CompileAndSave.ps1
+scripts/ninja.exe
+build.bat
+scripts/do_build.bat
+scripts/do_build.ps1
 
 # Build artefacts
 # Nota: build/ ya esta ignorado arriba

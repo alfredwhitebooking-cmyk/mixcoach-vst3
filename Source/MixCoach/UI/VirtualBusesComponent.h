@@ -1,6 +1,6 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
-#include "../../Common/Constants.h"
+#include "../../Common/types/Constants.h"
 #include "MixCoachTheme.h"
 
 namespace mixcoach {

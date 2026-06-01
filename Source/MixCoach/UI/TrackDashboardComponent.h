@@ -1,7 +1,7 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
-#include "../../Common/Types.h"
-#include "../../Common/SlotRegistry.h"
+#include "../../Common/types/Types.h"
+#include "../../Common/memory/SlotRegistry.h"
 #include "MixCoachTheme.h"
 
 namespace mixcoach {

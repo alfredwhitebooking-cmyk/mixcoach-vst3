@@ -1,0 +1,373 @@
+{
+  "version": "2.0.0",
+  "last_updated": "",
+  "auto_learning_enabled": true,
+  "_comment": "Error memory system for MixCoach JUCE/C++ project. Auto-learns from build errors. Patterns are matched by error_code + pattern text.",
+
+  "patterns": [
+    {
+      "error_code": "LNK2019",
+      "type": "linker",
+      "pattern": "unresolved external symbol",
+      "cause": "Missing implementation for declared function or method",
+      "fix_strategy": "Check that the .cpp file exists and is included in CMakeLists.txt. Verify function signature matches declaration exactly (const-ness, reference vs pointer, default params).",
+      "times_seen": 3,
+      "last_fix_description": "Added missing SlotRegistry::registerSlot() implementation",
+      "confidence": 0.9,
+      "project_specific": {
+        "common_cases": [
+          "Missing JUCE module registration in CMakeLists.txt (juce_audio_processors, juce_dsp, etc.)",
+          "Virtual method without implementation in derived class",
+          "Static member missing definition in .cpp file",
+          "Missing template specialization definition",
+          "Missing inline function body in header"
+        ],
+        "symbol_map": {
+          "SlotRegistry": "Source/Common/SlotRegistry.h",
+          "SharedData": "Source/Common/SharedData.h"
+        }
+      }
+    },
+    {
+      "error_code": "LNK2001",
+      "type": "linker",
+      "pattern": "unresolved external symbol",
+      "cause": "Static data member or function referenced but not defined",
+      "fix_strategy": "Ensure static members have definitions in the corresponding .cpp file. Check for dllimport/dllexport mismatches.",
+      "times_seen": 2,
+      "last_fix_description": "Added sharedInstance static member definition",
+      "confidence": 0.85,
+      "project_specific": {
+        "common_cases": [
+          "Missing SlotRegistry::instance_ static definition in SlotRegistry.cpp",
+          "JUCE_*_EXPORT macro mismatch between Debug/Release configs",
+          "Static const member defined in header but not in cpp"
+        ]
+      }
+    },
+    {
+      "error_code": "C2664",
+      "type": "compiler",
+      "pattern": "cannot convert argument",
+      "cause": "Type mismatch in function call",
+      "fix_strategy": "Check parameter types: const correctness, reference vs value, JUCE String vs const char*, std::string vs juce::String",
+      "times_seen": 5,
+      "last_fix_description": "Added .toRawUTF8() for juce::String to const char* conversion",
+      "confidence": 0.95,
+      "project_specific": {
+        "common_cases": [
+          "juce::String passed where const char* expected (use .toRawUTF8())",
+          "Missing const& in callback signature",
+          "int vs size_t conversion in FFT/block operations",
+          "float vs double in DSP calculations"
+        ]
+      }
+    },
+    {
+      "error_code": "C2065",
+      "type": "compiler",
+      "pattern": "undeclared identifier",
+      "cause": "Missing #include or typo in symbol name",
+      "fix_strategy": "Add the required #include. Check namespace (juce:: prefix, std:: prefix). Verify symbol spelling.",
+      "times_seen": 4,
+      "last_fix_description": "Added #include <juce_dsp/juce_dsp.h> for FFT operations",
+      "confidence": 0.9,
+      "project_specific": {
+        "common_cases": [
+          "Missing #include <juce_dsp/juce_dsp.h> for FFT operations",
+          "Missing #include \"../Common/Types.h\" for BusType/TrackData",
+          "Namespace: use juce::dsp::FFT or using namespace juce;",
+          "Missing #include <optional> for std::optional",
+          "Missing #include <atomic> for std::atomic"
+        ],
+        "include_map": {
+          "juce::dsp": "juce_dsp/juce_dsp.h",
+          "juce::FFT": "juce_dsp/juce_dsp.h",
+          "std::atomic": "atomic",
+          "AudioBuffer": "juce_audio_basics/juce_audio_basics.h"
+        }
+      }
+    },
+    {
+      "error_code": "C3861",
+      "type": "compiler",
+      "pattern": "identifier not found",
+      "cause": "Function not declared or included",
+      "fix_strategy": "Add forward declaration or #include. Check namespace qualification.",
+      "times_seen": 2,
+      "last_fix_description": "Added AudioAnalysis.h include for measureRMS()",
+      "confidence": 0.8,
+      "project_specific": {
+        "common_cases": [
+          "AudioAnalysis::measureRMS() called without #include \"AudioAnalysis.h\"",
+          "std::vector used without #include <vector>",
+          "Missing JUCE namespace (juce:: prefix)"
+        ]
+      }
+    },
+    {
+      "error_code": "C2027",
+      "type": "compiler",
+      "pattern": "use of undefined type",
+      "cause": "Incomplete type (forward declared but not fully defined)",
+      "fix_strategy": "Move #include from .cpp to .h, or add forward declaration. The type needs to be fully defined where used.",
+      "times_seen": 1,
+      "last_fix_description": "Moved SharedData.h include to header file",
+      "confidence": 0.75,
+      "project_specific": {
+        "common_cases": [
+          "Using TrackData members after only forward declaration",
+          "Including SlotRegistry.h after only forward declaring SlotRegistry",
+          "Using SharedData members after forward declaration"
+        ]
+      }
+    },
+    {
+      "error_code": "C2259",
+      "type": "compiler",
+      "pattern": "cannot instantiate abstract class",
+      "cause": "Class has unimplemented pure virtual methods",
+      "fix_strategy": "Implement all pure virtual methods from base class. Check JUCE AudioProcessor::getBusesLayout() and similar.",
+      "times_seen": 3,
+      "last_fix_description": "Implemented missing getTailLengthSeconds() override",
+      "confidence": 0.85,
+      "project_specific": {
+        "common_cases": [
+          "Missing AudioProcessor::getName() override",
+          "Missing AudioProcessor::acceptsMidi() / producesMidi() overrides",
+          "Missing getTailLengthSeconds() override",
+          "Missing AudioProcessorEditor::resized() or paint() override",
+          "Missing isBusesLayoutSupported() override"
+        ]
+      }
+    },
+    {
+      "error_code": "C2280",
+      "type": "compiler",
+      "pattern": "attempting to reference a deleted function",
+      "cause": "Trying to copy a non-copyable object (unique_ptr, atomic, mutex, etc.)",
+      "fix_strategy": "Use std::move(), pass by reference, or store as pointer/shared_ptr.",
+      "times_seen": 2,
+      "last_fix_description": "Changed std::atomic<TrackData> to std::shared_ptr<std::atomic<TrackData>>",
+      "confidence": 0.8,
+      "project_specific": {
+        "common_cases": [
+          "std::atomic<TrackData> cannot be copied — use std::atomic_ref or pointer",
+          "juce::AudioBuffer copied instead of passed by reference",
+          "std::unique_ptr in a class that gets copied",
+          "std::mutex in a class that gets copy-constructed"
+        ]
+      }
+    },
+    {
+      "error_code": "LNK2038",
+      "type": "linker",
+      "pattern": "mismatch detected for '_ITERATOR_DEBUG_LEVEL'",
+      "cause": "Mixing Debug and Release compiled objects",
+      "fix_strategy": "Clean rebuild. Ensure all .obj files are from same build configuration. Run cmake --build Builds --clean-first --config Release",
+      "times_seen": 4,
+      "last_fix_description": "Clean rebuild resolved the mismatch",
+      "confidence": 0.95,
+      "project_specific": {
+        "common_cases": [
+          "MixCoach_SharedCode.lib built as Debug but linked into Release VST3",
+          "Partial rebuild after switching configs",
+          "CMake cache outdated after config switch"
+        ]
+      }
+    },
+    {
+      "error_code": "C2338",
+      "type": "compiler",
+      "pattern": "static_assert failed",
+      "cause": "Compile-time assertion failed",
+      "fix_strategy": "Read the assertion message. Common causes: invalid template parameter, alignment requirement not met, JUCE version incompatibility.",
+      "times_seen": 1,
+      "confidence": 0.6,
+      "project_specific": {
+        "common_cases": [
+          "JUCE version requirements for specific dsp::FFT parameters",
+          "Buffer size alignment requirements",
+          "Template parameter constraints"
+        ]
+      }
+    },
+    {
+      "error_code": "JUCE_MODULE_MISSING",
+      "type": "cmake",
+      "pattern": "JUCE module not found",
+      "cause": "Required JUCE module not included in CMakeLists.txt",
+      "fix_strategy": "Add JUCE_MODULE_NAME to JUCE modules list in CMakeLists.txt. Common: juce_dsp, juce_audio_utils, juce_graphics.",
+      "times_seen": 2,
+      "confidence": 0.85,
+      "project_specific": {
+        "common_cases": [
+          "juce_dsp needed for FFT, IIR, etc.",
+          "juce_audio_utils needed for AudioFormatManager",
+          "juce_gui_extra needed for WebBrowser or advanced controls",
+          "juce_audio_plugin_client needed for VST3/AAX targets"
+        ]
+      }
+    },
+    {
+      "error_code": "CMake_CONFIG_ERROR",
+      "type": "cmake",
+      "pattern": "CMake Error at CMakeLists.txt",
+      "cause": "CMake configuration failure",
+      "fix_strategy": "Check CMakeLists.txt for syntax errors. Verify JUCE path. Run `cmake -B Builds -S .` to regenerate.",
+      "times_seen": 3,
+      "last_fix_description": "Fixed JUCE_ROOT path after project directory move",
+      "confidence": 0.8,
+      "project_specific": {
+        "common_cases": [
+          "JUCE_ROOT path incorrect after moving project",
+          "Missing JuceHeader.h or JUCE/modules directory",
+          "Incompatible CMake version"
+        ]
+      }
+    },
+    {
+      "error_code": "MSB3073",
+      "type": "msbuild",
+      "pattern": "command failed with exit code",
+      "cause": "Post-build or custom command failed",
+      "fix_strategy": "Check the custom command in .vcxproj or CMakeLists.txt. Common: deployment script, resource compilation.",
+      "times_seen": 2,
+      "last_fix_description": "Fixed DeployVST3.ps1 path in post-build step",
+      "confidence": 0.75,
+      "project_specific": {
+        "common_cases": [
+          "DeployVST3.ps1 deployment script failed — check paths/permissions",
+          "Resource compilation (.rc) file missing",
+          "Post-build copy command failed"
+        ]
+      }
+    },
+    {
+      "error_code": "MSB4018",
+      "type": "msbuild",
+      "pattern": "unexpected error",
+      "cause": "Internal MSBuild crash (transient)",
+      "fix_strategy": "Rerun the build. If persistent, clean build. Use --clean-first flag.",
+      "times_seen": 5,
+      "last_fix_description": "Clean build resolved the transient crash",
+      "confidence": 0.9,
+      "project_specific": {
+        "common_cases": [
+          "Transient crash in CL.exe — retry with cmake --build Builds --config Release",
+          "Transient linker crash — retry with larger virtual memory",
+          "Use --clean-first for persistent failures",
+          "MSVC 14.51 crash (C1001) with Ninja + Release in juce_graphics_Harfbuzz.cpp"
+        ]
+      }
+    },
+    {
+      "error_code": "RUNTIME_CRASH_AUDIO",
+      "type": "runtime",
+      "pattern": "audio thread crash / denormal / NaN",
+      "cause": "Audio processing produces NaN or denormal values",
+      "fix_strategy": "Add denormal protection (JUCE::FloatVectorOperations::disableDenormals). Check division by zero, log(0), sqrt(negative). Add tinit=1 or _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON).",
+      "times_seen": 3,
+      "last_fix_description": "Added safe_sqrt() wrapper and denormal protection in AudioAnalysis.cpp",
+      "confidence": 0.85,
+      "project_specific": {
+        "common_cases": [
+          "RMS calculation: sum of squares could overflow",
+          "FFT processing with silent input -> division by zero in normalization",
+          "Phase calculation: atan2(0,0) -> NaN",
+          "Peak detection: sample values beyond expected range"
+        ],
+        "safe_functions": [
+          "safe_sqrt() in AudioAnalysis.h",
+          "safe_atan2() in AudioAnalysis.h",
+          "FloatVectorOperations::disableDenormals()"
+        ]
+      }
+    },
+    {
+      "error_code": "RUNTIME_IPC_FAILURE",
+      "type": "runtime",
+      "pattern": "shared memory open/create failure",
+      "cause": "Cannot open or create shared memory mapping",
+      "fix_strategy": "Check slot index uniqueness. Verify no leftover mappings from crashes. Backup file path must be writable. Use %LOCALAPPDATA% instead of %TEMP% for backup files.",
+      "times_seen": 4,
+      "last_fix_description": "Changed backup directory from %%TEMP%% to %%LOCALAPPDATA%%",
+      "confidence": 0.9,
+      "project_specific": {
+        "common_cases": [
+          "SlotRegistry::registerSlot returns -1 when all slots are full",
+          "SharedMemoryManager::createOrOpen fails on second plugin instance",
+          "Backup directory doesn't exist or is not writable",
+          "Windows: mapped file name collisions between VST3 instances",
+          "FL Studio scanning causes slot collisions"
+        ]
+      }
+    },
+    {
+      "error_code": "RUNTIME_UI_FREEZE",
+      "type": "runtime",
+      "pattern": "UI thread freeze / timer overload",
+      "cause": "Heavy processing on UI/message thread",
+      "fix_strategy": "Move heavy computation to background thread (std::thread). Use juce::Timer for lightweight periodic updates only. Audio thread must never wait for UI thread.",
+      "times_seen": 2,
+      "last_fix_description": "Moved analyzer data processing to background thread",
+      "confidence": 0.8,
+      "project_specific": {
+        "common_cases": [
+          "AnalyzerPanelComponents updateAll() called on message thread with too many tracks",
+          "SlotRegistry::syncFromShared() called on audio thread (blocking)",
+          "Backup file I/O on message thread",
+          "Too many repaints per frame causing 100%% CPU"
+        ]
+      }
+    }
+  ],
+
+  "fix_history": [
+    {
+      "timestamp": "2026-05-15T10:30:00",
+      "error_code": "LNK2019",
+      "fix": "Added SlotRegistry::registerSlot() implementation in SlotRegistry.cpp",
+      "success": true
+    },
+    {
+      "timestamp": "2026-05-18T14:20:00",
+      "error_code": "C2664",
+      "fix": "Added .toRawUTF8() conversion for juce::String parameter",
+      "success": true
+    },
+    {
+      "timestamp": "2026-05-20T09:15:00",
+      "error_code": "RUNTIME_IPC_FAILURE",
+      "fix": "Changed backup directory to %%LOCALAPPDATA%% to fix permission issues",
+      "success": true
+    },
+    {
+      "timestamp": "2026-05-22T16:45:00",
+      "error_code": "RUNTIME_CRASH_AUDIO",
+      "fix": "Added safe_sqrt() wrapper in AudioAnalysis.h for denormal protection",
+      "success": true
+    },
+    {
+      "timestamp": "2026-05-25T11:00:00",
+      "error_code": "LNK2038",
+      "fix": "Clean rebuild with --clean-first flag resolved iterator debug level mismatch",
+      "success": true
+    },
+    {
+      "timestamp": "2026-05-28T12:30:00",
+      "error_code": "C2259",
+      "fix": "Added getTailLengthSeconds() override in PluginProcessor",
+      "success": true
+    }
+  ],
+
+  "auto_learned_patterns": [],
+  "statistics": {
+    "total_fixes": 6,
+    "unique_errors": 6,
+    "most_frequent": "LNK2038",
+    "average_time_to_fix_minutes": 15,
+    "learned_patterns_count": 0
+  }
+}

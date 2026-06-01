@@ -1,0 +1,126 @@
+{
+  "version": "2.1.0",
+  "last_updated": "2026-05-31",
+  "system_components": {
+    "ast_parser": {
+      "status": "ready",
+      "symbols": 138,
+      "files": 44
+    },
+    "code_embedder": {
+      "status": "ready",
+      "documents": 46,
+      "vocabulary": 2121
+    },
+    "semantic_search": {
+      "status": "ready",
+      "synonyms": 56
+    },
+    "change_impact": {
+      "status": "ready"
+    },
+    "self_summarizer": {
+      "status": "ready",
+      "layers": 4
+    },
+    "dsp_intelligence": {
+      "status": "ready",
+      "concepts": 7
+    },
+    "context_selector": {
+      "status": "ready",
+      "passes": 5
+    },
+    "ai_build_loop": {
+      "status": "ready",
+      "error_patterns": 16
+    },
+    "token_optimizer": {
+      "status": "ready",
+      "compression": "multi-layer"
+    },
+    "project_intelligence": {
+      "status": "ready",
+      "modules": 5
+    }
+  },
+  "session": {
+    "current_task": null,
+    "current_files": [],
+    "current_module": null,
+    "accumulated_context": 0,
+    "estimated_tokens": 0
+  },
+  "recent_tasks": [],
+  "recent_files": [],
+  "recent_errors": [],
+  "successful_fixes": [],
+  "build_history": [
+    {
+      "timestamp": "2026-05-28T14:21:43",
+      "config": "Release",
+      "success": true,
+      "duration_seconds": 4.6,
+      "error_count": 0
+    },
+    {
+      "timestamp": "2026-05-28T14:23:41",
+      "config": "Release",
+      "success": true,
+      "duration_seconds": 4.5,
+      "error_count": 0
+    }
+  ],
+  "project_health": {
+    "total_files": 43,
+    "hot_files": [
+      "Source/Common/types/Types.h",
+      "Source/Common/memory/SharedData.h",
+      "Source/Common/memory/SlotRegistry.h",
+      "Source/MixCoach/core/PluginProcessor.h",
+      "Source/Messenger/core/PluginProcessor.h"
+    ],
+    "dangerous_files": [
+      "Source/Common/types/Types.h",
+      "Source/Common/memory/SlotRegistry.h",
+      "Source/Common/types/Constants.h",
+      "Source/Common/memory/SharedMemory.h",
+      "Source/Common/memory/SharedData.h",
+      "Source/MixCoach/UI/MixCoachTheme.h",
+      "Source/Common/types/LogHelper.h"
+    ],
+    "modules": {
+      "Common": {
+        "total_files": 12,
+        "critical_files": 10,
+        "criticality": 10,
+        "description": "Shared types, IPC, audio analysis primitives"
+      },
+      "MixCoach Brain": {
+        "total_files": 10,
+        "critical_files": 8,
+        "criticality": 10,
+        "description": "Main VST3: DSP engine, UI, coaching logic"
+      },
+      "MixCoach UI": {
+        "total_files": 15,
+        "critical_files": 4,
+        "criticality": 8,
+        "description": "UI components (analyzers, chat, dashboard)"
+      },
+      "Messenger Ears": {
+        "total_files": 6,
+        "critical_files": 4,
+        "criticality": 9,
+        "description": "Sidecar VST3: telemetry + IPC bridge"
+      },
+      "Build System": {
+        "total_files": 4,
+        "critical_files": 4,
+        "criticality": 7,
+        "description": "CMake, build scripts, deployment"
+      }
+    }
+  },
+  "error_pattern_stats": {}
+}
