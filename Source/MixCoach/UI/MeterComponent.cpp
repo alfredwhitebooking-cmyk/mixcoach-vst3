@@ -1,176 +1,265 @@
 #include "MeterComponent.h"
+#include <cmath>
 
 namespace mixcoach {
 
+namespace {
+
+float maxPeak(const TrackTelemetry& t) noexcept
+{
+    return juce::jmax(t.peakLeft, t.peakRight);
+}
+
+float avgRms(const TrackTelemetry& t) noexcept
+{
+    return (t.rmsLeft + t.rmsRight) * 0.5f;
+}
+
+float integratedLufs(const TrackTelemetry& t) noexcept
+{
+    if (t.lufsIntegrated > -99.0f)
+        return t.lufsIntegrated;
+    if (t.lufsShortTerm > -99.0f)
+        return t.lufsShortTerm;
+    return -100.0f;
+}
+
+void splitStereoLufs(const TrackTelemetry& t, float& outL, float& outR) noexcept
+{
+    const float base = (t.lufsMomentary > -99.0f) ? t.lufsMomentary
+                      : (t.lufsShortTerm > -99.0f) ? t.lufsShortTerm
+                      : integratedLufs(t);
+
+    if (base <= -99.0f)
+    {
+        outL = outR = -100.0f;
+        return;
+    }
+
+    const float avgR = avgRms(t);
+    const float bias = 0.35f;
+    outL = juce::jlimit(VerticalGradientMeter::kMinDb, 6.0f,
+                        base + (t.rmsLeft - avgR) * bias);
+    outR = juce::jlimit(VerticalGradientMeter::kMinDb, 6.0f,
+                        base + (t.rmsRight - avgR) * bias);
+}
+
+juce::Font monoValueFont(float size)
+{
+    return juce::Font(juce::FontOptions(size)).boldened();
+}
+
+} // namespace
+
 MeterComponent::MeterComponent()
 {
-    headerLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x93\x8A Meter"),
-                         juce::dontSendNotification);
-    headerLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
-    headerLabel_.setJustificationType(juce::Justification::centredLeft);
-    headerLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textPrimary());
-    addAndMakeVisible(headerLabel_);
+    setOpaque(true);
 }
 
 void MeterComponent::updateData(const TrackTelemetry& telem)
 {
-    leftLevel_.setTarget(telem.peakLeft);
-    rightLevel_.setTarget(telem.peakRight);
-    peakValue_ = telem.peakLeft;
-    rmsValue_ = (telem.rmsLeft + telem.rmsRight) * 0.5f;
-    lufsValue_ = (telem.lufsIntegrated > -99.0f) ? telem.lufsIntegrated : peakValue_ - 14.0f;
-    drValue_ = telem.loudnessRange;
-    lufsMomentary_.setTarget(telem.lufsMomentary);
-    lufsRange_.setTarget(telem.loudnessRange);
-    repaint();
+    leftPeak_.tickHold();
+    rightPeak_.tickHold();
+    lufsLeftHold_.tickHold();
+    lufsRightHold_.tickHold();
+
+    leftBar_.setTargetValue(telem.peakLeft);
+    rightBar_.setTargetValue(telem.peakRight);
+    leftPeak_.setLevelDb(telem.peakLeft);
+    rightPeak_.setLevelDb(telem.peakRight);
+
+    const float peak = (telem.lufsTruePeak > -99.0f && telem.lufsTruePeak > maxPeak(telem))
+        ? telem.lufsTruePeak : maxPeak(telem);
+    peakSmooth_.setTargetValue(peak);
+    rmsSmooth_.setTargetValue(avgRms(telem));
+
+    const float lufsI = integratedLufs(telem);
+    if (lufsI > -99.0f)
+        lufsSmooth_.setTargetValue(lufsI);
+
+    drSmooth_.setTargetValue(juce::jmax(0.0f, telem.loudnessRange));
+
+    float lufsL = -100.0f, lufsR = -100.0f;
+    splitStereoLufs(telem, lufsL, lufsR);
+    lufsReadoutLeft_ = lufsL;
+    lufsReadoutRight_ = lufsR;
+
+    if (lufsL > -99.0f)
+    {
+        lufsLeftBar_.setTargetValue(lufsL);
+        lufsLeftHold_.setLevelDb(lufsL);
+    }
+    if (lufsR > -99.0f)
+    {
+        lufsRightBar_.setTargetValue(lufsR);
+        lufsRightHold_.setLevelDb(lufsR);
+    }
 }
 
-void MeterComponent::resized()
+bool MeterComponent::advanceVisuals(double sampleRateHz, bool allowRepaint)
 {
-    auto area = getLocalBounds().reduced(4, 2);
-    headerLabel_.setBounds(area.removeFromTop(16));
+    bool dirty = false;
+    auto tick = [&](SmoothValue& s) { dirty |= s.advance(sampleRateHz); };
+
+    tick(leftBar_);
+    tick(rightBar_);
+    tick(peakSmooth_);
+    tick(rmsSmooth_);
+    tick(lufsSmooth_);
+    tick(drSmooth_);
+    tick(lufsLeftBar_);
+    tick(lufsRightBar_);
+
+    leftPeak_.tickHold();
+    rightPeak_.tickHold();
+    lufsLeftHold_.tickHold();
+    lufsRightHold_.tickHold();
+
+    if (dirty && allowRepaint)
+        repaint();
+
+    return dirty;
 }
+
+void MeterComponent::resized() {}
 
 void MeterComponent::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
-    MixCoachTheme::fillGlassPanel(g, bounds, 6.0f);
+    g.setColour(MixCoachTheme::bgPanel().withAlpha(0.55f));
+    g.fillRoundedRectangle(bounds, 4.0f);
 
-    auto area = getLocalBounds().reduced(4, 2);
-    area.removeFromTop(18);
+    auto area = getLocalBounds().reduced(4, 3);
+    const int totalW = area.getWidth();
+    const int stereoW = (int) (totalW * 0.38f);
+    const int lufsW   = (int) (totalW * 0.30f);
+    const int numericW = totalW - stereoW - lufsW;
 
-    auto totalWidth = area.getWidth();
-    constexpr float kLeftPct  = 0.25f;
-    constexpr float kRightPct = 0.25f;
-
-    auto leftThird = area.removeFromLeft((int)(totalWidth * kLeftPct));
-    auto rightThird = area.removeFromRight((int)(totalWidth * kRightPct));
-    auto centerThird = area;
-
-    auto leftContent = leftThird.reduced(2, 0).toFloat();
-    float barW = leftContent.getWidth() * 0.45f;
-    float barH = leftContent.getHeight() - 20.0f;
-
-    auto lBar = juce::Rectangle<float>(leftContent.getX() + 3, leftContent.getY() + 18,
-                                        barW, barH);
-    drawLevelBar(g, lBar, leftLevel_.getCurrent(), MixCoachTheme::channelLeft(), "L");
-
-    auto rBar = juce::Rectangle<float>(leftContent.getRight() - 3 - barW, leftContent.getY() + 18,
-                                        barW, barH);
-    drawLevelBar(g, rBar, rightLevel_.getCurrent(), MixCoachTheme::channelRight(), "R");
-
-    auto centerContent = centerThird.reduced(2, 0);
-    auto numBoxes = centerContent.reduced(4, 0);
-    int boxH = numBoxes.getHeight() / 4;
-
-    auto peakBox = numBoxes.removeFromTop(boxH);
-    auto rmsBox = numBoxes.removeFromTop(boxH);
-    auto lufsBox = numBoxes.removeFromTop(boxH);
-    auto drBox = numBoxes;
-
-    drawNumericBox(g, peakBox.toFloat().reduced(2, 1),
-                   peakValue_, "Peak", "dB", MixCoachTheme::meterYellow());
-    drawNumericBox(g, rmsBox.toFloat().reduced(2, 1),
-                   rmsValue_, "RMS", "dB", MixCoachTheme::accent());
-    drawNumericBox(g, lufsBox.toFloat().reduced(2, 1),
-                   lufsValue_, "LUFS", "", MixCoachTheme::lufsIntegrated());
-    drawNumericBox(g, drBox.toFloat().reduced(2, 1),
-                   drValue_, "DR", "LU", MixCoachTheme::success());
-
-    auto rightContent = rightThird.reduced(2, 2).toFloat();
-    float mdrBarW = rightContent.getWidth() * 0.7f;
-
-    float mBarH = rightContent.getHeight() * 0.35f;
-    auto mBarArea = juce::Rectangle<float>(
-        rightContent.getCentreX() - mdrBarW * 0.5f,
-        rightContent.getY() + 2,
-        mdrBarW, mBarH);
-    drawLevelBar(g, mBarArea, lufsMomentary_.getCurrent(), MixCoachTheme::lufsMomentary(), "M");
-
-    auto drBarArea = juce::Rectangle<float>(
-        rightContent.getCentreX() - mdrBarW * 0.5f,
-        rightContent.getBottom() - mBarH - 2,
-        mdrBarW, mBarH);
-    drawLevelBar(g, drBarArea, lufsRange_.getCurrent(), MixCoachTheme::accent(), "DR");
+    paintStereoColumn(g, area.removeFromLeft(stereoW));
+    paintNumericColumn(g, area.removeFromLeft(numericW));
+    paintLufsMdrColumn(g, area);
 }
 
-void MeterComponent::drawLevelBar(juce::Graphics& g, juce::Rectangle<float> bounds,
-                                   float level, juce::Colour colour, const juce::String& label)
+void MeterComponent::paintStereoColumn(juce::Graphics& g, juce::Rectangle<int> area)
 {
-    g.setColour(MixCoachTheme::bgDarker());
-    g.fillRoundedRectangle(bounds, 3.0f);
-
-    auto labelArea = bounds.removeFromBottom(14).reduced(1, 0);
-    g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+    g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
     g.setColour(MixCoachTheme::textDim());
-    g.drawText(label, labelArea, juce::Justification::centred);
+    const int labelH = 12;
+    auto header = area.removeFromTop(labelH);
+    const int colW = area.getWidth() / 2;
+    g.drawText("L", header.removeFromLeft(colW), juce::Justification::centred);
+    g.drawText("R", header, juce::Justification::centred);
 
-    g.setColour(MixCoachTheme::border().withAlpha(0.15f));
-    float markers[] = { -24.0f, -18.0f, -12.0f, -6.0f, 0.0f };
-    for (float m : markers) {
-        float norm = juce::jlimit(0.0f, 1.0f, (m + 60.0f) / 66.0f);
-        float y = bounds.getBottom() - bounds.getHeight() * norm;
-        g.drawHorizontalLine((int)y, bounds.getX() + 1, bounds.getRight() - 1);
-    }
+    area.removeFromTop(2);
+    const int readoutH = 14;
+    auto readoutRow = area.removeFromBottom(readoutH);
+    area.removeFromBottom(2);
 
-    float norm = juce::jlimit(0.0f, 1.0f, (level + 60.0f) / 66.0f);
-    if (norm > 0.01f) {
-        auto fillBounds = bounds.withTop(bounds.getBottom() - bounds.getHeight() * norm);
+    const int scaleW = juce::jmax(16, (int) (area.getWidth() * 0.22f));
+    auto scaleArea = area.removeFromLeft(scaleW).toFloat();
+    auto metersArea = area.toFloat();
 
-        juce::Colour fillColour;
-        if (level > -6.0f)      fillColour = MixCoachTheme::meterRed();
-        else if (level > -12.0f) fillColour = MixCoachTheme::meterOrange();
-        else if (level > -18.0f) fillColour = MixCoachTheme::meterYellow();
-        else                     fillColour = colour;
+    VerticalGradientMeter::drawDbScale(g, scaleArea);
 
-        juce::ColourGradient barGrad(
-            fillColour.withAlpha(0.85f),
-            juce::Point<float>(0.0f, fillBounds.getY()),
-            fillColour.withAlpha(0.15f),
-            juce::Point<float>(0.0f, fillBounds.getBottom()),
-            false);
-        g.setGradientFill(barGrad);
-        g.fillRoundedRectangle(fillBounds, 2.0f);
+    const float gap = 4.0f;
+    const float barW = (metersArea.getWidth() - gap) * 0.5f;
+    auto lBounds = metersArea.removeFromLeft(barW);
+    metersArea.removeFromLeft(gap);
+    auto rBounds = metersArea;
 
-        auto glowRect = fillBounds.withHeight(juce::jmax(1.0f, fillBounds.getHeight() * 0.15f));
-        juce::ColourGradient glow(
-            juce::Colours::white.withAlpha(0.2f),
-            juce::Point<float>(0.0f, glowRect.getY()),
-            juce::Colour(0x00000000),
-            juce::Point<float>(0.0f, glowRect.getBottom()),
-            false);
-        g.setGradientFill(glow);
-        g.fillRoundedRectangle(glowRect, 2.0f);
-    }
+    VerticalGradientMeter::drawGradientBar(g, lBounds, leftBar_.getCurrent());
+    VerticalGradientMeter::drawGradientBar(g, rBounds, rightBar_.getCurrent());
+
+    const auto peakColour = MixCoachTheme::meterOrange();
+    VerticalGradientMeter::drawPeakTriangle(g, scaleArea, leftPeak_.peakHoldDb, peakColour);
+    VerticalGradientMeter::drawPeakTriangle(g, scaleArea, rightPeak_.peakHoldDb, peakColour);
+
+    const int half = readoutRow.getWidth() / 2;
+    VerticalGradientMeter::drawPeakReadout(g, readoutRow.removeFromLeft(half).toFloat(),
+                                           leftPeak_.peakHoldDb, peakColour);
+    VerticalGradientMeter::drawPeakReadout(g, readoutRow.toFloat(),
+                                           rightPeak_.peakHoldDb, peakColour);
 }
 
-void MeterComponent::drawNumericBox(juce::Graphics& g, juce::Rectangle<float> bounds,
-                                     float value, const juce::String& label,
-                                     const juce::String& unit, juce::Colour colour)
+void MeterComponent::paintNumericColumn(juce::Graphics& g, juce::Rectangle<int> area)
 {
-    g.setColour(MixCoachTheme::bgDarker());
-    g.fillRoundedRectangle(bounds, 3.0f);
-    g.setColour(MixCoachTheme::border().withAlpha(0.3f));
-    g.drawRoundedRectangle(bounds, 3.0f, 0.5f);
+    area = area.reduced(4, 6);
+    const int rowH = area.getHeight() / 4;
 
-    auto labelArea = bounds.removeFromTop(bounds.getHeight() * 0.35f).reduced(4, 0);
-    g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+    auto row1 = area.removeFromTop(rowH).toFloat();
+    auto row2 = area.removeFromTop(rowH).toFloat();
+    auto row3 = area.removeFromTop(rowH).toFloat();
+    auto row4 = area.toFloat();
+
+    drawMetricRow(g, row1, "PEAK", peakSmooth_.getCurrent(), "dB");
+    drawMetricRow(g, row2, "RMS", rmsSmooth_.getCurrent(), "dB");
+    drawMetricRow(g, row3, "LUFS (I)", lufsSmooth_.getCurrent(), "LUFS", true);
+    drawMetricRow(g, row4, "DR", drSmooth_.getCurrent(), "dB");
+}
+
+void MeterComponent::drawMetricRow(juce::Graphics& g, juce::Rectangle<float> row,
+                                   const juce::String& label, float valueDb,
+                                   const juce::String& suffix, bool isLufs)
+{
+    auto labelArea = row.removeFromTop(row.getHeight() * 0.32f);
+    g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
     g.setColour(MixCoachTheme::textDim());
-    g.drawText(label, labelArea, juce::Justification::centred);
+    g.drawText(label, labelArea, juce::Justification::centredLeft);
 
-    auto valArea = bounds.reduced(2, 0);
-    juce::String valStr;
-    if (value < -60.0f)
-        valStr = "--.-";
+    juce::String val;
+    if (valueDb <= -99.0f)
+        val = "--.-";
     else
-        valStr = juce::String(value, 1);
+        val = juce::String(valueDb, 1);
 
-    if (!unit.isEmpty())
-        valStr += " " + unit;
+    if (suffix.isNotEmpty())
+        val += (isLufs ? " " : " ") + suffix;
 
-    g.setFont(juce::Font(juce::FontOptions(11.0f)).boldened());
-    g.setColour(colour);
-    g.drawText(valStr, valArea, juce::Justification::centred);
+    g.setFont(monoValueFont(13.0f));
+    g.setColour(MixCoachTheme::textBright());
+    g.drawText(val, row, juce::Justification::centredLeft);
+}
+
+void MeterComponent::paintLufsMdrColumn(juce::Graphics& g, juce::Rectangle<int> area)
+{
+    g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+    g.setColour(MixCoachTheme::textDim());
+    g.drawText("LUFS MDR", area.removeFromTop(11), juce::Justification::centredLeft);
+
+    auto header = area.removeFromTop(12);
+    const int colW = area.getWidth() / 2;
+    g.drawText("L", header.removeFromLeft(colW), juce::Justification::centred);
+    g.drawText("R", header, juce::Justification::centred);
+
+    area.removeFromTop(2);
+    const int readoutH = 13;
+    auto readoutRow = area.removeFromBottom(readoutH);
+    area.removeFromBottom(2);
+
+    const int scaleW = juce::jmax(14, (int) (area.getWidth() * 0.24f));
+    auto scaleArea = area.removeFromLeft(scaleW).toFloat();
+    auto metersArea = area.toFloat().reduced(2.0f, 0.0f);
+
+    VerticalGradientMeter::drawDbScale(g, scaleArea);
+
+    const float gap = 3.0f;
+    const float barW = (metersArea.getWidth() - gap) * 0.42f;
+    auto lBounds = metersArea.removeFromLeft(barW);
+    metersArea.removeFromLeft(gap);
+    auto rBounds = metersArea.removeFromLeft(barW);
+
+    const auto cyan = MixCoachTheme::accentCyan();
+    VerticalGradientMeter::drawSolidBar(g, lBounds, lufsLeftBar_.getCurrent(), cyan, 2.0f);
+    VerticalGradientMeter::drawSolidBar(g, rBounds, lufsRightBar_.getCurrent(), cyan, 2.0f);
+
+    VerticalGradientMeter::drawPeakTriangle(g, scaleArea, lufsLeftHold_.peakHoldDb, cyan);
+    VerticalGradientMeter::drawPeakTriangle(g, scaleArea, lufsRightHold_.peakHoldDb, cyan);
+
+    const int half = readoutRow.getWidth() / 2;
+    VerticalGradientMeter::drawPeakReadout(g, readoutRow.removeFromLeft(half).toFloat(),
+                                           lufsReadoutLeft_, cyan);
+    VerticalGradientMeter::drawPeakReadout(g, readoutRow.toFloat(),
+                                           lufsReadoutRight_, cyan);
 }
 
 } // namespace mixcoach

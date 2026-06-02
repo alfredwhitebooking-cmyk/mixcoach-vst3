@@ -119,12 +119,7 @@ static void test_update_spectrum_full_scale() {
 
     auto img = renderComponent(spec, 400, 200);
     TEST("paint after full-scale spectrum completes", true);
-    bool content = false;
-    for (int y = 0; y < 10 && !content; ++y)
-        for (int x = 0; x < 10 && !content; ++x)
-            if (img.getPixelAt(x, y).getARGB() != 0)
-                content = true;
-    TEST("full-scale spectrum paints many pixels", content);
+    TEST("full-scale spectrum produces visual output", imageHasContent(img));
 }
 
 static void test_update_spectrum_small_fft() {
@@ -197,31 +192,19 @@ static void test_update_spectrum_smoothing() {
     TEST("paint after long silence completes", true);
 }
 
-static void test_peak_hold() {
-    std::printf("\n── Peak Hold ──\n");
+static void test_sample_rate_rebuild() {
+    std::printf("\n── setSampleRate ──\n");
     mixcoach::SpectrographComponent spec;
     spec.setSize(400, 200);
+    spec.setSampleRate(44100.0);
+    spec.setSampleRate(48000.0);
 
-    // Apply a burst with peak
     std::vector<float> burst(512, 0.0f);
-    burst[10] = 1.0f;
-
-    for (int i = 0; i < 3; ++i)
-        spec.updateSpectrum(burst.data(), (int)burst.size());
-
-    // Then lots of silence — peak hold should persist for ~15 calls then decay
-    std::vector<float> silence(512, 0.0f);
-    for (int i = 0; i < 5; ++i)
-        spec.updateSpectrum(silence.data(), (int)silence.size());
-
+    burst[12] = 0.9f;
+    spec.updateSpectrum(burst.data(), (int) burst.size());
     auto img = renderComponent(spec, 400, 200);
-    TEST("peak hold persists after silence", true);
-
-    // After many more calls, peak should have decayed
-    for (int i = 0; i < 100; ++i)
-        spec.updateSpectrum(silence.data(), (int)silence.size());
-    auto img2 = renderComponent(spec, 400, 200);
-    TEST("peak hold decays after many silence updates", true);
+    TEST("paint after sample rate change completes", true);
+    TEST("rta renders after sample rate rebuild", imageHasContent(img));
 }
 
 static void test_resize_preserves_state() {
@@ -284,7 +267,7 @@ int main() {
                 "\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90"
                 "\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\n");
     std::printf("  SpectrographComponent Unit Tests\n");
-    std::printf("  Construction | Spectrum Update | Smoothing | Peak Hold | Resize\n");
+    std::printf("  Construction | RTA Update | Smoothing | Resize\n");
     std::printf("\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90"
                 "\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90"
                 "\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90"
@@ -298,7 +281,7 @@ int main() {
     test_update_spectrum_large_fft();
     test_update_spectrum_empty();
     test_update_spectrum_smoothing();
-    test_peak_hold();
+    test_sample_rate_rebuild();
     test_resize_preserves_state();
     test_different_fft_sizes_sequentially();
 

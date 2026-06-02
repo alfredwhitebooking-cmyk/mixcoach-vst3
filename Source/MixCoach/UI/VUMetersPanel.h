@@ -23,6 +23,7 @@ public:
     AnalogVUMeter& getMeter(int i) noexcept { return vuMeters_[i]; }
 
     void setLevel(int idx, float db) { if (idx >= 0 && idx < 4) vuMeters_[idx].setLevel(db); }
+    bool advanceMeters(double sampleRateHz = 60.0, bool allowRepaint = true);
 
 private:
     juce::Label headerLabel_;

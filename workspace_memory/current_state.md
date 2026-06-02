@@ -7,6 +7,22 @@
 - **Plataforma**: Windows (VST3)
 - **Build**: CMake + MSVC
 
+## Estado IA / Multi-agente
+- **Entrada canonica para agentes**: `AGENTS.md`
+- **Contexto largo consolidado**: `AI_CONTEXT.md`
+- **Referencias UI fuente de verdad**: `UI_REFERENCES/Messenger.png`, `UI_REFERENCES/MixCoach_Tab1_AICoach.png`, `UI_REFERENCES/MixCoach_Tab2_Analyzers.png`
+- **Guia visual detallada**: `workspace_memory/visual_design.md`
+- **Objetivo del producto**: mentor de mezcla + analizadores; NO procesador que altera audio
+- **Validacion reciente**: 12 suites C++ ejecutadas directamente desde `build/tests/Release`, 0 fallos
+- **Fix aplicado**: target CMake `run_tests` ejecuta `$<TARGET_FILE:...>` para funcionar en builds multi-config de Visual Studio
+- **Backups de proyecto**: `scripts/ProjectCheckpoint.ps1` guarda/restaura checkpoints ZIP en `workspace_backups/project_checkpoints/`
+- **Backups de deploy VST3**: `DeployVST3.ps1` respalda el VST3 anterior en `workspace_backups/vst3_deploy/` antes de reemplazarlo
+- **Rollback de VST3 desplegado**: `DeployVST3.ps1 -Action ListBackups` y `DeployVST3.ps1 -Action Restore -Backup latest -Force`
+- **Deploy verificado**: `DeployVST3.ps1 -Config Release` copio MixCoach/Messenger a `C:\Program Files\Common Files\VST3\` y respaldo versiones anteriores
+- **Checkpoint final creado**: `workspace_backups/project_checkpoints/20260531_202514_after_deploy_backup_system/`
+- **Actualizacion deploy/rollback**: `DeployVST3.ps1` soporta `-Action Deploy`, `-Action ListBackups`, `-Action Restore -Backup latest -Force`
+- **Deploy reciente**: `build.ps1` compilo Release y desplego VST3 creando backup `workspace_backups/vst3_deploy/20260531_202912/`
+
 ## Últimos Cambios Significativos
 1. **IPC Dual**: SharedMemory + backup files en `%LOCALAPPDATA%/MixCoach/SlotBackup/`
 2. **FIX overflow uint32**: `fftTimestamp` convertido a `int64_t` antes de multiplicar por 1000
@@ -42,7 +58,7 @@
 
 ## Próximos Pasos Recomendados
 1. Probar reconexión IPC en FL Studio con carga en diferentes órdenes
-2. Añadir unit tests para PhaseManager (puramente lógico, sin JUCE)
+2. Alinear la UI implementada con las 3 referencias en `UI_REFERENCES/`
 3. Completar fase de producción (mastering) como extensión
 4. Implementar exportación de informes de mezcla
 5. Soporte para arrastrar/soltar archivos de referencia

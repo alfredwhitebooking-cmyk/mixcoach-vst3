@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
 # ─── JUCE Integration ─────────────────────────────────────────────────────────
-set(JUCE_ROOT "C:/MIX COACH SYSTEM/juce-8.0.13-windows/MixCoachAI/JUCE")
+set(JUCE_ROOT "C:/MIXCOA~1/juce-8.0.13-windows/MixCoachAI/JUCE")
 
 if(NOT EXISTS "${JUCE_ROOT}/CMakeLists.txt")
     message(WARNING "JUCE no encontrado en ${JUCE_ROOT}. Configura: -DJUCE_ROOT=<ruta>")
@@ -70,6 +70,8 @@ set(ANALYZERS_UI_SOURCES
     Source/MixCoach/UI/CrestHistogram.cpp
     Source/MixCoach/UI/PlaylistComponent.h
     Source/MixCoach/UI/PlaylistComponent.cpp
+    Source/MixCoach/UI/VerticalGradientMeter.h
+    Source/MixCoach/UI/VerticalGradientMeter.cpp
     Source/MixCoach/UI/MeterComponent.h
     Source/MixCoach/UI/MeterComponent.cpp
     Source/MixCoach/UI/AnalogVUMeter.h
@@ -166,6 +168,8 @@ target_include_directories(Messenger PRIVATE
 
 target_sources(Messenger PRIVATE
     ${COMMON_SOURCES}
+    Source/MixCoach/UI/SmoothValue.h
+    Source/MixCoach/UI/SmoothValue.cpp
     Source/Messenger/core/PluginProcessor.h
     Source/Messenger/core/PluginProcessor.cpp
     Source/Messenger/ui/PluginEditor.h
@@ -174,10 +178,14 @@ target_sources(Messenger PRIVATE
     Source/Messenger/ui/VUMeter.cpp
     Source/Messenger/ui/WaveformView.h
     Source/Messenger/ui/WaveformView.cpp
+    Source/Messenger/ui/CircularGauge.h
+    Source/Messenger/ui/CircularGauge.cpp
     Source/Messenger/ui/ColourPresetStrip.h
     Source/Messenger/ui/ColourPresetStrip.cpp
     Source/Messenger/ui/ColourSwatch.h
     Source/Messenger/ui/ColourSwatch.cpp
+    Source/Messenger/ui/StereoMeter.h
+    Source/Messenger/ui/StereoMeter.cpp
     Source/Messenger/telemetry/TelemetryCollector.h
     Source/Messenger/telemetry/TelemetryCollector.cpp
 )
@@ -338,6 +346,8 @@ add_executable(TestSpectrographComponent
     tests/TestSpectrographComponent.cpp
     Source/MixCoach/UI/SpectrographComponent.h
     Source/MixCoach/UI/SpectrographComponent.cpp
+    Source/MixCoach/UI/SmoothValue.h
+    Source/MixCoach/UI/SmoothValue.cpp
 )
 target_include_directories(TestSpectrographComponent PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source
@@ -407,6 +417,8 @@ set_target_properties(TestPhaseCorrelationMeter PROPERTIES
 # ─── Test: MeterComponent (compact meter panel UI) ─────────────────────────
 add_executable(TestMeterComponent
     tests/TestMeterComponent.cpp
+    Source/MixCoach/UI/VerticalGradientMeter.h
+    Source/MixCoach/UI/VerticalGradientMeter.cpp
     Source/MixCoach/UI/MeterComponent.h
     Source/MixCoach/UI/MeterComponent.cpp
     Source/MixCoach/UI/SmoothValue.h
@@ -509,18 +521,18 @@ set_target_properties(TestIPCIntegration PROPERTIES
 
 # ─── Target: build + run all tests ──────────────────────────────────────────
 add_custom_target(run_tests
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestSmoothValue.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestPhaseManager.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestCoachEngine.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestIPCIntegration.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestSharedMemory.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestSlotRegistry.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestTelemetryDSP.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestLUFSMeter.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestSpectrographComponent.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestVectorscopeComponent.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestPhaseCorrelationMeter.exe"
-    COMMAND "${CMAKE_BINARY_DIR}/tests/TestMeterComponent.exe"
+    COMMAND $<TARGET_FILE:TestSmoothValue>
+    COMMAND $<TARGET_FILE:TestPhaseManager>
+    COMMAND $<TARGET_FILE:TestCoachEngine>
+    COMMAND $<TARGET_FILE:TestIPCIntegration>
+    COMMAND $<TARGET_FILE:TestSharedMemory>
+    COMMAND $<TARGET_FILE:TestSlotRegistry>
+    COMMAND $<TARGET_FILE:TestTelemetryDSP>
+    COMMAND $<TARGET_FILE:TestLUFSMeter>
+    COMMAND $<TARGET_FILE:TestSpectrographComponent>
+    COMMAND $<TARGET_FILE:TestVectorscopeComponent>
+    COMMAND $<TARGET_FILE:TestPhaseCorrelationMeter>
+    COMMAND $<TARGET_FILE:TestMeterComponent>
     DEPENDS TestSmoothValue TestPhaseManager TestCoachEngine TestTelemetryDSP TestIPCIntegration
             TestSharedMemory TestSlotRegistry
             TestLUFSMeter TestSpectrographComponent TestVectorscopeComponent

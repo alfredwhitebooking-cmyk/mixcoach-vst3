@@ -18,13 +18,22 @@
 
 namespace mixcoach {
 
-class SharedData; // forward declaration
+class SharedData;
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  AnalyzersPanelComponent — Panel principal de metering
-//  Layout 5 sesiones:
-//    Playlist (25% L) | Meter (25% C-top) | Spectrum (50% R-top)
-//                      | Phase Scope (C-bot) | VU Meters (50% R-bot)
+//  AnalyzersPanelComponent — Panel de metering profesional
+//  Layout 4 secciones en perfecta proporcion:
+//
+//  ┌──────────────┬───────────────────┬────────────────────────────────┐
+//  │              │    METER          │                                │
+//  │  PLAYLIST    │   (25% W)         │   SPECTROGRAPH (50% W)        │
+//  │  (25% W)     │   (50% H top)     │   (50% H top)                  │
+//  │  FULL HEIGHT ├───────────────────┤                                │
+//  │  scroll      │   PHASE SCOPE     ├────────────────────────────────┤
+//  │              │   (25% W)         │   VU METERS (50% W)            │
+//  │              │   (50% H bottom)  │   (50% H bottom)               │
+//  │              │   Vec+Phase+Crest │   L ██  R ██  M ░░  S ░░      │
+//  └──────────────┴───────────────────┴────────────────────────────────┘
 // ═══════════════════════════════════════════════════════════════════════════
 class AnalyzersPanelComponent : public juce::Component {
 public:
@@ -34,38 +43,37 @@ public:
     void resized() override;
     void paint(juce::Graphics& g) override;
 
-    // Actualizar analizadores con datos de un slot específico
-    void updateAnalyzers(SlotRegistry& registry);
-
-    // Obtener playlist (para callbacks externos)
+    void updateAnalyzers(SlotRegistry& registry, double sampleRate = 48000.0);
     PlaylistComponent& getPlaylist() noexcept { return playlist_; }
-
-    // Getter para slot seleccionado
     int getSelectedSlot() const noexcept { return selectedSlot_; }
-
-    // Getter para spectrograph (fast updates desde MainTabbedComponent)
     SpectrographComponent& getSpectrograph() noexcept { return spectrograph_; }
 
-    // Callback: re-scan solicitado externamente
     std::function<void()> onRescanRequested;
-
-    // Actualización rápida de meters (60fps ligero)
     void fastUpdateMeters(SlotRegistry& registry);
 
+    /** 60 Hz: suavizado visual sin leer IPC (solo interpolación). */
+    void smoothVisuals(double sampleRateHz = 60.0);
+
+    void setSelectedSlot(int slotIndex);
+    std::function<void(int slotIndex)> onTrackSelected;
+
 private:
-    // ─── 5 Sesiones ──────────────────────────────────────────────────────
+    // ─── Footer labels ─────────────────────────────────────────────────
+    juce::Label footerActiveLabel_;
+    juce::Label footerStatusLabel_;
+    int lastActiveCount_{0};
+
+    // ─── Analizadores ──────────────────────────────────────────────────
+    juce::Viewport          playlistViewport_;
     PlaylistComponent        playlist_;
     MeterComponent           meter_;
     SpectrographComponent    spectrograph_;
     PhaseScopePanel          phaseScope_;
     VUMetersPanel            vuMeters_;
 
-    // ─── Estado ───────────────────────────────────────────────────────────
+    // ─── Estado ─────────────────────────────────────────────────────────
     int selectedSlot_ = -1;
     juce::Colour selectedColour_{ 0xFF3498DB };
-    juce::String selectedTrackName_;
-
-    // Referencia a SharedData
     SharedData& sharedData_;
 };
 

@@ -28,6 +28,8 @@ public:
     void pushSample(float l, float r) { vectorscope_.pushSample(l, r); }
     void pushCrest(float p, float r) { crestHistogram_.pushCrest(p, r); }
 
+    bool advanceVisuals(double sampleRateHz = 60.0, bool allowRepaint = true);
+
 private:
     juce::Label headerLabel_;
     VectorscopeComponent     vectorscope_;

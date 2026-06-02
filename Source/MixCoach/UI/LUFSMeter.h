@@ -22,11 +22,12 @@ public:
     void setRange(float value)       { range_.setTarget(value);       repaint(); }
 
 private:
-    SmoothValue integrated_{ -30.0f, 20.0f, 300.0f };
-    SmoothValue shortTerm_{  -30.0f, 10.0f, 200.0f };
-    SmoothValue momentary_{  -30.0f, 5.0f,  150.0f };
+    // Ballistics DAW-smooth: attack rápido, release suave
+    SmoothValue integrated_{ -30.0f, 5.0f,  200.0f };
+    SmoothValue shortTerm_{  -30.0f, 3.0f,  200.0f };
+    SmoothValue momentary_{  -30.0f, 2.0f,  150.0f };
     SmoothValue truePeak_{   -30.0f, 1.0f,  100.0f };
-    SmoothValue range_{       0.0f,  50.0f, 400.0f };
+    SmoothValue range_{       0.0f,  10.0f, 300.0f };
     juce::Label titleLabel_;
 
     static constexpr float kTargetIntegrated = 23.0f;

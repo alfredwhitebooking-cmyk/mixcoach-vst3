@@ -28,6 +28,7 @@ public:
 
     void resized() override;
     void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& e) override;
 
     // Called from background worker thread (MixCoachBgWorker)
     void backgroundRunLoop();
@@ -54,8 +55,6 @@ private:
     bool fullUIBuilt_{false};
     uint32_t lastInitAttemptMs_{0}; // backoff para reintentos
 
-    // Seguimiento de slots ya anunciados
-    std::array<bool, SlotRegistry::kMaxSlots> announcedSlots_{};
     int lastActiveSlotCount_{0};
 
     uint32_t uiBuiltTimeMs_{0};
@@ -79,8 +78,13 @@ private:
     //    background thread mientras el destructor (message thread) lo escribe.
     std::atomic<bool> editorBeingDestroyed_{false};
 
-    // Layout
-    juce::Label versionLabel_;
+    // ─── Header interactive element bounds (for mouseDown hit detection) ───
+    juce::Rectangle<int> headerTab1Bounds_;   // "AI COACH" tab
+    juce::Rectangle<int> headerTab2Bounds_;   // "ANALYZERS" tab
+    juce::Rectangle<int> headerVerifyBounds_; // "VERIFICAR PROGRESO" button
+    int headerActiveTab_{0};                  // 0 = AI COACH, 1 = ANALYZERS
+
+    // Layout (header is painted, no versionLabel needed)
 
     // ═══ BACKGROUND WORKER (heavy I/O ops off message thread) ═══════════════
     // forceFullSync, loadSlotsFromBackupFiles, healthCheck se ejecutan
@@ -110,12 +114,12 @@ private:
     // el timer debe crear phaseManager/coachEngine desde message thread.
     std::atomic<bool> bgSharedMemoryReady_{false};
     
-    // Flag static: el sync inicial solo corre UNA vez por vida del proceso DLL.
-    // Cuando el usuario cierra/reabre el plugin en FL Studio, el editor se
-    // recrea pero los datos ya están en SlotRegistry (singleton persistente).
-    // Este flag evita re-escanear backup files y shared memory en cada
-    // reapertura, eliminando el molesto "re-scan".
+    // ═══ Flags estáticos: persisten entre recreaciones del editor ═════════
+    // Cuando el usuario minimiza/restaura el plugin en FL Studio, el editor
+    // se destruye y recrea. Estos flags evitan que se repita el sync inicial
+    // y el anuncio de tracks ya conocidos.
     static std::atomic<bool> s_initialFullSyncDone_;
+    static std::array<bool, SlotRegistry::kMaxSlots> s_announcedSlots_;
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MixCoachAudioProcessorEditor)

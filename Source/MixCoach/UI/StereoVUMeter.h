@@ -16,9 +16,6 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void setLevels(float leftRMS, float rightRMS, float leftPeak, float rightPeak);
-    void setLeftColour(juce::Colour c)  { leftColour_ = c;  repaint(); }
-    void setRightColour(juce::Colour c) { rightColour_ = c; repaint(); }
-
 private:
     SmoothValue leftRMS_{   -80.0f, 5.0f, 300.0f };
     SmoothValue rightRMS_{  -80.0f, 5.0f, 300.0f };
@@ -28,15 +25,13 @@ private:
     float rightPeakHold_   = -80.0f;
     int   leftHoldTimer_   = 0;
     int   rightHoldTimer_  = 0;
-    juce::Colour leftColour_{ 0xFF3498DB };
-    juce::Colour rightColour_{ 0xFF2ECC71 };
     juce::Label titleLabel_;
     juce::Label leftLabel_;
     juce::Label rightLabel_;
 
     void drawChannelMeter(juce::Graphics& g, juce::Rectangle<float> bounds,
                           float rms, float peak, float peakHold,
-                          const juce::String& channelLabel, juce::Colour colour);
+                          const juce::String& channelLabel);
 };
 
 } // namespace mixcoach

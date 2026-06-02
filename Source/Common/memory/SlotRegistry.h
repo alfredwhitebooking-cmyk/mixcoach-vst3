@@ -73,6 +73,12 @@ public:
     // Retorna true si hubo cambios
     bool syncFromShared();
 
+    /** Lee peaks/RMS/FFT/LUFS desde SHM → TelemetryBuffer (sin changeCount). UI 60 Hz. */
+    void pollTelemetryFromShared();
+
+    /** Fallback cuando SHM no está disponible: lee telemetría V2 del backup file. */
+    void pollTelemetryFromBackups();
+
     // Forzar sincronización completa (ignora changeCount).
     // Usar cuando MixCoach se conecta por primera vez a una shared memory
     // que ya tiene Messengers registrados. Retorna número de slots encontrados.
@@ -139,6 +145,14 @@ private:
 
     // Flag: si ya se hizo al menos una sincronización exitosa
     bool everSynced_{false};
+
+    // Cache de timestamps del meta file (slot_N.meta) para evitar I/O
+    // innecesario. El meta file SOLO se actualiza cuando cambian metadatos
+    // (updateSlotName/Colour/Bus → saveSlotToBackupFile), NUNCA por
+    // telemetría. Así pollTelemetryFromBackups() puede checkear si hubo
+    // cambios de metadatos sin abrir el backup file (que se actualiza
+    // constantemente por telemetría cada ~32ms).
+    std::array<int64_t, kMaxSlots> lastMetaModTimeMs_{};
 
     static const juce::Colour          kSlotColours[8];
 

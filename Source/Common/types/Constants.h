@@ -20,15 +20,14 @@ inline constexpr float  kSilenceThreshold = -60.0f;// dB
 inline constexpr const char* kAppName    = "MixCoach";
 inline constexpr const char* kAppVersion = "1.0.0";
 
-// Colores de bus virtual (usar uint32 y convertir a Colour en runtime)
-// Nota: no se puede usar constexpr con juce::Colour porque su constructor no es constexpr
+// Colores de bus virtual — alineados con UI_REFERENCES/ y visual_design.md
 inline const juce::uint32 kBusColourARGB[] = {
-    0xFFE74C3C,  // Rojo     - Drums
-    0xFF3498DB,  // Azul     - Bass
-    0xFF2ECC71,  // Verde    - Guitarras
-    0xFFF39C12,  // Naranja  - Teclados
-    0xFF9B59B6,  // Púrpura  - Vocals
-    0xFF1ABC9C,  // Turquesa - FX/Ambientes
+    0xFF8B5CF6,  // Violeta  - Drums
+    0xFF3B82F6,  // Azul     - Bass
+    0xFFF97316,  // Naranja  - Guitars
+    0xFF10B981,  // Teal     - Keys/Synths
+    0xFFEC4899,  // Rosa     - Vocals
+    0xFF14B8A6,  // Teal FX  - FX/Ambientes
 };
 
 // Helper para obtener el color como juce::Colour

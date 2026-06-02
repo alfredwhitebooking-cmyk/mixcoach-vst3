@@ -14,14 +14,15 @@ VUMetersPanel::VUMetersPanel()
     for (int i = 0; i < 4; ++i) {
         addAndMakeVisible(vuMeters_[i]);
     }
+    // Subtle label colors — tonos grisáceo/neutros para no competir con la aguja
     vuMeters_[0].setLabel("L");
-    vuMeters_[0].setMeterColour(juce::Colour(0xFF3498DB));
+    vuMeters_[0].setMeterColour(MixCoachTheme::textDim());
     vuMeters_[1].setLabel("R");
-    vuMeters_[1].setMeterColour(juce::Colour(0xFF2ECC71));
+    vuMeters_[1].setMeterColour(MixCoachTheme::textDim());
     vuMeters_[2].setLabel("M");
-    vuMeters_[2].setMeterColour(MixCoachTheme::lufsIntegrated());
+    vuMeters_[2].setMeterColour(MixCoachTheme::accentGlow().withAlpha(0.6f));
     vuMeters_[3].setLabel("S");
-    vuMeters_[3].setMeterColour(MixCoachTheme::accent());
+    vuMeters_[3].setMeterColour(MixCoachTheme::textDim());
 }
 
 void VUMetersPanel::resized()
@@ -43,6 +44,14 @@ void VUMetersPanel::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
     MixCoachTheme::fillGlassPanel(g, bounds, 6.0f);
+}
+
+bool VUMetersPanel::advanceMeters(double sampleRateHz, bool allowRepaint)
+{
+    bool dirty = false;
+    for (auto& m : vuMeters_)
+        dirty |= m.advanceFrame(sampleRateHz, allowRepaint);
+    return dirty;
 }
 
 } // namespace mixcoach

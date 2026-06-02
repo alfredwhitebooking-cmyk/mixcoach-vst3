@@ -57,3 +57,20 @@ Los plugins compilados estarán en `Builds/MixCoach_artefacts/Release/` y
 - **IA:** LLM vía API (OpenAI/Claude) o local (Ollama)
 - **Comunicación:** SharedResourcePointer + memoria compartida
 - **Analizadores:** FFT, Correlación de Fase, RMS, Picos
+
+## Para agentes IA
+
+Si trabajas con Codex, Antigravity, Freebuff u otro agente, empieza por
+[`AGENTS.md`](AGENTS.md). Ese archivo resume la vision del producto, las
+referencias UI canonicas, los comandos de build/test y los archivos de alto
+riesgo antes de tocar codigo.
+
+## Seguridad y despliegue
+
+- `.\build.ps1` compila y despliega los VST3 a `C:\Program Files\Common Files\VST3\`.
+- `.\DeployVST3.ps1 -Config Release` despliega manualmente y guarda copia del VST3 anterior en `workspace_backups/vst3_deploy/`.
+- `.\DeployVST3.ps1 -Action ListBackups` muestra versiones VST3 desplegadas anteriormente.
+- `.\DeployVST3.ps1 -Action Restore -Backup latest -Force` restaura la ultima version VST3 respaldada.
+- `.\scripts\ProjectCheckpoint.ps1 -Action Save -Name "antes_del_cambio"` crea una copia ZIP restaurable del proyecto, incluyendo archivos no trackeados importantes.
+- `.\scripts\ProjectCheckpoint.ps1 -Action List` muestra checkpoints disponibles.
+- `.\scripts\ProjectCheckpoint.ps1 -Action Restore -Checkpoint "<ruta>" -Force` restaura un checkpoint sobre el workspace actual.

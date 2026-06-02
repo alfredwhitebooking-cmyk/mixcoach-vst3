@@ -1,5 +1,5 @@
 #include "PluginEditor.h"
-#include "VUMeter.h"
+#include "StereoMeter.h"
 #include "WaveformView.h"
 #include "ColourPresetStrip.h"
 #include "ColourSwatch.h"
@@ -17,138 +17,224 @@ MessengerAudioProcessorEditor::MessengerAudioProcessorEditor(MessengerAudioProce
     : AudioProcessorEditor(&processor)
     , processorRef_(processor)
 {
-    // NOTA: setSize() se llama al FINAL del constructor para evitar que resized()
-    // acceda a unique_ptrs que aún no han sido creados.
     setResizable(false, false);
 
-    // Componentes personalizados
+    // ─── Componentes personalizados ─────────────────────────────────────
+
     colourSwatch_   = std::make_unique<ColourSwatch>();
-    vuMeterLeft_    = std::make_unique<VUMeter>();
-    vuMeterRight_   = std::make_unique<VUMeter>();
-    vuMeterLeft_->setBarColour(juce::Colour(0xFF3498DB));   // azul
-    vuMeterRight_->setBarColour(juce::Colour(0xFF2ECC71));  // verde
 
-    waveformView_   = std::make_unique<WaveformView>();
+    // 2 StereoMeters: Input (L+R) + Output (L+R)
+    stereoInput_  = std::make_unique<StereoMeter>();
+    stereoOutput_ = std::make_unique<StereoMeter>();
 
-    // Icono
-    iconLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x8E\xB5"), juce::dontSendNotification);
-    iconLabel_.setFont(juce::Font(juce::FontOptions(20.0f)));
-    iconLabel_.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(iconLabel_);
+    // Colores de canal: L=azul, R=verde (estilo profesional)
+    stereoInput_->setBarColours(
+        juce::Colour(0xFF60A5FA),  // L = azul
+        juce::Colour(0xFF34D399)); // R = verde
+    stereoOutput_->setBarColours(
+        juce::Colour(0xFF60A5FA),  // L = azul
+        juce::Colour(0xFF34D399)); // R = verde
 
-    // Editor de nombre
+    // Circular GR Gauge
+    grGauge_ = std::make_unique<CircularGauge>();
+    grGauge_->setTitle("REDUCCION DE GANANCIA");
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  INFO PANEL — Form-style rows
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ─── Row 1: NOMBRE ─────────────────────────────────────────────────
+    // Icono dibujado en paint() via drawRowIcon()
+
     nameEditor_.setText(processorRef_.getTrackName());
-    nameEditor_.setFont(juce::Font(juce::FontOptions(14.0f)).boldened());
+    nameEditor_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
     nameEditor_.setJustification(juce::Justification::centredLeft);
-    nameEditor_.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF0F0F1A));
-    nameEditor_.setColour(juce::TextEditor::textColourId, juce::Colour(0xFFE0E0E0));
+    nameEditor_.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF0A0A14));
+    nameEditor_.setColour(juce::TextEditor::textColourId, juce::Colour(0xFFF1F1F6));
     nameEditor_.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xFF2C2C3E));
-    nameEditor_.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(0xFF3498DB));
-    nameEditor_.setIndents(6, 3);
-    nameEditor_.setBorder(juce::BorderSize<int>(2));
+    nameEditor_.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(0xFF8B5CF6));
+    nameEditor_.setIndents(6, 2);
+    nameEditor_.setBorder(juce::BorderSize<int>(1));
     nameEditor_.setInputRestrictions(32);
     nameEditor_.addListener(this);
     addAndMakeVisible(nameEditor_);
 
-    // Color swatch
     currentColour_ = processorRef_.getTrackColour();
     colourSwatch_->setColour(currentColour_);
     colourSwatch_->onClick = [this]() { openColourSelector(); };
     addAndMakeVisible(colourSwatch_.get());
 
-    // ─── Colour Preset Strip ────────────────────────────────────────────────
-    colourPresetStrip_ = std::make_unique<ColourPresetStrip>();
-    colourPresetStripRaw_ = static_cast<ColourPresetStrip*>(colourPresetStrip_.get());
-    colourPresetStripRaw_->setActiveColour(currentColour_);
-    colourPresetStripRaw_->onColourChosen = [this](juce::Colour col) { applyPresetColour(col); };
-    addAndMakeVisible(colourPresetStrip_.get());
-
-    // Listener de cambio de color (desde ColourSelector)
-    colourListener_.onColourChanged = [this](juce::Colour newColour) {
-        LogHelper::writeToLog("[Messenger] ColourSelector cambio color a " + newColour.toDisplayString(false));
-        currentColour_ = newColour;
-        colourSwatch_->setColour(newColour);
-        if (colourPresetStripRaw_)
-            colourPresetStripRaw_->setActiveColour(newColour);
-        processorRef_.setTrackColour(newColour);
-        waveformView_->setWaveColour(newColour);
-        repaint();
-    };
-
-    // Estado        statusLabel_.setText("\xF0\x9F\x93\xA1 Activo", juce::dontSendNotification);
-    statusLabel_.setFont(juce::Font(juce::FontOptions(11.0f)));
-    statusLabel_.setJustificationType(juce::Justification::centredLeft);
-    statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF2ECC71));
-    addAndMakeVisible(statusLabel_);
-
-    routingLabel_.setText("\xF0\x9F\x94\x97 Enviando a MixCoach", juce::dontSendNotification);
-    routingLabel_.setFont(juce::Font(juce::FontOptions(10.0f)));
-    routingLabel_.setJustificationType(juce::Justification::centredLeft);
-    routingLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF3498DB));
-    addAndMakeVisible(routingLabel_);
-
-    // ─── Bus routing ComboBox ──────────────────────────────────────────────
+    // ─── Row 2: GRUPO ──────────────────────────────────────────────────
     busComboBox_.setEditableText(false);
     busComboBox_.setJustificationType(juce::Justification::centredLeft);
     busComboBox_.addItem("Sin ruteo", 1);
     for (int i = 0; i < kNumBuses; ++i)
         busComboBox_.addItem(busNames[i], i + 2);
     busComboBox_.setSelectedId(static_cast<int>(processorRef_.getBusAssignment()) + 2);
-    busComboBox_.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xFF0F0F1A));
+    busComboBox_.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xFF0A0A14));
     busComboBox_.setColour(juce::ComboBox::textColourId, juce::Colour(0xFFE0E0E0));
     busComboBox_.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xFF2C2C3E));
-    busComboBox_.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xFF3498DB));
+    busComboBox_.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xFF8B5CF6));
     busComboBox_.onChange = [this]() {
         auto selected = busComboBox_.getSelectedId();
         auto bus = (selected <= 1) ? BusType::None : static_cast<BusType>(selected - 2);
-        LogHelper::writeToLog("[Messenger] Cambio de bus a " +
-            juce::String(static_cast<int>(bus)) + " (" +
-            (bus != BusType::None ? juce::String(busNames[static_cast<int>(bus)]) : "Sin ruteo") + ")");
         processorRef_.setBusAssignment(bus);
-        routingLabel_.setText("\xF0\x9F\x94\x97 Enviando a MixCoach" +
-            (bus != BusType::None ? (juce::String(" [") + busNames[static_cast<int>(bus)] + "]") : juce::String()), 
-            juce::dontSendNotification);
+
+        // Actualizar TIPO y PRIORIDAD segun el bus
+        tipoValueLabel_.setText(getTipoForBus(bus), juce::dontSendNotification);
+        prioridadValueLabel_.setText(getPrioridadForBus(bus), juce::dontSendNotification);
+
+        // Actualizar bus value display
+        auto busName = (bus != BusType::None)
+            ? juce::String(busNames[static_cast<int>(bus)])
+            : "Sin ruteo";
+        auto busCol = (bus != BusType::None)
+            ? getBusColour(static_cast<int>(bus))
+            : juce::Colour(0xFF888888);
+        busValueLabel_.setText(busName, juce::dontSendNotification);
+        busValueLabel_.setColour(juce::Label::textColourId, busCol);
     };
     addAndMakeVisible(busComboBox_);
 
-    // Labels de nivel (más compactos)
-    levelLeftLabel_.setText("L: --.- dB", juce::dontSendNotification);
-    levelLeftLabel_.setFont(juce::Font(juce::FontOptions(10.0f)));
-    levelLeftLabel_.setJustificationType(juce::Justification::centredLeft);
-    levelLeftLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-    addAndMakeVisible(levelLeftLabel_);
+    busValueLabel_.setText("Sin ruteo", juce::dontSendNotification);
+    busValueLabel_.setFont(juce::Font(juce::FontOptions(11.0f)).boldened());
+    busValueLabel_.setJustificationType(juce::Justification::centredLeft);
+    busValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    addAndMakeVisible(busValueLabel_);
 
-    levelRightLabel_.setText("R: --.- dB", juce::dontSendNotification);
-    levelRightLabel_.setFont(juce::Font(juce::FontOptions(10.0f)));
-    levelRightLabel_.setJustificationType(juce::Justification::centredLeft);
-    levelRightLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-    addAndMakeVisible(levelRightLabel_);
+    // ─── Row 3: COLOR (preset strip) ────────────────────────────────────
+    colourPresetStrip_ = std::make_unique<ColourPresetStrip>();
+    colourPresetStripRaw_ = static_cast<ColourPresetStrip*>(colourPresetStrip_.get());
+    colourPresetStripRaw_->setActiveColour(currentColour_);
+    colourPresetStripRaw_->onColourChosen = [this](juce::Colour col) { applyPresetColour(col); };
+    addAndMakeVisible(colourPresetStrip_.get());
 
-    rmsLabel_.setText("RMS: --.- dB", juce::dontSendNotification);
-    rmsLabel_.setFont(juce::Font(juce::FontOptions(10.0f)));
-    rmsLabel_.setJustificationType(juce::Justification::centredLeft);
-    rmsLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    colourListener_.onColourChanged = [this](juce::Colour newColour) {
+        currentColour_ = newColour;
+        colourSwatch_->setColour(newColour);
+        if (colourPresetStripRaw_)
+            colourPresetStripRaw_->setActiveColour(newColour);
+        processorRef_.setTrackColour(newColour);
+        repaint();
+    };
+
+    // ─── Row 4: TIPO ────────────────────────────────────────────────────
+    auto initialBus = processorRef_.getBusAssignment();
+    tipoValueLabel_.setText(getTipoForBus(initialBus), juce::dontSendNotification);
+    tipoValueLabel_.setFont(juce::Font(juce::FontOptions(11.0f)));
+    tipoValueLabel_.setJustificationType(juce::Justification::centredLeft);
+    tipoValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFB0B0C0));
+    addAndMakeVisible(tipoValueLabel_);
+
+    // ─── Row 5: PRIORIDAD ───────────────────────────────────────────────
+    prioridadValueLabel_.setText(getPrioridadForBus(initialBus), juce::dontSendNotification);
+    prioridadValueLabel_.setFont(juce::Font(juce::FontOptions(11.0f)).boldened());
+    prioridadValueLabel_.setJustificationType(juce::Justification::centredLeft);
+    prioridadValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFF1F1F6));
+    addAndMakeVisible(prioridadValueLabel_);
+
+    // ─── Row 6: NOTAS ───────────────────────────────────────────────────
+    notasEditor_.setText("\u2014", juce::dontSendNotification);
+    notasEditor_.setFont(juce::Font(juce::FontOptions(11.0f)));
+    notasEditor_.setJustification(juce::Justification::centredLeft);
+    notasEditor_.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF0A0A14));
+    notasEditor_.setColour(juce::TextEditor::textColourId, juce::Colour(0xFF888888));
+    notasEditor_.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xFF1A1A2E));
+    notasEditor_.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(0xFF8B5CF6));
+    notasEditor_.setIndents(6, 2);
+    notasEditor_.setBorder(juce::BorderSize<int>(1));
+    notasEditor_.setInputRestrictions(64);
+    notasEditor_.addListener(this);
+    addAndMakeVisible(notasEditor_);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  STATUS (compacto, integrado en info rows via paint)
+    // ═══════════════════════════════════════════════════════════════════════
+    statusLabel_.setText("\u25CF Conectando...", juce::dontSendNotification);
+    statusLabel_.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+    statusLabel_.setJustificationType(juce::Justification::centredRight);
+    statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
+    addAndMakeVisible(statusLabel_);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  NIVELES PANEL — 3-column meters
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Column headers
+    inputLabel_.setText("INPUT", juce::dontSendNotification);
+    inputLabel_.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+    inputLabel_.setJustificationType(juce::Justification::centred);
+    inputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
+    addAndMakeVisible(inputLabel_);
+
+    grLabel_.setText("REDUCCION DE GANANCIA", juce::dontSendNotification);
+    grLabel_.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+    grLabel_.setJustificationType(juce::Justification::centred);
+    grLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8B5CF6));
+    addAndMakeVisible(grLabel_);
+
+    outputLabel_.setText("OUTPUT", juce::dontSendNotification);
+    outputLabel_.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+    outputLabel_.setJustificationType(juce::Justification::centred);
+    outputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
+    addAndMakeVisible(outputLabel_);
+
+    // Value labels (grandes, blancos)
+    inputValueLabel_.setText("--.- dB", juce::dontSendNotification);
+    inputValueLabel_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
+    inputValueLabel_.setJustificationType(juce::Justification::centred);
+    inputValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFF1F1F6));
+    addAndMakeVisible(inputValueLabel_);
+
+    grValueLabel_.setText("0.0 dB", juce::dontSendNotification);
+    grValueLabel_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
+    grValueLabel_.setJustificationType(juce::Justification::centred);
+    grValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8B5CF6));
+    addAndMakeVisible(grValueLabel_);
+
+    outputValueLabel_.setText("--.- dB", juce::dontSendNotification);
+    outputValueLabel_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
+    outputValueLabel_.setJustificationType(juce::Justification::centred);
+    outputValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFF1F1F6));
+    addAndMakeVisible(outputValueLabel_);
+
+    // StereoMeters (Input + Output)
+    addAndMakeVisible(stereoInput_.get());
+    addAndMakeVisible(stereoOutput_.get());
+
+    // Circular GR Gauge
+    addAndMakeVisible(grGauge_.get());
+
+    // Stereo labels below each meter
+    stereoInputLabel_.setText("L: --.-   R: --.-", juce::dontSendNotification);
+    stereoInputLabel_.setFont(juce::Font(juce::FontOptions(7.0f)));
+    stereoInputLabel_.setJustificationType(juce::Justification::centred);
+    stereoInputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
+    addAndMakeVisible(stereoInputLabel_);
+
+    stereoOutputLabel_.setText("L: --.-   R: --.-", juce::dontSendNotification);
+    stereoOutputLabel_.setFont(juce::Font(juce::FontOptions(7.0f)));
+    stereoOutputLabel_.setJustificationType(juce::Justification::centred);
+    stereoOutputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
+    addAndMakeVisible(stereoOutputLabel_);
+
+    // Bottom info: RMS y correlacion
+    rmsLabel_.setText("RMS --.- dB", juce::dontSendNotification);
+    rmsLabel_.setFont(juce::Font(juce::FontOptions(7.5f)));
+    rmsLabel_.setJustificationType(juce::Justification::centred);
+    rmsLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
     addAndMakeVisible(rmsLabel_);
 
-    correlationLabel_.setText("\xCF\x86: --.--", juce::dontSendNotification);
-    correlationLabel_.setFont(juce::Font(juce::FontOptions(10.0f)));
-    correlationLabel_.setJustificationType(juce::Justification::centredLeft);
-    correlationLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    correlationLabel_.setText("\u03C6 --.--", juce::dontSendNotification);
+    correlationLabel_.setFont(juce::Font(juce::FontOptions(7.5f)));
+    correlationLabel_.setJustificationType(juce::Justification::centred);
+    correlationLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E));
     addAndMakeVisible(correlationLabel_);
 
-    // VU Meters (antes LevelBar)
-    addAndMakeVisible(vuMeterLeft_.get());
-    addAndMakeVisible(vuMeterRight_.get());
+    // Window size: 400x640 (proporcion que cabe en FL Studio)
+    setSize(400, 640);
 
-    // Waveform View
-    waveformView_->setWaveColour(currentColour_);
-    addAndMakeVisible(waveformView_.get());
-
-    // Ahora todos los componentes están creados, podemos llamar setSize()
-    // que dispara resized() sin peligro.
-    setSize(300, 360);
-
-    // Timer ~30 fps (33ms intervalo)
+    // Timer ~30 fps
     startTimer(33);
 }
 
@@ -157,123 +243,392 @@ MessengerAudioProcessorEditor::~MessengerAudioProcessorEditor()
     stopTimer();
 }
 
-// ─── Apply Preset Colour ───────────────────────────────────────────────────
+// ─── Apply Preset Colour ──────────────────────────────────────────────────
 
 void MessengerAudioProcessorEditor::applyPresetColour(juce::Colour colour)
 {
-    LogHelper::writeToLog("[Messenger] Preset color aplicado: " + colour.toDisplayString(false));
     currentColour_ = colour;
     colourSwatch_->setColour(colour);
     if (colourPresetStripRaw_)
         colourPresetStripRaw_->setActiveColour(colour);
     processorRef_.setTrackColour(colour);
-    waveformView_->setWaveColour(colour);
     repaint();
 }
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
+// ─── Iconos vectoriales profesionales para las filas INFO ────────────────────
+
+void MessengerAudioProcessorEditor::drawRowIcon(juce::Graphics& g, int rowIndex, juce::Rectangle<float> bounds)
+{
+    auto cx = bounds.getCentreX();
+    auto cy = bounds.getCentreY();
+    auto s = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.45f;  // half-size
+
+    juce::Path p;
+    g.setColour(juce::Colour(0xFF6B7280));
+
+    switch (rowIndex)
+    {
+        case 0:  // NOMBRE - Shield/Badge
+        {
+            p.startNewSubPath(cx - s * 0.45f, cy - s * 0.2f);
+            p.lineTo(cx - s * 0.45f, cy + s * 0.2f);
+            p.lineTo(cx, cy + s * 0.55f);
+            p.lineTo(cx + s * 0.45f, cy + s * 0.2f);
+            p.lineTo(cx + s * 0.45f, cy - s * 0.2f);
+            p.lineTo(cx + s * 0.3f, cy - s * 0.45f);
+            p.lineTo(cx - s * 0.3f, cy - s * 0.45f);
+            p.closeSubPath();
+            // Small circle inside (identifier dot)
+            p.addEllipse(cx - s * 0.07f, cy - s * 0.2f, s * 0.14f, s * 0.14f);
+            break;
+        }
+        case 1:  // GRUPO - Three stacked bars (hierarchy)
+        {
+            float bh = s * 0.14f;
+            float gap = s * 0.09f;
+            float widths[] = { s * 0.55f, s * 0.75f, s };
+            float totalH = bh * 3.0f + gap * 2.0f;
+            float top = cy - totalH * 0.5f;
+            for (int i = 0; i < 3; ++i) {
+                float x = cx - widths[i] * 0.5f;
+                p.addRoundedRectangle(x, top + i * (bh + gap), widths[i], bh, bh * 0.4f);
+            }
+            break;
+        }
+        case 2:  // COLOR - Droplet
+        {
+            p.startNewSubPath(cx, cy - s * 0.55f);
+            p.quadraticTo(cx + s * 0.5f, cy + s * 0.05f, cx + s * 0.5f, cy + s * 0.25f);
+            p.quadraticTo(cx + s * 0.5f, cy + s * 0.55f, cx, cy + s * 0.55f);
+            p.quadraticTo(cx - s * 0.5f, cy + s * 0.55f, cx - s * 0.5f, cy + s * 0.25f);
+            p.quadraticTo(cx - s * 0.5f, cy + s * 0.05f, cx, cy - s * 0.55f);
+            p.closeSubPath();
+            // Inner dot
+            p.addEllipse(cx - s * 0.07f, cy + s * 0.12f, s * 0.14f, s * 0.14f);
+            break;
+        }
+        case 3:  // TIPO - Sine wave
+        {
+            // Draw waveform as stroked path
+            juce::Path wave;
+            wave.startNewSubPath(cx - s * 0.45f, cy);
+            wave.quadraticTo(cx - s * 0.22f, cy - s * 0.4f, cx, cy);
+            wave.quadraticTo(cx + s * 0.22f, cy + s * 0.4f, cx + s * 0.45f, cy);
+            juce::PathStrokeType stroke(1.5f, juce::PathStrokeType::curved);
+            g.strokePath(wave, stroke);
+            return;  // Already drawn, skip fillPath
+        }
+        case 4:  // PRIORIDAD - Flag on pole
+        {
+            float px = cx - s * 0.25f;
+            // Pole
+            p.addRoundedRectangle(px - s * 0.04f, cy - s * 0.55f, s * 0.08f, s * 1.1f, s * 0.04f);
+            // Flag
+            juce::Path flag;
+            flag.startNewSubPath(px + s * 0.04f, cy - s * 0.5f);
+            flag.lineTo(px + s * 0.55f, cy - s * 0.3f);
+            flag.lineTo(px + s * 0.04f, cy - s * 0.1f);
+            flag.closeSubPath();
+            p.addPath(flag);
+            break;
+        }
+        case 5:  // NOTAS - Speech bubble
+        {
+            float bw = s * 1.0f;
+            float bh = s * 0.75f;
+            // Bubble body
+            p.addRoundedRectangle(cx - bw * 0.5f, cy - bh * 0.45f, bw, bh, s * 0.12f);
+            // Triangle pointer at bottom
+            p.addTriangle(cx - s * 0.08f, cy + bh * 0.3f,
+                          cx + s * 0.08f, cy + bh * 0.3f,
+                          cx, cy + s * 0.6f);
+            // Text cursor line inside
+            p.addRoundedRectangle(cx - s * 0.2f, cy - s * 0.08f, s * 0.3f, s * 0.04f, s * 0.02f);
+            break;
+        }
+    }
+
+    g.fillPath(p);
+}
+
+// ─── Layout — Form-style info rows + 3-column meters ─────────────────────────
 
 void MessengerAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced(8);
 
-    // ─── Fila superior: icono + nombre + color ──────────────────────────────
-    auto topRow = area.removeFromTop(34);
-    iconLabel_.setBounds(topRow.removeFromLeft(30));
-    // Colour swatch más grande (42px vs anteriores 34px)
-    auto colourArea = topRow.removeFromRight(42);
-    colourSwatch_->setBounds(colourArea.reduced(2, 2));
-    nameEditor_.setBounds(topRow.reduced(4, 2));
+    // ====================================================================
+    //  INFO PANEL ROWS (form-style, 6 rows with separators)
+    // ====================================================================
+    // Each row: icon(24) + label(60) + value(rest) | rowHeight = 26
+    // Header takes 16px, each row takes 26px, separator 1px
 
-    // ─── Colour Preset Strip (más alto para dots más grandes) ───────────────
-    area.removeFromTop(3);
-    auto presetRow = area.removeFromTop(24);
-    presetRow.removeFromLeft(30); // alinear con el nombre
-    colourPresetStrip_->setBounds(presetRow.reduced(3, 2));
+    const int infoHeaderH = 14;      // "INFORMACION DE PISTA"
+    const int rowH = 28;              // altura por fila (+2px mas espacioso)
+    const int sepH = 1;               // separador entre filas
+    const int iconW = 22;             // ancho del icono
+    const int labelW = 58;            // ancho del label
+    const int statusW = 100;          // ancho del status label (right-aligned)
 
-    area.removeFromTop(3);
+    area.removeFromTop(infoHeaderH + 4);  // header + mas spacer
 
-    // ─── Fila de estado ─────────────────────────────────────────────────────
-    auto statusRow = area.removeFromTop(18);
-    statusLabel_.setBounds(statusRow.removeFromLeft(130));
-    area.removeFromTop(2);
+    // ─── Row 1: NOMBRE ────────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);  // icon drawn in paint()
 
-    // ─── Fila de ruteo (bus selector) ───────────────────────────────────────
-    auto routingRow = area.removeFromTop(22);
-    auto bus = processorRef_.getBusAssignment();
-    routingLabel_.setText("\xF0\x9F\x94\x97 Enviando a MixCoach" +
-        (bus != BusType::None ? (juce::String(" [") + busNames[static_cast<int>(bus)] + "]") : juce::String()),
-        juce::dontSendNotification);
-    auto routingLabelArea = routingRow.removeFromLeft(145);
-    routingLabel_.setBounds(routingLabelArea);
-    busComboBox_.setBounds(routingRow.reduced(2, 1));
+        auto valueArea = row.removeFromLeft(row.getWidth() - 50);
+        nameEditor_.setBounds(valueArea.reduced(0, 2));
 
-    area.removeFromTop(2);
+        auto swatchArea = row.removeFromLeft(50);
+        colourSwatch_->setBounds(swatchArea.reduced(8, 3));
+    }
+    area.removeFromTop(sepH);
 
-    // ─── Labels de medidores (alineados con los meters) ──────────────────────
-    auto labelsRow = area.removeFromTop(16);
-    levelLeftLabel_.setBounds(labelsRow.removeFromLeft(85));
-    levelRightLabel_.setBounds(labelsRow.removeFromLeft(85));
-    rmsLabel_.setBounds(labelsRow.removeFromLeft(85));
-    correlationLabel_.setBounds(labelsRow);
+    // ─── Row 2: GRUPO ─────────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);  // skip icon (painted)
 
-    area.removeFromTop(3);
+        auto labelArea = row.removeFromLeft(labelW);
+        juce::ignoreUnused(labelArea);  // label painted in paint()
 
-    // ─── VU Meters (extendidos para llenar el espacio vertical) ────────────
-    auto metersRow = area.removeFromTop(210);
-    auto leftMeterArea = metersRow.removeFromLeft(85);
-    vuMeterLeft_->setBounds(leftMeterArea.reduced(1, 2));
-    auto rightMeterArea = metersRow.removeFromLeft(85);
-    vuMeterRight_->setBounds(rightMeterArea.reduced(1, 2));
+        auto valueArea = row.removeFromLeft(row.getWidth() - 80);
+        busValueLabel_.setBounds(valueArea.reduced(2, 2));
+        auto comboArea = row.removeFromLeft(80);
+        busComboBox_.setBounds(comboArea.reduced(1, 2));
+    }
+    area.removeFromTop(sepH);
 
-    // ─── Waveform (más compacto, ocupa espacio restante) ────────────────────
-    waveformView_->setBounds(metersRow.reduced(1, 2));
+    // ─── Row 3: COLOR ─────────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);
 
-    area.removeFromTop(2);
+        auto labelArea = row.removeFromLeft(labelW);
+        juce::ignoreUnused(labelArea);
 
-    // ─── Espacio restante: actividad/nivel general ──────────────────────────
+        colourPresetStrip_->setBounds(row.reduced(2, 2));
+    }
+    area.removeFromTop(sepH);
+
+    // ─── Row 4: TIPO ──────────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);
+
+        auto labelArea = row.removeFromLeft(labelW);
+        juce::ignoreUnused(labelArea);
+
+        tipoValueLabel_.setBounds(row.reduced(2, 2));
+    }
+    area.removeFromTop(sepH);
+
+    // ─── Row 5: PRIORIDAD ─────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);
+
+        auto labelArea = row.removeFromLeft(labelW);
+        juce::ignoreUnused(labelArea);
+
+        prioridadValueLabel_.setBounds(row.reduced(2, 2));
+    }
+    area.removeFromTop(sepH);
+
+    // ─── Row 6: NOTAS ─────────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);
+
+        auto labelArea = row.removeFromLeft(labelW);
+        juce::ignoreUnused(labelArea);
+
+        notasEditor_.setBounds(row.reduced(2, 2));
+    }
+
+    // ─── Status label (esquina superior derecha) ───────────────────────
+    statusLabel_.setBounds(getWidth() - statusW - 10, 4, statusW, 14);
+
+    area.removeFromTop(12);  // spacer entre INFO y NIVELES
+
+    // ====================================================================
+    //  NIVELES PANEL — 3-column meters
+    // ====================================================================
+
+    auto nivelesArea = area.reduced(0, 2);
+
+    // ─── Proporciones de columnas: INPUT 35% | GR 30% | OUTPUT 35% ────
+    auto totalW = nivelesArea.getWidth();
+    int colInW  = static_cast<int>(totalW * 0.35f);
+    int colGrW  = static_cast<int>(totalW * 0.30f);
+    int colOutW = totalW - colInW - colGrW;
+
+    // ─── Column headers (16px, mas espaciado) ────────────────────────────
+    auto colHeaderRow = nivelesArea.removeFromTop(16);
+    inputLabel_.setBounds(colHeaderRow.removeFromLeft(colInW));
+    grLabel_.setBounds(colHeaderRow.removeFromLeft(colGrW));
+    outputLabel_.setBounds(colHeaderRow);
+
+    // ─── Value dB labels (22px, mas espacio) ────────────────────────────
+    auto valueRow = nivelesArea.removeFromTop(22);
+    inputValueLabel_.setBounds(valueRow.removeFromLeft(colInW));
+    grValueLabel_.setBounds(valueRow.removeFromLeft(colGrW));
+    outputValueLabel_.setBounds(valueRow);
+
+    nivelesArea.removeFromTop(4);
+
+    // ─── Meters: 3 columnas con padding consistente ─────────────────────
+    auto metersRow = nivelesArea.removeFromTop(320);
+
+    // INPUT column: StereoMeter (L+R, escala compartida)
+    auto inputCol = metersRow.removeFromLeft(colInW).reduced(3, 2);
+    stereoInput_->setBounds(inputCol);
+
+    // GR column: CircularGauge centered
+    auto grCol = metersRow.removeFromLeft(colGrW).reduced(3, 2);
+    grGauge_->setBounds(grCol);
+
+    // OUTPUT column: StereoMeter (L+R, escala compartida)
+    auto outputCol = metersRow.reduced(3, 2);
+    stereoOutput_->setBounds(outputCol);
+
+    nivelesArea.removeFromTop(6);
+
+    // ─── Bottom info row: L/R labels + RMS + correlation ────────────────
+    auto chRow = nivelesArea.removeFromTop(16);
+    stereoInputLabel_.setBounds(chRow.removeFromLeft(colInW));
+    chRow.removeFromLeft(colGrW);  // skip GR column
+    stereoOutputLabel_.setBounds(chRow);
+
+    // RMS + φ correlation below the channel labels
+    auto infoRow = nivelesArea.removeFromTop(16);
+    infoRow.removeFromLeft(colInW);  // skip input
+    rmsLabel_.setBounds(infoRow.removeFromLeft(colGrW));
+    correlationLabel_.setBounds(infoRow);
+
+    // ─── Calcular bounds del panel NIVELES (alineado con contenido) ────
+    nivelesPanelBounds_ = getLocalBounds().withTop(inputLabel_.getY() - 6)
+                                          .withBottom(correlationLabel_.getBottom() + 8)
+                                          .withLeft(6)
+                                          .withRight(getWidth() - 6);
 }
 
-// ─── Paint ────────────────────────────────────────────────────────────────────
+// ─── Paint ───────────────────────────────────────────────────────────────────
 
 void MessengerAudioProcessorEditor::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Fondo con gradiente oscuro
+    // ─── Fondo profundo (#08080F como la referencia) ───────────────────
     juce::ColourGradient bgGrad(
-        juce::Colour(0xFF1A1A2E),
+        juce::Colour(0xFF12121E),
         juce::Point<float>(0.0f, 0.0f),
-        juce::Colour(0xFF0F0F1A),
+        juce::Colour(0xFF08080F),
         juce::Point<float>(0.0f, (float)bounds.getHeight()),
         false);
     g.setGradientFill(bgGrad);
     g.fillRect(bounds);
 
-    // Borde exterior
-    g.setColour(juce::Colour(0xFF2C2C3E));
+    // ─── Borde exterior sutil ──────────────────────────────────────────
+    g.setColour(juce::Colour(0xFF1A1A2E));
     g.drawRect(bounds, 1);
 
-    // Línea separadora después del header
-    g.setColour(juce::Colour(0xFF2C2C3E).withAlpha(0.5f));
-    g.drawHorizontalLine(38, 6.0f, (float)(bounds.getWidth() - 6));
-
-    // Barra de color en el lateral izquierdo
-    g.setColour(currentColour_.withAlpha(0.15f));
+    // ─── Barra de color lateral (3px, color del track) ─────────────────
+    g.setColour(currentColour_.withAlpha(0.2f));
     g.fillRect(0, 0, 3, bounds.getHeight());
 
-    // Gradiente sutíl en el waveform area
-    auto waveArea = getLocalBounds().reduced(6);
-    waveArea.removeFromTop(180); // header + labels + meters
-    if (waveArea.getHeight() > 0) {
-        juce::ColourGradient waveBg(
-            currentColour_.withAlpha(0.03f),
-            juce::Point<float>((float)waveArea.getX(), (float)waveArea.getY()),
-            currentColour_.withAlpha(0.0f),
-            juce::Point<float>((float)waveArea.getX(), (float)waveArea.getBottom()),
-            false);
-        g.setGradientFill(waveBg);
-        g.fillRect(waveArea);
+    // ─── SECTION HEADERS ────────────────────────────────────────────────
+
+    // "INFORMACION DE PISTA"
+    g.setFont(juce::Font(juce::FontOptions(9.5f)).boldened());
+    g.setColour(juce::Colour(0xFFA78BFA));
+    g.drawText("INFORMACION DE PISTA",
+               juce::Rectangle<int>(12, 4, 160, 14),
+               juce::Justification::centredLeft);
+
+    // ─── INFO ROW LABELS + ICONS ───────────────────────────────────────
+    const int infoHeaderH = 14;
+    const int rowH = 28;  // sincronizado con resized()
+    const int sepH = 1;
+    const int iconW = 22;
+    const int labelW = 58;
+
+    const char* rowLabels[] = {
+        "NOMBRE", "GRUPO", "COLOR", "TIPO", "PRIORIDAD", "NOTAS"
+    };
+    juce::Colour labelColour = juce::Colour(0xFF6B7280);
+    juce::Colour sepColour = juce::Colour(0xFF1A1A2E);
+
+    int y = 8 + infoHeaderH + 4;
+
+    for (int i = 0; i < 6; ++i)
+    {
+        // ─── Icono vectorial ────────────────────────────────────────────
+        drawRowIcon(g, i, juce::Rectangle<float>(12.0f, (float)y, (float)iconW, (float)rowH));
+
+        // ─── Label ────────────────────────────────────────────────────
+        g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+        g.setColour(labelColour);
+        g.drawText(rowLabels[i],
+                   juce::Rectangle<int>(12 + iconW + 4, y, labelW, rowH),
+                   juce::Justification::centredLeft);
+
+        y += rowH;
+
+        // ─── Separator ────────────────────────────────────────────────
+        if (i < 5) {
+            g.setColour(sepColour);
+            g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
+            y += sepH;
+        }
+    }
+
+    // ─── Separador sutil entre INFO y NIVELES ───────────────────────────
+    //  Equivalente a removeFromTop(12) en resized()
+    y += 5;
+    g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
+    g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
+    y += 7;
+
+    // ─── Fondo del panel NIVELES con esquinas redondeadas ─────────────
+    if (!nivelesPanelBounds_.isEmpty()) {
+        auto panel = nivelesPanelBounds_.toFloat();
+        g.setColour(juce::Colour(0xFF0C0C18));
+        g.fillRoundedRectangle(panel, 12.0f);
+        g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.35f));
+        g.drawRoundedRectangle(panel, 12.0f, 1.0f);
+    }
+
+    // ─── "NIVELES" header ──────────────────────────────────────────────
+    g.setFont(juce::Font(juce::FontOptions(9.5f)).boldened());
+    g.setColour(juce::Colour(0xFFA78BFA));
+    g.drawText("NIVELES",
+               juce::Rectangle<int>(12, y, 80, 14),
+               juce::Justification::centredLeft);
+
+    y += 14;
+
+    // ─── Separador sutil antes de columnas ─────────────────────────────
+    g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
+    g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
+    y += 4;
+
+    // ─── Separadores verticales entre las 3 columnas (35% | 30% | 35%) ──
+    const int nivelesTop = y;
+    const int nivelesBottom = stereoOutput_->getBounds().getBottom() + 2;
+
+    if (nivelesBottom > nivelesTop) {
+        int totalNetW = getWidth() - 16;
+        int sep1 = 8 + static_cast<int>(totalNetW * 0.35f);
+        int sep2 = 8 + static_cast<int>(totalNetW * 0.65f);
+        g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.6f));
+        g.drawVerticalLine(sep1, (float)nivelesTop, (float)nivelesBottom);
+        g.drawVerticalLine(sep2, (float)nivelesTop, (float)nivelesBottom);
+
+        // ─── Separador horizontal despues de los meters ──────────────
+        g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
+        g.drawHorizontalLine(nivelesBottom, 12.0f, (float)(getWidth() - 12));
     }
 }
 
@@ -284,36 +639,29 @@ void MessengerAudioProcessorEditor::textEditorTextChanged(juce::TextEditor& edit
     if (&editor == &nameEditor_) {
         auto newName = editor.getText().trim();
         if (newName.isNotEmpty()) {
-            LogHelper::writeToLog("[Messenger] Cambio de nombre: \"" + processorRef_.getTrackName() + "\" -> \"" + newName + "\"");
             processorRef_.setTrackName(newName);
         }
     }
 }
 
-// ─── Timer callback ───────────────────────────────────────────────────────────
+// ─── Timer callback (30fps) ───────────────────────────────────────────────────
 
 void MessengerAudioProcessorEditor::timerCallback()
 {
     auto slotIndex = processorRef_.getSlotIndex();
 
-    // ─── Si aún no está registrado, intentarlo ahora ─────────────────────────
-    // En FL Studio, prepareToPlay puede tardar mucho en ser llamado.
-    // El editor se inicializa antes, así que forzamos el registro desde aquí.
     if (slotIndex < 0) {
         processorRef_.ensureSlotRegistered();
         slotIndex = processorRef_.getSlotIndex();
 
-        // Actualizar la UI del nombre (puede haber cambiado desde el estado inicial)
         if (slotIndex >= 0) {
-            // Slot recién registrado — mostrar estado OK
-            statusLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x94\x8A Conectado a Brain"),
+            statusLabel_.setText("\u25CF Conectado a Brain",
                 juce::dontSendNotification);
-            statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF2ECC71));
+            statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E));
         } else {
-            // Aún sin registrar
-            statusLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x94\x84 Conectando..."),
+            statusLabel_.setText("\u25CB Conectando...",
                 juce::dontSendNotification);
-            statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
+            statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
             return;
         }
     }
@@ -324,92 +672,107 @@ void MessengerAudioProcessorEditor::timerCallback()
     auto info = registry.getSlotInfo(slotIndex);
 
     if (!info.active) {
-        statusLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x94\x87 Sin conexion al Brain"), juce::dontSendNotification);
+        statusLabel_.setText("\u25CB Sin conexion",
+            juce::dontSendNotification);
         statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-        routingLabel_.setText(juce::CharPointer_UTF8("\xE2\x9D\x8C Sin ruteo"), juce::dontSendNotification);
-        routingLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-        waveformView_->setSignalPresent(false);
-        waveformView_->pushSample(0.0f);
+        busValueLabel_.setText("Sin ruteo", juce::dontSendNotification);
+        busValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+        grGauge_->setValue(0.0f);
         return;
     }
-
 
     auto latest = registry.getTelemetry(slotIndex).latest();
 
     bool hasSignal = (latest.peakLeft > -60.0f || latest.peakRight > -60.0f);
     auto bus = processorRef_.getBusAssignment();
-    juce::String busSuffix = (bus != BusType::None)
-        ? juce::String(" [") + busNames[static_cast<int>(bus)] + "]"
-        : juce::String();        if (hasSignal) {
-        // Con audio → mostramos nivel y ruteo activo
-        statusLabel_.setText(juce::String("\xF0\x9F\x8E\xB5 Transmitiendo a Brain") + busSuffix,
-                            juce::dontSendNotification);
-        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF2ECC71));
-        routingLabel_.setText("\xF0\x9F\x94\x97 Enviando a MixCoach" + busSuffix, juce::dontSendNotification);
-        routingLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF3498DB));
+
+    // ─── Status ────────────────────────────────────────────────────────
+    if (hasSignal) {
+        statusLabel_.setText("\u25CF Transmitiendo",
+                             juce::dontSendNotification);
+        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E));
     } else {
-        // Conectado pero sin audio
-        statusLabel_.setText(juce::String("\xF0\x9F\x94\x8A Conectado a Brain") + busSuffix,
-                            juce::dontSendNotification);
-        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF2ECC71).withAlpha(0.7f));
-        routingLabel_.setText("\xF0\x9F\x94\x97 Enviando a MixCoach" + busSuffix, juce::dontSendNotification);
-        routingLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF3498DB));
+        statusLabel_.setText("\u25CF Conectado",
+                             juce::dontSendNotification);
+        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E).withAlpha(0.6f));
     }
 
+    // ─── Bus value display ─────────────────────────────────────────────
+    {
+        auto busName = (bus != BusType::None)
+            ? juce::String(busNames[static_cast<int>(bus)])
+            : "Sin ruteo";
+        auto busCol = (bus != BusType::None)
+            ? getBusColour(static_cast<int>(bus))
+            : juce::Colour(0xFF888888);
+        busValueLabel_.setText(busName, juce::dontSendNotification);
+        busValueLabel_.setColour(juce::Label::textColourId, busCol);
+    }
+
+    // ─── Telemetry data ────────────────────────────────────────────────
     lastPeakLeft_    = latest.peakLeft;
     lastPeakRight_   = latest.peakRight;
     lastCorrelation_ = latest.correlation;
     lastRMS_ = (latest.rmsLeft + latest.rmsRight) * 0.5f;
 
-    levelLeftLabel_.setText("L: " + juce::String(lastPeakLeft_, 1) + " dB",
-                            juce::dontSendNotification);
-    levelRightLabel_.setText("R: " + juce::String(lastPeakRight_, 1) + " dB",
-                             juce::dontSendNotification);
-    rmsLabel_.setText("RMS: " + juce::String(lastRMS_, 1) + " dB",
-                      juce::dontSendNotification);
-
-    // Color de correlacion
-    juce::Colour corrColour;
-    juce::String corrIcon;
-    if (std::abs(lastCorrelation_) < 0.3f) {
-        corrColour = juce::Colour(0xFFE74C3C);
-        corrIcon = "!";
-    } else if (lastCorrelation_ < 0.0f) {
-        corrColour = juce::Colour(0xFFF39C12);
-        corrIcon = "!";
-    } else {
-        corrColour = juce::Colour(0xFF2ECC71);
-        corrIcon = "+";
+    // ─── Gain Reduction (simulada desde peak) ───────────────────────
+    //  Mapeo: -20 dB peak -> 0.0 dB GR, +6 dB peak -> 6.0 dB GR
+    //  Cuando la senal es mas fuerte, hay mas compresion
+    {
+        float avgPeak = (lastPeakLeft_ + lastPeakRight_) * 0.5f;
+        float gr = 0.0f;
+        if (avgPeak > -20.0f)
+            gr = (avgPeak + 20.0f) / 26.0f * 6.0f;
+        lastGR_ = juce::jlimit(0.0f, 8.0f, gr);
     }
-    correlationLabel_.setText("\xCF\x86: " + corrIcon + " " +
-                              juce::String(lastCorrelation_, 2),
-                              juce::dontSendNotification);
-    correlationLabel_.setColour(juce::Label::textColourId, corrColour);
 
-    // Actualizar VU Meters
-    vuMeterLeft_->setLevel(lastPeakLeft_);
-    vuMeterRight_->setLevel(lastPeakRight_);
+    // ─── Column value labels ──────────────────────────────────────────
+    float avgInput = (lastPeakLeft_ + lastPeakRight_) * 0.5f;
+    float avgOutput = avgInput - lastGR_;  // output = input - GR
 
-    // Actualizar waveform
-    waveformView_->setSignalPresent(hasSignal);
-    waveformView_->setRMS(lastRMS_);
-    if (hasSignal) {
-        // Generar waveform orgánico usando peak + RMS + variación armónica
-        float peakNorm = juce::jmap(juce::jlimit(-60.0f, 0.0f, lastPeakLeft_),
-                                    -60.0f, 0.0f, 0.0f, 1.0f);
-        float rmsNorm  = juce::jmap(juce::jlimit(-60.0f, 0.0f, lastRMS_),
-                                    -60.0f, 0.0f, 0.0f, 1.0f);
-        // Crest factor: diferencia entre peak y RMS da la "forma"
-        // (crest usado implícitamente en la relación peakNorm/rmsNorm)
-        float waveShape = peakNorm * 0.6f + rmsNorm * 0.4f;
-        // Oscilación armónica para simular contenido de frecuencia
-        float t = juce::Time::getMillisecondCounter() * 0.003f;
-        float harmonic = std::sin(t * 2.0f) * 0.3f + std::sin(t * 5.0f) * 0.15f + std::sin(t * 11.0f) * 0.05f;
-        float finalAmp = waveShape * (0.6f + 0.4f * harmonic) * (1.0f + juce::jmax(0.0f, lastCorrelation_) * 0.2f);
-        waveformView_->pushSample(finalAmp);
-    } else {
-        waveformView_->pushSample(0.0f);
+    inputValueLabel_.setText(juce::String(avgInput, 1) + " dB", juce::dontSendNotification);
+    outputValueLabel_.setText(juce::String(avgOutput, 1) + " dB", juce::dontSendNotification);
+    grValueLabel_.setText(juce::String(lastGR_, 1) + " dB", juce::dontSendNotification);
+    grGauge_->setValue(lastGR_);
+
+    // ─── StereoMeters: input con peaks reales, output con GR aplicada ─
+    stereoInput_->setLevels(lastPeakLeft_, lastPeakRight_);
+    {
+        float outL = lastPeakLeft_ - lastGR_;
+        float outR = lastPeakRight_ - lastGR_;
+        stereoOutput_->setLevels(outL, outR);
     }
+
+    // ─── Channel labels ───────────────────────────────────────────────
+    stereoInputLabel_.setText(
+        "L: " + juce::String(lastPeakLeft_, 1) +
+        "   R: " + juce::String(lastPeakRight_, 1),
+        juce::dontSendNotification);
+    stereoOutputLabel_.setText(
+        "L: " + juce::String(lastPeakLeft_ - lastGR_, 1) +
+        "   R: " + juce::String(lastPeakRight_ - lastGR_, 1),
+        juce::dontSendNotification);
+
+    // ─── RMS ──────────────────────────────────────────────────────────
+    rmsLabel_.setText(
+        "RMS " + juce::String(lastRMS_, 1) + " dB",
+        juce::dontSendNotification);
+
+    // ─── Correlacion (phi) ────────────────────────────────────────────
+    {
+        auto corrCol = (lastCorrelation_ > 0.3f)
+            ? juce::Colour(0xFF22C55E)
+            : (lastCorrelation_ > -0.3f)
+                ? juce::Colour(0xFFEAB308)
+                : juce::Colour(0xFFEF4444);
+        correlationLabel_.setColour(juce::Label::textColourId, corrCol);
+        correlationLabel_.setText(
+            "\u03C6 " + juce::String(lastCorrelation_, 2),
+            juce::dontSendNotification);
+    }
+
+    // ─── TIPO y PRIORIDAD (actualizados al cambiar bus) ───────────────
+    // Ya se actualizan en busComboBox_.onChange
 }
 
 // ─── Selector de color ────────────────────────────────────────────────────────

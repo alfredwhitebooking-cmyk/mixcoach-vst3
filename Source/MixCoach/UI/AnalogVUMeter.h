@@ -8,8 +8,14 @@
 namespace mixcoach {
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  AnalogVUMeter — VU Meter con aguja analógica fluida
-//  Aguja con suavizado juce::SmoothedValue, escala -20 a +3 dB
+//  AnalogVUMeter — VU Meter analógico vintage con aguja
+//
+//  Estilo: fondo madera/beige envejecido, marco oscuro tipo bisel, escala
+//  impresa -20..+3 VU con zona roja, aguja oscura, label "VU" central.
+//  Ideal para la Sesión 4 del panel Analyzers (grid 2×2: L, R, M, S).
+//
+//  Entrada: dBFS → convertido internamente a VU (0 VU ≈ -18 dBFS).
+//  SmoothValue con ballistics VU estándar (attack 300ms / release 300ms).
 // ═══════════════════════════════════════════════════════════════════════════
 class AnalogVUMeter : public juce::Component {
 public:
@@ -19,17 +25,62 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    void setLevel(float levelDb);
-    void setLabel(const juce::String& label) { labelText_ = label; repaint(); }
-    void setMeterColour(juce::Colour c) { meterColour_ = c; repaint(); }
+    // ─── Recibe nivel en dBFS, lo convierte a VU internamente ────────────
+    void setLevel(float levelDbFs);
+    bool advanceFrame(double sampleRateHz = 60.0, bool allowRepaint = true);
+    void setLabel(const juce::String& label)
+    {
+        labelText_ = label;
+        faceCacheValid_ = false;
+        repaint();
+    }
+    void setMeterColour(juce::Colour c)
+    {
+        labelColourOverride_ = c;
+        faceCacheValid_ = false;
+        repaint();
+    }
 
 private:
-    SmoothValue smoothedLevel_{ -80.0f, 5.0f, 200.0f };
-    juce::String labelText_;
-    juce::Colour meterColour_{ 0xFF00B4D8 };
+    // ─── Conversión dBFS → VU ─────────────────────────────────────
+    // 0 VU ≈ -18 dBFS (estándar profesional)
+    static constexpr float kDbFsRef  = -18.0f;  // dBFS que corresponde a 0 VU
+    static constexpr float kVuMin    = -20.0f;
+    static constexpr float kVuMax    =   3.0f;
 
-    void drawScale(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawNeedle(juce::Graphics& g, juce::Rectangle<float> bounds);
+    // ─── Geométria del arco (en JUCE coords: 0°=right, 90°=down) ──
+    // El arco va desde ~215° (izquierda, -20 VU) a ~325° (derecha, +3 VU)
+    // pasando por 270° (arriba, 0 VU) → ~110° total
+    static constexpr float kArcStartAngle = juce::MathConstants<float>::pi * 1.194f;  // ~215°
+    static constexpr float kArcEndAngle   = juce::MathConstants<float>::pi * 1.806f;  // ~325°
+    static constexpr float kArcRange      = kArcEndAngle - kArcStartAngle;  // ~110°
+
+    // ─── Suavizado ────────────────────────────────────────────────
+    SmoothValue smoothedVu_{ kVuMin, 6.0f, 40.0f };
+    SmoothValue peakHoldVu_{ kVuMin, 1.0, 1.0 };  // instant ballistics — decay handled manually
+    float peakHoldLevel_{ kVuMin };
+    uint32_t peakHoldTimeMs_{ 0 };
+
+    // ─── Configuración ────────────────────────────────────────────
+    juce::String labelText_;
+    juce::Colour labelColourOverride_{ 0x00000000 };  // transparent = default textDim
+
+    // ─── Métodos de dibujo ────────────────────────────────────────
+    [[nodiscard]] float dbFsToVu(float dbFs) const;
+    [[nodiscard]] float valueToAngle(float vu) const;
+    void drawBezel(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
+    void drawWoodBackground(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
+    void drawScale(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
+    void drawNeedle(juce::Graphics& g, juce::Rectangle<float> faceBounds, float angle) const;
+    void drawVuLabel(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
+
+    void rebuildFaceCache();
+    void paintStaticFace(juce::Graphics& g, juce::Rectangle<float> bounds) const;
+    void paintNeedleAndReadout(juce::Graphics& g, juce::Rectangle<float> faceBounds,
+                               juce::Rectangle<float> valArea) const;
+
+    juce::Image faceCache_;
+    bool faceCacheValid_ = false;
 };
 
 } // namespace mixcoach

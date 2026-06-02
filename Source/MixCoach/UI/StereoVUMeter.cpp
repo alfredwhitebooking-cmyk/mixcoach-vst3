@@ -79,16 +79,15 @@ void StereoVUMeter::paint(juce::Graphics& g)
 
     drawChannelMeter(g, content.removeFromLeft(halfWidth).toFloat().reduced(2, 0),
                      leftRMS_.getCurrent(), leftPeak_.getCurrent(), leftPeakHold_,
-                     "L", leftColour_);
+                     "L");
     drawChannelMeter(g, content.removeFromLeft(halfWidth).toFloat().reduced(2, 0),
                      rightRMS_.getCurrent(), rightPeak_.getCurrent(), rightPeakHold_,
-                     "R", rightColour_);
+                     "R");
 }
 
 void StereoVUMeter::drawChannelMeter(juce::Graphics& g, juce::Rectangle<float> bounds,
                                       float rms, float peak, float peakHold,
-                                      const juce::String& channelLabel,
-                                      juce::Colour colour)
+                                      const juce::String& channelLabel)
 {
     g.setColour(MixCoachTheme::bgDarker());
     g.fillRoundedRectangle(bounds, 4.0f);
@@ -98,50 +97,66 @@ void StereoVUMeter::drawChannelMeter(juce::Graphics& g, juce::Rectangle<float> b
     auto labelArea = bounds.removeFromTop(14).reduced(1, 0);
     g.drawText(channelLabel, labelArea, juce::Justification::centred);
 
-    g.setColour(MixCoachTheme::border().withAlpha(0.3f));
-    float gridLevels[] = { -18.0f, -12.0f, -6.0f, 0.0f };
-    for (float gl : gridLevels) {
-        float glNorm = juce::jlimit(0.0f, 1.0f, (gl + 60.0f) / 66.0f);
+    // ─── Scale labels (full range según visual design: 6, 0, -6, ..., -60) ──
+    constexpr float kScaleVals[] = { 6.0f, 0.0f, -6.0f, -12.0f, -18.0f,
+                                     -24.0f, -30.0f, -36.0f, -42.0f, -48.0f, -60.0f };
+    constexpr int kNumScale = 11;
+    g.setFont(juce::Font(juce::FontOptions(5.5f)));
+    for (int i = 0; i < kNumScale; ++i) {
+        float glNorm = juce::jlimit(0.0f, 1.0f, (kScaleVals[i] + 60.0f) / 66.0f);
         float glY = bounds.getBottom() - bounds.getHeight() * glNorm;
-        g.drawHorizontalLine((int)glY, bounds.getX() + 2, bounds.getRight() - 2);
-        g.setFont(juce::Font(juce::FontOptions(6.5f)));
-        g.setColour(MixCoachTheme::textMuted().withAlpha(0.4f));
-        g.drawText(juce::String((int)gl),
-                   juce::Rectangle<float>(bounds.getX() + 2, glY - 5, 14, 8),
+        g.setColour(MixCoachTheme::rowDivider().withAlpha(0.45f));
+        g.drawHorizontalLine((int)glY, bounds.getX() + 1, bounds.getRight() - 1);
+        g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
+        g.drawText(juce::String((int)kScaleVals[i]),
+                   juce::Rectangle<float>(bounds.getX() + 1, glY - 4.0f, 14, 8),
                    juce::Justification::centredLeft);
     }
 
+    // ─── Gradient bar (multi-stop: green→lime→yellow→orange→red, bottom→top) ─
     float norm = juce::jlimit(0.0f, 1.0f, (rms + 60.0f) / 66.0f);
     if (norm > 0.01f) {
         auto fillBounds = bounds.withTop(bounds.getBottom() - bounds.getHeight() * norm);
-        juce::Colour fillColour;
-        if (rms > -6.0f)      fillColour = MixCoachTheme::meterRed();
-        else if (rms > -12.0f) fillColour = MixCoachTheme::meterOrange();
-        else if (rms > -18.0f) fillColour = MixCoachTheme::meterYellow();
-        else                   fillColour = colour;
 
-        juce::ColourGradient barGrad(
-            fillColour.withAlpha(0.9f),
-            juce::Point<float>(0.0f, fillBounds.getY()),
-            fillColour.withAlpha(0.2f),
-            juce::Point<float>(0.0f, fillBounds.getBottom()),
-            false);
+        juce::ColourGradient barGrad;
+        barGrad.isRadial = false;
+        barGrad.point1 = juce::Point<float>(fillBounds.getCentreX(), fillBounds.getY());    // top
+        barGrad.point2 = juce::Point<float>(fillBounds.getCentreX(), fillBounds.getBottom()); // bottom
+        barGrad.addColour(0.00f, MixCoachTheme::meterRed());
+        barGrad.addColour(0.05f, MixCoachTheme::meterRed());
+        barGrad.addColour(0.15f, MixCoachTheme::meterOrange());
+        barGrad.addColour(0.30f, MixCoachTheme::meterYellow());
+        barGrad.addColour(0.50f, MixCoachTheme::meterLime());
+        barGrad.addColour(1.00f, MixCoachTheme::meterGreen());
+
         g.setGradientFill(barGrad);
         g.fillRoundedRectangle(fillBounds, 3.0f);
+
+        // Shine en la parte superior del fill
+        auto shine = fillBounds.withHeight(juce::jmax(2.0f, fillBounds.getHeight() * 0.08f));
+        g.setColour(juce::Colours::white.withAlpha(0.12f));
+        g.fillRoundedRectangle(shine, 3.0f);
     }
 
+    // ─── Peak triangle ◀ a la izquierda ──────────────────────────────────
     if (peak > -60.0f) {
         float peakNorm = juce::jlimit(0.0f, 1.0f, (peak + 60.0f) / 66.0f);
         float peakY = bounds.getBottom() - bounds.getHeight() * peakNorm;
-        g.setColour(juce::Colours::white.withAlpha(0.8f));
-        g.fillEllipse(bounds.getCentreX() - 3.0f, peakY - 2.0f, 6.0f, 4.0f);
+        
+        juce::Path tri;
+        tri.addTriangle(bounds.getX() - 1.0f, peakY,
+                        bounds.getX() + 4.0f, peakY - 2.5f,
+                        bounds.getX() + 4.0f, peakY + 2.5f);
+        g.setColour(juce::Colours::white.withAlpha(0.85f));
+        g.fillPath(tri);
     }
 
+    // ─── Peak hold line (horizontal bar) ─────────────────────────────────
     if (peakHold > -60.0f) {
         float holdNorm = juce::jlimit(0.0f, 1.0f, (peakHold + 60.0f) / 66.0f);
         float holdY = bounds.getBottom() - bounds.getHeight() * holdNorm;
-        g.setColour(juce::Colours::white.withAlpha(0.4f));
-        g.fillRect(bounds.getX() + 2, holdY - 0.5f, bounds.getWidth() - 4, 1.5f);
+        g.setColour(juce::Colours::white.withAlpha(0.5f));
+        g.fillRect(bounds.getX() + 2, holdY - 0.5f, bounds.getWidth() - 4, 2.0f);
     }
 }
 

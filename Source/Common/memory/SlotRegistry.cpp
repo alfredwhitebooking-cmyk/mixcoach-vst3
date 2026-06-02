@@ -16,6 +16,53 @@ static void logSlot(const juce::String& action, int slotIndex, const juce::Strin
     LogHelper::writeToLog(msg);
 }
 
+namespace {
+
+float readBackupFloat(juce::FileInputStream& fis)
+{
+    const int raw = fis.readIntBigEndian();
+    float val = 0.0f;
+    std::memcpy(&val, &raw, sizeof(val));
+    return val;
+}
+
+TrackTelemetry buildTelemetryFromSharedEntry(const SharedSlotEntry& entry, int slotIndex)
+{
+    TrackTelemetry telem;
+    telem.timestamp    = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
+    telem.slotIndex    = slotIndex;
+    telem.active       = true;
+    telem.peakLeft     = entry.peakLeft;
+    telem.peakRight    = entry.peakRight;
+    telem.rmsLeft      = entry.rmsLeft;
+    telem.rmsRight     = entry.rmsRight;
+    telem.correlation  = entry.correlation;
+    telem.crestFactor  = entry.crestFactor;
+    telem.sampleL      = entry.sampleL;
+    telem.sampleR      = entry.sampleR;
+
+    if (entry.fftTimestamp > 0)
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        const auto fftAge = now - static_cast<int64_t>(entry.fftTimestamp / 1000);
+        if (fftAge < 500)
+        {
+            std::copy(std::begin(entry.fftMagnitudes),
+                      std::end(entry.fftMagnitudes),
+                      std::begin(telem.spectrum));
+        }
+    }
+
+    telem.lufsIntegrated = entry.lufsIntegrated;
+    telem.lufsShortTerm  = entry.lufsShortTerm;
+    telem.lufsMomentary  = entry.lufsMomentary;
+    telem.lufsTruePeak   = entry.lufsTruePeak;
+    telem.loudnessRange  = entry.loudnessRange;
+    return telem;
+}
+
+} // namespace
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  File-based backup helpers
 //  Cada slot se guarda en: %%TEMP%%/MixCoach_SlotBackup/slot_N.bin
@@ -43,6 +90,23 @@ static juce::File getSlotBackupDir()
 static juce::File getSlotBackupFile(int slotIndex)
 {
     return getSlotBackupDir().getChildFile("slot_" + juce::String(slotIndex) + ".bin");
+}
+
+// ─── Archivo marcador de metadatos (slot_N.meta) ────────────────────────────
+// Este archivo es la CLAVE para latencia instantánea. Es un archivo de 0 bytes
+// que SOLO se actualiza cuando cambian los METADATOS (nombre/color/bus).
+// NUNCA se actualiza por telemetría. Así pollTelemetryFromBackups() puede
+// verificar si hubo cambios de metadatos con solo un stat() del meta file,
+// SIN abrir el backup file (que cambia constantemente por telemetría ~32ms).
+//
+// Flujo:
+//   1. saveSlotToBackupFile() escribe backup file + TOUCH meta file
+//   2. pollTelemetryFromBackups() checkea meta file modTime primero
+//   3. Si meta file no cambió → skip (0 I/O real, solo stat())
+//   4. Si meta file cambió → abrir y leer backup file completo
+static juce::File getSlotBackupMetaFile(int slotIndex)
+{
+    return getSlotBackupDir().getChildFile("slot_" + juce::String(slotIndex) + ".meta");
 }
 
 // ─── Offset de campos de telemetría en archivo V2 ───────────────────────────
@@ -120,6 +184,17 @@ void SlotRegistry::saveSlotToBackupFile(int slotIndex, const SlotInfo& info)
     if (finalFile.exists())
         finalFile.deleteFile();
     tmpFile.moveFileTo(finalFile);
+
+    // ─── Touch meta file (marcador de cambio de metadatos) ───────────────
+    // Escribir un solo byte para que el archivo exista con un timestamp
+    // actualizado. pollTelemetryFromBackups() checkea este archivo para
+    // saber si necesita releer el backup file.
+    auto metaFile = getSlotBackupMetaFile(slotIndex);
+    juce::FileOutputStream metaFos(metaFile);
+    if (metaFos.openedOk()) {
+        metaFos.writeByte(0);  // 1 byte, cualquier valor — solo importa el timestamp
+        metaFos.flush();
+    }
 }
 
 // ─── Actualizar SOLO telemetría en backup file existente ───────────────────
@@ -185,6 +260,9 @@ void SlotRegistry::removeSlotBackupFile(int slotIndex)
     auto file = getSlotBackupFile(slotIndex);
     if (file.exists())
         file.deleteFile();
+    auto meta = getSlotBackupMetaFile(slotIndex);
+    if (meta.exists())
+        meta.deleteFile();
 }
 
 int SlotRegistry::loadSlotsFromBackupFiles(bool forceOverwrite)
@@ -401,43 +479,7 @@ bool SlotRegistry::syncFromShared()
             }
             // else: preservar bus/name/color del backup (más confiable)
 
-            // ─── Sincronizar telemetría desde shared memory ──────────────
-            // Esto es CRÍTICO: los Messengers escriben telemetría en shared
-            // memory via updateSharedTelemetry(), y MixCoach (otro proceso)
-            // necesita leer esos datos en su TelemetryBuffer local.
-            TrackTelemetry telem;
-            telem.timestamp    = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
-            telem.slotIndex    = entry.slotIndex;
-            telem.active       = true;
-            telem.peakLeft     = entry.peakLeft;
-            telem.peakRight    = entry.peakRight;
-            telem.rmsLeft      = entry.rmsLeft;
-            telem.rmsRight     = entry.rmsRight;
-            telem.correlation  = entry.correlation;
-            telem.crestFactor  = entry.crestFactor;
-            telem.sampleL      = entry.sampleL;
-            telem.sampleR      = entry.sampleR;
-
-            // Copiar datos FFT si hay datos recientes (< 500ms)
-            if (entry.fftTimestamp > 0) {
-                auto now = juce::Time::getMillisecondCounter();
-                auto fftAge = now - static_cast<int64_t>(entry.fftTimestamp / 1000);
-                if (fftAge < 500) {
-                    std::copy(std::begin(entry.fftMagnitudes),
-                              std::end(entry.fftMagnitudes),
-                              std::begin(telem.spectrum));
-                }
-            }
-
-            // Copiar datos LUFS desde shared memory
-            telem.lufsIntegrated = entry.lufsIntegrated;
-            telem.lufsShortTerm  = entry.lufsShortTerm;
-            telem.lufsMomentary  = entry.lufsMomentary;
-            telem.lufsTruePeak   = entry.lufsTruePeak;
-            telem.loudnessRange  = entry.loudnessRange;
-
-            // Empujar a la TelemetryBuffer local
-            telemetry_[i].push(telem);
+            telemetry_[i].push(buildTelemetryFromSharedEntry(entry, i));
 
         } else if (slots_[i].active) {
             // Slot liberado en shared memory
@@ -450,6 +492,140 @@ bool SlotRegistry::syncFromShared()
     }
 
     return true;
+}
+
+void SlotRegistry::pollTelemetryFromShared()
+{
+    if (shm_ == nullptr)
+        return;
+
+    for (int i = 0; i < kMaxSlots; ++i)
+    {
+        if (! slots_[i].active)
+            continue;
+
+        SharedSlotEntry entry;
+        if (! shm_->readSlot(i, entry) || ! entry.active)
+            continue;
+
+        telemetry_[i].push(buildTelemetryFromSharedEntry(entry, i));
+    }
+}
+
+void SlotRegistry::pollTelemetryFromBackups()
+{
+    for (int i = 0; i < kMaxSlots; ++i)
+    {
+        if (! slots_[i].active)
+            continue;
+
+        auto file = getSlotBackupFile(i);
+        if (! file.existsAsFile()
+            || file.getSize() < static_cast<juce::int64>(kSlotFileV2Size))
+            continue;
+
+        // ═══ Check META file (slot_N.meta) — solo cambia con metadatos ═══
+        // El backup file (slot_N.bin) se actualiza CADA ~32ms por telemetría
+        // (updateSlotBackupTelemetry desde audio thread). No podemos usarlo
+        // para detectar cambios de metadatos.
+        // El meta file SOLO se actualiza cuando saveSlotToBackupFile() escribe
+        // metadatos nuevos (nombre/color/bus). Si no cambió, skip total.
+        // Esto significa 0 I/O real en ~59 de cada 60 frames.
+        //
+        // Fallback: si el meta file no existe (migración desde versión anterior),
+        // sigue leyendo el backup file completo para no congelar la telemetría.
+        bool metaExists = false;
+        int64_t metaMod = 0;
+        auto metaFile = getSlotBackupMetaFile(i);
+        if (metaFile.existsAsFile()) {
+            metaExists = true;
+            metaMod = metaFile.getLastModificationTime().toMilliseconds();
+            if (metaMod > 0 && metaMod == lastMetaModTimeMs_[i])
+                continue;  // Metadatos no cambiaron — skip (0 I/O real)
+        }
+        // else: sin meta file (migración) → leer backup completo (legacy)
+
+        juce::FileInputStream fis(file);
+        if (! fis.openedOk())
+            continue;
+
+        // ─── Leer METADATOS (inicio del archivo) ────────────────────────
+        // CRÍTICO: Cuando el Messenger cambia nombre/color/bus, escribe el
+        // backup file completo (via saveSlotToBackupFile). Pero pollTelemetry-
+        // FromBackups() solo leía telemetría (offset 88), ignorando metadatos.
+        // MixCoach NUNCA se enteraba de los cambios hasta reiniciar.
+        auto magic = static_cast<uint32_t>(fis.readIntBigEndian());
+        if (magic != kSlotFileMagic)
+            continue;
+
+        auto ver = static_cast<uint32_t>(fis.readIntBigEndian());
+        if (ver != kSlotFileVersion && ver != kSlotFileVersionV1)
+            continue;
+
+        int slotIdx = fis.readIntBigEndian();
+        int active  = fis.readIntBigEndian();
+        int bus     = fis.readIntBigEndian();
+        auto colourARGB = static_cast<uint32_t>(fis.readIntBigEndian());
+
+        char trackName[64] = {0};
+        int bytesRead = fis.read(trackName, 64);
+        if (bytesRead < 0) continue;
+
+        if (slotIdx != i || !active)
+            continue;
+
+        // ─── Actualizar metadatos en slots_[i] ─────────────────────────
+        {
+            auto& local = slots_[i];
+            bool changed = false;
+
+            if (local.bus != static_cast<BusType>(bus)) {
+                local.bus = static_cast<BusType>(bus);
+                changed = true;
+            }
+            if (local.colour.getARGB() != colourARGB) {
+                local.colour = juce::Colour(colourARGB);
+                changed = true;
+            }
+            if (std::strncmp(local.trackName, trackName, sizeof(local.trackName)) != 0) {
+                strncpy_s(local.trackName, sizeof(local.trackName), trackName, _TRUNCATE);
+                changed = true;
+            }
+
+            if (changed && onSlotChanged)
+                onSlotChanged(i);
+        }
+
+        // ─── Saltar a telemetría y leer ─────────────────────────────────
+        if (! fis.setPosition(kSlotFileTelemetryOffset))
+            continue;
+
+        TrackTelemetry telem;
+        telem.timestamp   = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
+        telem.slotIndex   = i;
+        telem.active      = true;
+        telem.peakLeft    = readBackupFloat(fis);
+        telem.peakRight   = readBackupFloat(fis);
+        telem.rmsLeft     = readBackupFloat(fis);
+        telem.rmsRight    = readBackupFloat(fis);
+        telem.correlation = readBackupFloat(fis);
+        telem.crestFactor = readBackupFloat(fis);
+        telem.sampleL     = readBackupFloat(fis);
+        telem.sampleR     = readBackupFloat(fis);
+        telem.lufsIntegrated = readBackupFloat(fis);
+        telem.lufsShortTerm  = readBackupFloat(fis);
+        telem.lufsMomentary  = readBackupFloat(fis);
+        telem.lufsTruePeak   = readBackupFloat(fis);
+        telem.loudnessRange  = readBackupFloat(fis);
+
+        telemetry_[i].push(telem);
+
+        // Cachear timestamp del meta file (si existe) para saltar en el
+        // próximo poll. El meta file SOLO cambia con metadatos, así que
+        // saltamos hasta que el usuario vuelva a cambiar nombre/color/bus.
+        if (metaExists)
+            lastMetaModTimeMs_[i] = metaMod;
+    }
 }
 
 // ─── Sincronización forzada completa (ignora changeCount) ───────────────────────

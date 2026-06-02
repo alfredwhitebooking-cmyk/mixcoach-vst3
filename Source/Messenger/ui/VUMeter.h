@@ -4,7 +4,9 @@
 namespace mixcoach {
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  VUMeter — Medidor VU estilo profesional con peak hold
+//  VUMeter — Medidor VU estilo profesional con peak triangle ◀
+//  Escala: +6 a -60 dB | Gradiente: verde → rojo (bottom → top)
+//  Peak triangle a la izquierda, escala a la derecha
 // ═══════════════════════════════════════════════════════════════════════════
 class VUMeter : public juce::Component
 {

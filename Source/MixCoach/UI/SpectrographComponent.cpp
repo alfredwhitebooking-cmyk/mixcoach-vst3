@@ -1,294 +1,335 @@
 #include "SpectrographComponent.h"
+#include <cmath>
 
 namespace mixcoach {
 
-SpectrographComponent::SpectrographComponent()
-{
-    displayBins_.resize(kNumDisplayBins, 0.0f);
-    rawBins_.resize(kNumDisplayBins, 0.0f);
-    peakHoldBins_.resize(kNumDisplayBins, 0.0f);
-    peakHoldTimers_.resize(kNumDisplayBins, 0);
+namespace {
 
-    titleLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x93\xA1 Spectrum Analyzer"),
-                        juce::dontSendNotification);
-    titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
-    titleLabel_.setJustificationType(juce::Justification::centredLeft);
-    titleLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textPrimary());
-    addAndMakeVisible(titleLabel_);
+constexpr float kLabelFreqsHz[] = {
+    20.0f, 30.0f, 50.0f, 70.0f, 100.0f,
+    200.0f, 300.0f, 500.0f, 700.0f, 1000.0f,
+    2000.0f, 3000.0f, 5000.0f, 7000.0f, 10000.0f, 20000.0f
+};
+
+juce::String formatFreqLabel(float hz)
+{
+    if (hz >= 1000.0f)
+        return juce::String(hz / 1000.0f, hz >= 10000.0f ? 0 : 1) + "k";
+    return juce::String((int) hz);
 }
 
-void SpectrographComponent::buildFrequencyMap(int fftNumBins)
+} // namespace
+
+SpectrographComponent::SpectrographComponent()
 {
-    if (fftNumBins <= 0) return;
-    binFreqs_.resize(kNumDisplayBins);
-    fftWeights_.resize(kNumDisplayBins);
+    setOpaque(true);
+    bandLevels_.reserve(kNumRtaBands);
+    for (int i = 0; i < kNumRtaBands; ++i)
+        bandLevels_.emplace_back(0.0f, 1.5f, 40.0f);
 
-    constexpr float sampleRate = 44100.0f;
-    constexpr int fftSize = 1024;
-    constexpr float binWidth = sampleRate / static_cast<float>(fftSize);
+    rebuildBands();
+}
 
-    for (int i = 0; i < kNumDisplayBins; ++i) {
-        float freq = kMinFreq * std::pow(kMaxFreq / kMinFreq,
-                                          static_cast<float>(i) / static_cast<float>(kNumDisplayBins - 1));
-        binFreqs_[i] = freq;
+void SpectrographComponent::setSampleRate(double sampleRate)
+{
+    if (sampleRate < 8000.0)
+        return;
 
-        float fftPos = freq / binWidth;
-        if (fftPos >= static_cast<float>(fftNumBins - 1))
-            fftWeights_[i] = static_cast<float>(fftNumBins - 1);
-        else if (fftPos < 0.0f)
-            fftWeights_[i] = 0.0f;
-        else
-            fftWeights_[i] = fftPos;
+    if (std::abs(sampleRate_ - sampleRate) > 1.0)
+    {
+        sampleRate_ = sampleRate;
+        rebuildBands();
     }
+}
+
+void SpectrographComponent::rebuildBands()
+{
+    bands_.resize((size_t) kNumRtaBands);
+
+    std::vector<float> centers((size_t) kNumRtaBands);
+    for (int i = 0; i < kNumRtaBands; ++i)
+    {
+        const float t = (kNumRtaBands <= 1) ? 0.0f
+                        : (float) i / (float) (kNumRtaBands - 1);
+        centers[(size_t) i] = kMinFreq * std::pow(kMaxFreq / kMinFreq, t);
+    }
+
+    for (int i = 0; i < kNumRtaBands; ++i)
+    {
+        auto& b = bands_[(size_t) i];
+        b.centerHz = centers[(size_t) i];
+        const float lowEdge  = (i == 0) ? kMinFreq
+                             : std::sqrt(centers[(size_t) (i - 1)] * centers[(size_t) i]);
+        const float highEdge = (i == kNumRtaBands - 1) ? kMaxFreq
+                              : std::sqrt(centers[(size_t) i] * centers[(size_t) (i + 1)]);
+        b.lowHz  = lowEdge;
+        b.highHz = highEdge;
+    }
+}
+
+void SpectrographComponent::invalidateStaticCache()
+{
+    staticCacheValid_ = false;
+    staticCache_ = juce::Image();
+    layout_.valid = false;
+}
+
+SpectrographComponent::PlotLayout SpectrographComponent::computePlotLayout() const
+{
+    PlotLayout L;
+    if (plotArea_.isEmpty())
+        return L;
+
+    auto area = plotArea_.toFloat();
+    auto dbAxis = area.removeFromLeft(22.0f);
+    area.removeFromBottom(12.0f);
+    area.removeFromTop(10.0f);
+
+    L.plot = area;
+    L.dbCol = dbAxis.withHeight(L.plot.getHeight()).withY(L.plot.getY());
+    L.valid = ! L.plot.isEmpty();
+    return L;
+}
+
+void SpectrographComponent::rebuildStaticCache()
+{
+    invalidateStaticCache();
+
+    if (plotArea_.isEmpty())
+        return;
+
+    layout_ = computePlotLayout();
+    if (! layout_.valid)
+        return;
+
+    const int w = plotArea_.getWidth();
+    const int h = plotArea_.getHeight();
+    if (w < 8 || h < 8)
+        return;
+
+    staticCache_ = juce::Image(juce::Image::ARGB, w, h, true);
+    staticCache_.clear(staticCache_.getBounds());
+
+    juce::Graphics cg(staticCache_);
+
+    drawPlotBackground(cg, layout_.plot);
+    drawGrid(cg, layout_.plot);
+    drawDbAxis(cg, layout_.dbCol);
+    drawFreqAxis(cg, layout_.plot);
+
+    cg.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+    cg.setColour(MixCoachTheme::textDim().withAlpha(0.65f));
+    cg.drawText("RTA",
+                layout_.plot.getX() + 4.0f, layout_.plot.getY() + 2.0f, 28.0f, 10.0f,
+                juce::Justification::centredLeft);
+
+    staticCacheValid_ = true;
+}
+
+float SpectrographComponent::normToDb(float norm01) const noexcept
+{
+    return norm01 * 80.0f - 80.0f;
+}
+
+float SpectrographComponent::dbToDisplayNorm(float db) const noexcept
+{
+    return juce::jlimit(0.0f, 1.0f,
+                        juce::jmap(db, kDisplayBottomDb, kDisplayTopDb, 0.0f, 1.0f));
+}
+
+float SpectrographComponent::freqToX(float freqHz, juce::Rectangle<float> plot) const noexcept
+{
+    freqHz = juce::jlimit(kMinFreq, kMaxFreq, freqHz);
+    const float norm = std::log2(freqHz / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
+    return plot.getX() + norm * plot.getWidth();
+}
+
+void SpectrographComponent::aggregateBand(const float* data, int numBins,
+                                          int bandIndex, float& outDb) const
+{
+    outDb = kDisplayBottomDb;
+    if (data == nullptr || numBins <= 0 || bandIndex < 0 || bandIndex >= kNumRtaBands)
+        return;
+
+    const auto& band = bands_[(size_t) bandIndex];
+    const float binWidth = (float) sampleRate_ / (float) kMessengerFftSize;
+
+    int binLow  = (int) std::floor(band.lowHz / binWidth);
+    int binHigh = (int) std::ceil(band.highHz / binWidth);
+    binLow  = juce::jlimit(0, numBins - 1, binLow);
+    binHigh = juce::jlimit(binLow, numBins - 1, binHigh);
+
+    float maxNorm = 0.0f;
+    for (int b = binLow; b <= binHigh; ++b)
+        maxNorm = juce::jmax(maxNorm, data[b]);
+
+    outDb = normToDb(maxNorm);
 }
 
 void SpectrographComponent::updateSpectrum(const float* data, int numBins)
 {
-    if (data == nullptr || numBins <= 0) return;
+    if (data == nullptr || numBins <= 0)
+        return;
 
-    int n = std::min(numBins, kMaxFFTBins);
+    if (bands_.empty())
+        rebuildBands();
 
-    if (binFreqs_.empty()) {
-        buildFrequencyMap(n);
+    for (int i = 0; i < kNumRtaBands; ++i)
+    {
+        float db = kDisplayBottomDb;
+        aggregateBand(data, numBins, i, db);
+        bandLevels_[(size_t) i].setTargetValue(dbToDisplayNorm(db));
     }
-
-    for (int i = 0; i < kNumDisplayBins; ++i) {
-        float fftPos = (i < static_cast<int>(fftWeights_.size())) ? fftWeights_[i] : 0.0f;
-
-        int idxLow = juce::jlimit(0, n - 1, static_cast<int>(fftPos));
-        int idxHigh = juce::jlimit(0, n - 1, idxLow + 1);
-        float frac = fftPos - static_cast<float>(idxLow);
-
-        float valLow = data[idxLow];
-        float valHigh = data[idxHigh];
-        float interpolated = valLow + (valHigh - valLow) * frac;
-
-        float rawDb = 20.0f * std::log10(interpolated + 1e-8f);
-        float rawNorm = juce::jmap(juce::jlimit(-80.0f, 0.0f, rawDb), -80.0f, 0.0f, 0.0f, 1.0f);
-
-        rawBins_[i] = rawNorm;
-
-        if (rawNorm > displayBins_[i])
-            displayBins_[i] += (rawNorm - displayBins_[i]) * 0.55f;
-        else
-            displayBins_[i] += (rawNorm - displayBins_[i]) * 0.12f;
-
-        if (rawNorm > peakHoldBins_[i]) {
-            peakHoldBins_[i] = rawNorm;
-            peakHoldTimers_[i] = 15;
-        } else if (peakHoldTimers_[i] > 0) {
-            peakHoldTimers_[i]--;
-        } else {
-            peakHoldBins_[i] += (0.0f - peakHoldBins_[i]) * 0.03f;
-        }
-    }
-    repaint();
 }
 
-juce::Colour SpectrographComponent::getBinColour(float magnitude) const noexcept
+bool SpectrographComponent::smoothSpectrum(double sampleRateHz, bool allowRepaint)
 {
-    if (magnitude < 0.10f) {
-        float t = magnitude / 0.10f;
-        return juce::Colour::fromFloatRGBA(t * 0.2f, t * 0.3f, 0.3f + t * 0.5f, 1.0f);
-    } else if (magnitude < 0.25f) {
-        float t = (magnitude - 0.10f) / 0.15f;
-        return juce::Colour::fromFloatRGBA(0.2f + t * 0.1f, 0.3f + t * 0.5f, 0.8f - t * 0.4f, 1.0f);
-    } else if (magnitude < 0.40f) {
-        float t = (magnitude - 0.25f) / 0.15f;
-        return juce::Colour::fromFloatRGBA(0.3f + t * 0.2f, 0.8f + t * 0.2f, 0.4f - t * 0.3f, 1.0f);
-    } else if (magnitude < 0.55f) {
-        float t = (magnitude - 0.40f) / 0.15f;
-        return juce::Colour::fromFloatRGBA(0.5f + t * 0.5f, 1.0f - t * 0.1f, 0.1f - t * 0.1f, 1.0f);
-    } else if (magnitude < 0.70f) {
-        float t = (magnitude - 0.55f) / 0.15f;
-        return juce::Colour::fromFloatRGBA(1.0f, 0.9f - t * 0.3f, 0.0f, 1.0f);
-    } else if (magnitude < 0.85f) {
-        float t = (magnitude - 0.70f) / 0.15f;
-        return juce::Colour::fromFloatRGBA(1.0f, 0.6f - t * 0.4f, 0.0f, 1.0f);
-    } else {
-        float t = (magnitude - 0.85f) / 0.15f;
-        return juce::Colour::fromFloatRGBA(1.0f, 0.2f - t * 0.2f, 0.0f, 1.0f);
-    }
+    bool needsRepaint = false;
+    for (int i = 0; i < kNumRtaBands; ++i)
+        needsRepaint |= bandLevels_[(size_t) i].advance(sampleRateHz);
+
+    if (needsRepaint && allowRepaint)
+        repaint();
+
+    return needsRepaint;
 }
 
 void SpectrographComponent::resized()
 {
-    auto area = getLocalBounds().reduced(2);
-    titleLabel_.setBounds(area.removeFromTop(16));
+    auto bounds = getLocalBounds().reduced(3, 2);
+    settingsButton_ = bounds.removeFromRight(22).removeFromTop(18);
+    bounds.removeFromTop(2);
+    plotArea_ = bounds.reduced(0, 1);
+    rebuildStaticCache();
 }
 
-void SpectrographComponent::drawGrid(juce::Graphics& g, juce::Rectangle<float> bounds)
+void SpectrographComponent::drawPlotBackground(juce::Graphics& g, juce::Rectangle<float> plot) const
 {
-    auto w = bounds.getWidth();
-    auto h = bounds.getHeight();
+    g.setColour(MixCoachTheme::bgCanvas());
+    g.fillRoundedRectangle(plot, 3.0f);
+}
 
-    g.setColour(MixCoachTheme::border().withAlpha(0.15f));
-    float dbLevels[] = { -60.0f, -48.0f, -36.0f, -24.0f, -12.0f, -6.0f, 0.0f };
-    for (float db : dbLevels) {
-        float dbNorm = juce::jlimit(0.0f, 1.0f, (db + 80.0f) / 80.0f);
-        float y = bounds.getBottom() - dbNorm * h;
-        g.setColour(MixCoachTheme::border().withAlpha((db == 0.0f) ? 0.3f : 0.12f));
-        g.drawHorizontalLine((int)y, bounds.getX() + 1, bounds.getRight() - 1);
-
-        if (db == 0.0f || db == -12.0f || db == -24.0f || db == -48.0f) {
-            g.setFont(juce::Font(juce::FontOptions(7.0f)));
-            g.setColour(MixCoachTheme::textMuted().withAlpha(0.4f));
-            g.drawText(juce::String((int)db),
-                       juce::Rectangle<float>(bounds.getRight() - 22, y - 5, 20, 10),
-                       juce::Justification::centredRight);
-        }
+void SpectrographComponent::drawGrid(juce::Graphics& g, juce::Rectangle<float> plot) const
+{
+    for (int db = 0; db >= (int) kDisplayBottomDb; db -= 5)
+    {
+        const float norm = juce::jmap((float) db, kDisplayBottomDb, kDisplayTopDb, 0.0f, 1.0f);
+        const float y = plot.getBottom() - norm * plot.getHeight();
+        g.setColour(MixCoachTheme::rowDivider().withAlpha(db == 0 ? 0.7f : 0.45f));
+        g.drawHorizontalLine((int) y, plot.getX(), plot.getRight());
     }
 
-    struct FreqMarker { float freq; const char* label; };
-    FreqMarker markers[] = {
-        { 20.0f, "20" }, { 31.0f, "31" }, { 63.0f, "63" },
-        { 100.0f, "100" }, { 125.0f, "125" },
-        { 250.0f, "250" }, { 500.0f, "500" },
-        { 1000.0f, "1k" }, { 2000.0f, "2k" },
-        { 4000.0f, "4k" }, { 8000.0f, "8k" },
-        { 10000.0f, "10k" }, { 16000.0f, "16k" }, { 20000.0f, "20k" }
-    };
-
-    for (auto& m : markers) {
-        float xNorm = std::log2(m.freq / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
-        float x = bounds.getX() + xNorm * w;
-
-        g.setColour(MixCoachTheme::border().withAlpha(
-            (m.freq == 1000.0f) ? 0.35f : 0.15f));
-        g.drawVerticalLine((int)x, bounds.getY() + 1, bounds.getBottom() - 1);
+    for (float freq : kLabelFreqsHz)
+    {
+        const float x = freqToX(freq, plot);
+        g.setColour(MixCoachTheme::rowDivider().withAlpha(freq >= 1000.0f ? 0.55f : 0.35f));
+        g.drawVerticalLine((int) x, plot.getY(), plot.getBottom());
     }
 }
 
-void SpectrographComponent::drawFrequencyLabels(juce::Graphics& g, juce::Rectangle<float> bounds)
+void SpectrographComponent::drawRtaBars(juce::Graphics& g, juce::Rectangle<float> plot) const
 {
-    auto w = bounds.getWidth();
+    if (bands_.empty())
+        return;
 
-    struct FreqLabel { float freq; const char* text; };
-    FreqLabel labels[] = {
-        { 31.0f, "31" }, { 63.0f, "63" },
-        { 125.0f, "125" }, { 250.0f, "250" },
-        { 500.0f, "500" }, { 1000.0f, "1k" },
-        { 2000.0f, "2k" }, { 4000.0f, "4k" },
-        { 8000.0f, "8k" }, { 16000.0f, "16k" }
-    };
+    const auto cyanTop = MixCoachTheme::accentCyanBright();
+    const auto blueBot = juce::Colour(0xFF0EA5E9);
 
-    g.setFont(juce::Font(juce::FontOptions(7.0f)));
-    g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
+    for (int i = 0; i < kNumRtaBands; ++i)
+    {
+        const auto& band = bands_[(size_t) i];
+        const float x0 = freqToX(band.lowHz, plot);
+        const float x1 = freqToX(band.highHz, plot);
+        const float barW = juce::jmax(1.5f, (x1 - x0) * 0.92f);
+        const float x = (x0 + x1) * 0.5f - barW * 0.5f;
 
-    for (auto& lb : labels) {
-        float xNorm = std::log2(lb.freq / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
-        float x = bounds.getX() + xNorm * w;
-        g.drawText(juce::String(lb.text),
-                   juce::Rectangle<float>(x - 12, bounds.getBottom() - 12, 24, 10),
+        const float level = bandLevels_[(size_t) i].getCurrent();
+        const float barH = level * plot.getHeight();
+        if (barH < 0.5f)
+            continue;
+
+        auto bar = juce::Rectangle<float>(x, plot.getBottom() - barH, barW, barH);
+
+        juce::ColourGradient grad(
+            cyanTop.withAlpha(0.92f),
+            juce::Point<float>(bar.getCentreX(), bar.getY()),
+            blueBot.withAlpha(0.88f),
+            juce::Point<float>(bar.getCentreX(), bar.getBottom()),
+            false);
+        g.setGradientFill(grad);
+        g.fillRoundedRectangle(bar, 1.5f);
+    }
+}
+
+void SpectrographComponent::drawDbAxis(juce::Graphics& g, juce::Rectangle<float> labelCol) const
+{
+    g.setFont(juce::Font(juce::FontOptions(6.5f)));
+    g.setColour(MixCoachTheme::textMuted().withAlpha(0.8f));
+
+    for (int db = 0; db >= (int) kDisplayBottomDb; db -= 5)
+    {
+        const float norm = juce::jmap((float) db, kDisplayBottomDb, kDisplayTopDb, 0.0f, 1.0f);
+        const float y = labelCol.getBottom() - norm * labelCol.getHeight();
+        g.drawText(juce::String(db),
+                   juce::Rectangle<float>(labelCol.getX(), y - 5.0f, labelCol.getWidth(), 9.0f),
+                   juce::Justification::centredRight);
+    }
+}
+
+void SpectrographComponent::drawFreqAxis(juce::Graphics& g, juce::Rectangle<float> plot) const
+{
+    auto labelRow = juce::Rectangle<float>(plot.getX(), plot.getBottom() + 1.0f,
+                                         plot.getWidth(), 11.0f);
+    g.setFont(juce::Font(juce::FontOptions(6.5f)));
+    g.setColour(MixCoachTheme::textMuted().withAlpha(0.75f));
+
+    for (float freq : kLabelFreqsHz)
+    {
+        const float x = freqToX(freq, plot);
+        g.drawText(formatFreqLabel(freq),
+                   juce::Rectangle<float>(x - 14.0f, labelRow.getY(), 28.0f, labelRow.getHeight()),
                    juce::Justification::centred);
     }
 }
 
-void SpectrographComponent::drawSpectrumBars(juce::Graphics& g, juce::Rectangle<float> bounds)
+void SpectrographComponent::drawSettingsChrome(juce::Graphics& g) const
 {
-    if (displayBins_.empty() || binFreqs_.empty()) return;
+    if (settingsButton_.isEmpty())
+        return;
 
-    auto w = bounds.getWidth();
-    auto h = bounds.getHeight();
-
-    juce::Path fillPath;
-    bool first = true;
-    fillPath.preallocateSpace(kNumDisplayBins * 4);
-
-    for (int i = 0; i < kNumDisplayBins; ++i) {
-        float freq = binFreqs_[i];
-        float xNorm = std::log2(freq / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
-        float x = bounds.getX() + xNorm * w;
-        float normalized = juce::jlimit(0.0f, 1.0f, displayBins_[i]);
-        float y = bounds.getBottom() - normalized * h;
-
-        if (first) {
-            fillPath.startNewSubPath(x, bounds.getBottom());
-            fillPath.lineTo(x, y);
-            first = false;
-        } else {
-            fillPath.lineTo(x, y);
-        }
+    g.setColour(MixCoachTheme::textMuted().withAlpha(0.45f));
+    g.drawEllipse(settingsButton_.toFloat().reduced(3.0f), 0.8f);
+    auto c = settingsButton_.getCentre().toFloat();
+    for (int i = 0; i < 6; ++i)
+    {
+        const float a = (float) i * juce::MathConstants<float>::twoPi / 6.0f;
+        g.drawLine(c.x, c.y,
+                   c.x + 5.0f * std::cos(a), c.y + 5.0f * std::sin(a), 0.8f);
     }
-
-    float lastX = bounds.getX() + w;
-    fillPath.lineTo(lastX, bounds.getBottom());
-    fillPath.closeSubPath();
-
-    juce::ColourGradient spectrumGrad(
-        juce::Colour(0xFF00B4D8).withAlpha(0.25f),
-        juce::Point<float>(0.0f, bounds.getY()),
-        juce::Colour(0xFFFF2D55).withAlpha(0.08f),
-        juce::Point<float>(0.0f, bounds.getBottom()),
-        false);
-    spectrumGrad.addColour(0.5f, juce::Colour(0xFF00E676).withAlpha(0.12f));
-    g.setGradientFill(spectrumGrad);
-    g.fillPath(fillPath);
-
-    for (int i = 1; i < kNumDisplayBins; ++i) {
-        float freq1 = binFreqs_[i - 1];
-        float freq2 = binFreqs_[i];
-        float xNorm1 = std::log2(freq1 / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
-        float xNorm2 = std::log2(freq2 / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
-        float x1 = bounds.getX() + xNorm1 * w;
-        float x2 = bounds.getX() + xNorm2 * w;
-        float y1 = bounds.getBottom() - juce::jlimit(0.0f, 1.0f, displayBins_[i - 1]) * h;
-        float y2 = bounds.getBottom() - juce::jlimit(0.0f, 1.0f, displayBins_[i]) * h;
-
-        float avgMag = (displayBins_[i - 1] + displayBins_[i]) * 0.5f;
-
-        g.setColour(getBinColour(avgMag).withAlpha(0.2f));
-        g.drawLine(x1, y1, x2, y2, 4.0f);
-
-        g.setColour(getBinColour(avgMag));
-        g.drawLine(x1, y1, x2, y2, 1.5f);
-    }
-}
-
-void SpectrographComponent::drawPeakHold(juce::Graphics& g, juce::Rectangle<float> bounds)
-{
-    if (binFreqs_.empty()) return;
-
-    auto w = bounds.getWidth();
-    auto h = bounds.getHeight();
-
-    g.setFont(juce::Font(juce::FontOptions(6.0f)));
-
-    for (int i = 0; i < kNumDisplayBins; i += 4) {
-        if (peakHoldBins_[i] < 0.01f) continue;
-
-        float freq = binFreqs_[i];
-        float xNorm = std::log2(freq / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
-        float x = bounds.getX() + xNorm * w;
-        float y = bounds.getBottom() - juce::jlimit(0.0f, 1.0f, peakHoldBins_[i]) * h;
-
-        g.setColour(juce::Colours::white.withAlpha(0.5f));
-        g.fillRect(x - 0.5f, y - 1.0f, 2.0f, 3.0f);
-    }
+    g.fillEllipse(c.x - 2.0f, c.y - 2.0f, 4.0f, 4.0f);
 }
 
 void SpectrographComponent::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
+    g.fillAll(juce::Colours::transparentBlack);
 
-    MixCoachTheme::fillGlassPanel(g, bounds, 6.0f);
+    if (plotArea_.isEmpty())
+        return;
 
-    juce::ColourGradient topShadow(
-        juce::Colours::black.withAlpha(0.15f),
-        juce::Point<float>(0.0f, bounds.getY()),
-        juce::Colour(0x00000000),
-        juce::Point<float>(0.0f, bounds.getY() + 30.0f),
-        false);
-    g.setGradientFill(topShadow);
-    g.fillRoundedRectangle(bounds, 6.0f);
+    if (! staticCacheValid_)
+        rebuildStaticCache();
 
-    auto content = getLocalBounds().reduced(6).toFloat();
-    content.removeFromTop(16);
+    if (staticCacheValid_)
+        g.drawImageAt(staticCache_, plotArea_.getX(), plotArea_.getY());
 
-    drawGrid(g, content);
-    drawFrequencyLabels(g, content);
-    drawSpectrumBars(g, content);
-    drawPeakHold(g, content);
+    if (layout_.valid)
+    {
+        auto plotInComponent = layout_.plot.translated((float) plotArea_.getX(),
+                                                     (float) plotArea_.getY());
+        drawRtaBars(g, plotInComponent);
+    }
+
+    drawSettingsChrome(g);
 }
 
 } // namespace mixcoach

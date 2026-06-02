@@ -27,6 +27,8 @@ errores_compilacion.txt
 compilar.bat
 nul
 build_output.txt
+build_output_*.txt
+workspace_backups/
 
 # Scripts
 CompileAndSave.ps1

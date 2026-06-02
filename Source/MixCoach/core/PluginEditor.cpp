@@ -6,12 +6,12 @@ extern void earlyCrashLog(const char* point, const char* msg);
 
 namespace mixcoach {
 
-// ═══ Flag static: el sync inicial solo corre UNA vez por vida del proceso DLL.
-// Cuando el usuario cierra/reabre el plugin en FL Studio, el editor se
-// recrea pero los datos ya están en SlotRegistry (singleton persistente).
-// Este flag evita re-escanear backup files y shared memory en cada
-// reapertura, eliminando el molesto "re-scan".
+// ═══ Flags estáticos: persisten entre recreaciones del editor ═══════════
+// Cuando el usuario minimiza/restaura el plugin en FL Studio, el editor se
+// destruye y recrea, pero estos flags retienen su estado. Así evitamos
+// re-escanear backup files y re-anunciar tracks en cada reapertura.
 std::atomic<bool> MixCoachAudioProcessorEditor::s_initialFullSyncDone_{false};
+std::array<bool, SlotRegistry::kMaxSlots> MixCoachAudioProcessorEditor::s_announcedSlots_{};
 
 // ─── Background Worker — Operaciones I/O pesadas en hilo separado ────────────
 // Se ejecuta en un juce::Thread para no bloquear el message thread.
@@ -63,12 +63,7 @@ MixCoachAudioProcessorEditor::MixCoachAudioProcessorEditor(MixCoachAudioProcesso
     addAndMakeVisible(placeholderLabel_);
     earlyCrashLog("EDITOR3", "Placeholder/buildFullUI OK");
 
-    // Version label (siempre visible)
-    versionLabel_.setText("v1.0.0", juce::dontSendNotification);
-    versionLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTiny)).boldened());
-    versionLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textDim());
-    addAndMakeVisible(versionLabel_);
-    earlyCrashLog("EDITOR4", "Version label OK");
+    earlyCrashLog("EDITOR4", "Version label removed");
 
         // ═══ Timer a 60fps — Fast UI + Slow updates ─────────────────────
     // AHORA: Heavy I/O está en el background worker (backgroundRunLoop),
@@ -82,25 +77,17 @@ MixCoachAudioProcessorEditor::MixCoachAudioProcessorEditor(MixCoachAudioProcesso
     // Esto da movimiento fluido como un DAW profesional (60fps) sin
     // saturar el message thread, porque las operaciones I/O pesadas
     // están en el bg.
-    announcedSlots_.fill(false);
+    // s_announcedSlots_ es estático — NO se resetea aquí. Persiste entre
+    // recreaciones del editor para evitar re-anunciar tracks al restaurar.
 
-    // ═══ Persistencia de Messengers entre sesiones del editor ═══════════
-    // Cuando el usuario cierra y reabre el plugin en FL Studio, el editor
-    // se destruye y recrea, pero el SlotRegistry (dentro del singleton
-    // SharedData) persiste con todos los datos de Messengers.
-    //
-    // Si ya hicimos el sync inicial en esta vida del proceso, NO volvemos
-    // a solicitar forceFullSync/loadBackupFiles. Simplemente leemos los
-    // datos existentes del SlotRegistry local.
-    //
-    // Esto elimina el molesto "re-scan" cada vez que se abre MixCoach.
-    // ═══ PERIODIC BACKUP SCAN: Siempre habilitado, incluso después del sync inicial ═══
-    // El background worker re-escaneará backup files automáticamente cada ~4s
-    // durante los primeros 60 segundos, luego cada ~15s. Esto detecta nuevos
-    // Messengers que se cargan DESPUÉS del forceFullSync inicial.
-    bgBackupScanRequested_.store(true);
+    // ═══ SCAN INICIAL: Solo se ejecuta UNA VEZ por vida del proceso DLL ═══
+    // s_initialFullSyncDone_ evita re-escanear backup files y s_announcedSlots_
+    // evita re-anunciar tracks en futuras reaperturas del editor.
+    // El background worker ejecuta forceFullSync + loadBackupFiles UNA SOLA
+    // vez al inicio del proceso. Al minimizar/restaurar, NO se re-escanéa.
     if (!s_initialFullSyncDone_.load()) {
         bgForceSyncRequested_.store(true);
+        bgBackupScanRequested_.store(true);
     }
 
     startTimerHz(60);
@@ -207,51 +194,46 @@ void MixCoachAudioProcessorEditor::backgroundRunLoop()
                 }
             }
 
-            // 2. loadSlotsFromBackupFiles: PERIÓDICO + bajo demanda
-            //    ═══ CRITICAL FIX V3: Re-scaneo automático SIEMPRE con forceOverwrite=true ═══
-            //    Versiones anteriores usaban forceOverwrite=false para los scans
-            //    periódicos, lo que impedía detectar cambios de bus/name/color
-            //    que el usuario hacía en el Messenger DESPUÉS del registro inicial.
-            //    
-            //    Ahora SIEMPRE usamos forceOverwrite=true para que los backup files
-            //    (que el Messenger actualiza inmediatamente via saveSlotToBackupFile())
-            //    siempre prevalezcan.
-            //    
-            //    Además se agregó syncFromShared() periódico para capturar datos
-            //    de telemetría y FFT desde shared memory (canal IPC entre DLLs).
+            // 2. Backup scan: SOLO bajo demanda (UNA VEZ al inicio)
+            //    ═══ FIX V4: Eliminado el periodic scan automático ═══
+            //    loadSlotsFromBackupFiles solo se ejecuta cuando se solicita
+            //    explícitamente (bgBackupScanRequested_). Después del sync
+            //    inicial, NUNCA se vuelve a escanear backup files.
+            if (bgBackupScanRequested_.exchange(false))
             {
-                uint32_t elapsedSinceLastBackupScan = now - lastBgBackupScanMs_;
-                bool longEnoughForPeriodicScan = elapsedSinceLastBackupScan >= 4000;
-                bool forceScanRequested = bgBackupScanRequested_.exchange(false);
+                lastBgBackupScanMs_ = now;
+                auto& registry = sharedData_->getSlotRegistry();
 
-                if (forceScanRequested || longEnoughForPeriodicScan)
-                {
-                    lastBgBackupScanMs_ = now;
-                    // ═══ CRITICAL: Siempre forceOverwrite=true ═══════════
-                    // Los backup files tienen los DATOS MÁS RECIENTES escritos
-                    // por el Messenger (procesa audio y actualiza backup en
-                    // cada processBlock). Siempre deben prevalecer sobre el
-                    // estado local de MixCoach.
-                    auto& registry = sharedData_->getSlotRegistry();
-                    int found = registry.loadSlotsFromBackupFiles(true);
-                    if (found > 0) {
-                        bgBackupResult_.store(found);
-                        bgHasNewResults_.store(true);
-                        LogHelper::writeToLog("[MixCoachEditor] BG: loadBackupFiles encontro " + juce::String(found) + " slots");
-                    }
-
-                    // ═══ syncFromShared periódico ═══════════════════
-                    // Detecta cambios de metadatos (bus, nombre, color) y
-                    // telemetría (FFT, LUFS) desde shared memory.
-                    // Es el complemento a los backup files: mientras backup
-                    // provee datos fiables de metadatos, shared memory provee
-                    // datos de telemetría de alta frecuencia.
-                    bool shmChanged = registry.syncFromShared();
-                    if (shmChanged) {
-                        LogHelper::writeToLog("[MixCoachEditor] BG: syncFromShared detecto cambios");
-                        bgHasNewResults_.store(true);
-                    }
+                // ═══ loadBackupFiles: UNA SOLA VEZ ═══════════════════
+                int found = registry.loadSlotsFromBackupFiles(true);
+                if (found > 0) {
+                    bgBackupResult_.store(found);
+                    bgHasNewResults_.store(true);
+                    LogHelper::writeToLog("[MixCoachEditor] BG: loadBackupFiles encontro " + juce::String(found) + " slots");
                 }
+
+                // ═══ syncFromShared: solo durante la primera inicialización ═══
+                // Después, syncFromShared corre en el bloque 4 (periódico)
+                if (!initialSyncDone) {
+                    registry.syncFromShared();
+                }
+            }
+
+            // 4. Telemetría en tiempo real (~10 Hz desde BG; el timer UI hace 60 Hz)
+            if (initialSyncDone && sharedData_->isAvailable())
+            {
+                auto& registry = sharedData_->getSlotRegistry();
+                // ═══ CADA CICLO: poll desde backup (100ms) para cambios de metadatos ═══
+                // pollTelemetryFromBackups() ahora lee nombre/color/bus + telemetría.
+                // Al ejecutarse cada ciclo (sin modulo 3), los cambios del Messenger
+                // se reflejan en MixCoach en ~100ms máximo.
+                if (bgShmHealthy_.load())
+                    registry.pollTelemetryFromShared();
+                else
+                    registry.pollTelemetryFromBackups();
+
+                if (bgLoopCount % 10 == 0)
+                    registry.syncFromShared();
             }
 
             // 3. Health check de shared memory (cada ~10s para monitoreo)
@@ -285,12 +267,10 @@ void MixCoachAudioProcessorEditor::backgroundRunLoop()
             }
         }
         
-        // ─── Una vez completado el sync inicial, dormir más para CPU idle ──
-        if (initialSyncDone && sharedData_->isAvailable() && bgShmHealthy_.load())
-        {
-            // Dormir 500ms en vez de 100ms cuando todo está estable
-            backgroundWorker_->wait(400); // wait() adicional
-        }
+        // ─── Sin idle extra — cada ciclo es rápido (~100ms) y queremos
+        //     la máxima capacidad de respuesta para cambios de metadatos.
+        //     pollTelemetryFromBackups() hace I/O de ~140 bytes por slot,
+        //     lo que es despreciable incluso a 100ms de intervalo.
     }
 }
 
@@ -489,58 +469,20 @@ void MixCoachAudioProcessorEditor::buildFullUI()
         LogHelper::writeToLog("[MixCoachEditor] Re-scan solicitado manualmente");
     };
 
-    // ─── Configurar callbacks en SlotRegistry ────────────────────────────
+    // ═══ Callbacks ELIMINADOS ═══
+    // Los callbacks onSlotChanged/onSlotRegistered/onSlotReleased llamaban
+    // a updateMessengers via callAsync, causando un flood de mensajes
+    // asíncronos que saturaban el message thread al minimizar/volver.
+    //
+    // El timer ya llama a:
+    //   • smoothMeters()   → 60fps (actualiza barras, SIN lock)
+    //   • updateAllPanels  → cada ~266ms (puebla lista, CON lock)
+    //
+    // Estos callbacks son REDUNDANTES y causaban el re-scan molesto.
     auto& registry = sharedData_->getSlotRegistry();
-    registry.onSlotChanged = [this](int) {
-        juce::Component::SafePointer<MixCoachAudioProcessorEditor> safeThis(this);
-        juce::MessageManager::callAsync([safeThis]() {
-            if (safeThis == nullptr) return;
-            auto* self = safeThis.getComponent();
-            if (!self->sharedData_ || !self->tabbedComponent_) return;
-            self->tabbedComponent_->getCoachPanel().updateMessengers(
-                self->sharedData_->getSlotRegistry());
-            self->repaint();
-        });
-    };
-
-    registry.onSlotRegistered = [this](int slotIndex) {
-        juce::Component::SafePointer<MixCoachAudioProcessorEditor> safeThis(this);
-        juce::MessageManager::callAsync([safeThis, slotIndex]() {
-            if (safeThis == nullptr) return;
-            auto* self = safeThis.getComponent();
-            if (!self->sharedData_ || !self->tabbedComponent_) return;
-            // Verificar bounds ANTES de acceder a getSlotInfo
-            if (slotIndex < 0 || slotIndex >= SlotRegistry::kMaxSlots)
-                return;
-            auto& reg = self->sharedData_->getSlotRegistry();
-            auto info = reg.getSlotInfo(slotIndex);
-            self->announcedSlots_[slotIndex] = true;
-            auto* coach = self->processorRef_.getCoachEngine();
-            if (coach) {
-                coach->announceNewTrack(
-                    slotIndex,
-                    juce::String(info.trackName),
-                    info.colour);
-            }
-            self->tabbedComponent_->getCoachPanel().updateMessengers(reg);
-            self->repaint();
-        });
-    };
-
-    registry.onSlotReleased = [this](int slotIndex) {
-        juce::Component::SafePointer<MixCoachAudioProcessorEditor> safeThis(this);
-        juce::MessageManager::callAsync([safeThis, slotIndex]() {
-            if (safeThis == nullptr) return;
-            auto* self = safeThis.getComponent();
-            if (!self->sharedData_ || !self->tabbedComponent_) return;
-            if (slotIndex >= 0 && slotIndex < SlotRegistry::kMaxSlots) {
-                self->announcedSlots_[slotIndex] = false;
-            }
-            self->tabbedComponent_->getCoachPanel().updateMessengers(
-                self->sharedData_->getSlotRegistry());
-            self->repaint();
-        });
-    };
+    registry.onSlotChanged    = nullptr;
+    registry.onSlotRegistered = nullptr;
+    registry.onSlotReleased   = nullptr;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -563,19 +505,18 @@ void MixCoachAudioProcessorEditor::timerCallback()
 
     const int timerTick = ++timerTickCount_;
 
-    // ─── Step 1: Startup delay de 3 segundos ──────────────────────────────
-    // CRÍTICO: NO intentar initSharedData() inmediatamente. FL Studio
-    // necesita tiempo para completar la carga del plugin y establecer el
-    // message thread. Si el timer del plugin empieza a hacer trabajo
-    // pesado antes de que FL Studio termine, el host detecta "no responde"
-    // y pide cerrar el plugin.
-    //
-    // Esperamos 3 segundos (~180 ticks a 60fps) antes de cualquier init.
-    if (timerTick <= 180) {
-        if (timerTick == 1) {
-            LogHelper::writeToLog("[MixCoachEditor] timer iniciado (60fps). Esperando 3s antes de init...");
+    // ─── Step 1: Startup delay adaptativo ─────────────────────────────────
+    // En la PRIMERA carga: 3s (180 ticks) — FL Studio necesita tiempo para
+    // inicializar el plugin sin timeout.
+    // En re-aperturas: ~250ms (15 ticks) — el DLL ya está cargado, solo se
+    // recrea el editor. Delay mínimo para estabilizar el message thread.
+    {
+        int startupDelay = s_initialFullSyncDone_.load() ? 15 : 180;
+        if (timerTick <= startupDelay) {
+            if (timerTick == 1 && !s_initialFullSyncDone_.load())
+                LogHelper::writeToLog("[MixCoachEditor] timer iniciado (60fps). Esperando 3s antes de init...");
+            return;
         }
-        return;
     }
 
     // ─── Step 2: init ligero (solo si UI no está construida aún) ─────────
@@ -611,20 +552,22 @@ void MixCoachAudioProcessorEditor::timerCallback()
                 initialSyncDone_ = true;
         }
 
-        // ═══ FIX: Siempre actualizar UI cuando hay nuevos resultados ═══
-        // Antes esto estaba dentro del if (syncFound > 0 || backupFound > 0),
-        // pero syncFromShared() setea bgHasNewResults_ sin modificar syncFound/backupFound.
-        // Eso provocaba que se perdieran actualizaciones del TrackSelector y VU meters
-        // cuando los Messengers enviaban solo telemetría (sin metadatos nuevos).
-        if (tabbedComponent_ && bgLock_.tryEnter())
+        // ═══ Solo actualizar paneles si hay NUEVOS slots detectados ═══
+        // Si syncFromShared() seteo bgHasNewResults_ sin nuevos slots,
+        // NO hacemos full update — Step 4 ya maneja la actualización
+        // de meters a 60fps. Esto evita el re-scan periódico.
+        if (syncFound > 0 || backupFound > 0)
         {
-            double sr = processorRef_.getSampleRate();
-            auto& registry = sharedData_->getSlotRegistry();
-            tabbedComponent_->updateAllPanels(registry, sr);
-            bgLock_.exit();
+            if (tabbedComponent_ && bgLock_.tryEnter())
+            {
+                double sr = processorRef_.getSampleRate();
+                auto& registry = sharedData_->getSlotRegistry();
+                tabbedComponent_->updateAllPanels(registry, sr);
+                bgLock_.exit();
+            }
+            detectNewMessengers();
+            repaint();
         }
-        detectNewMessengers();
-        repaint();
     }
 
     // ─── Step 4: UI updates (dual-rate: fast + slow) ───────────────────
@@ -632,24 +575,48 @@ void MixCoachAudioProcessorEditor::timerCallback()
     {
         auto& registry = sharedData_->getSlotRegistry();
 
-        // ─── Fast update: Messengers + meters ligeros (CADA tick ~16ms) ──
-        // Solo lectura ligera de telemetry y shared memory.
-        // Sin I/O, protegido con tryLock no-bloqueante contra el bg worker.
+        // ─── Fast update: Messengers + meters + spectrograph (CADA tick ~16ms) ──
+        // ═══ smoothMeters() desde el editor timer (60fps) ════════════════════
+        // El MessengerListComponent también tiene su propio Timer interno (120fps)
+        // que llama a smoothMeters() + repaint() de forma autónoma. La llamada
+        // desde aquí es REDUNDANTE para el render loop, pero asegura que el
+        // componente se repinte aunque el timer interno no esté activo todavía
+        // (porque isPaused_ o activeMessengerCount_ están en 0 inicialmente).
+        tabbedComponent_->smoothMeters();
+
+        const bool meteringTabActive = (headerActiveTab_ == 1);
+        if (meteringTabActive)
+            tabbedComponent_->smoothAnalyzersPanel(60.0);
+
+        // ═══ PASO B: Poll telemetría (60 Hz, necesita lock para shared memory) ══
+        // pollTelemetryFromShared() necesita bgLock_ porque accede a shared memory.
+        // Pero si tryEnter() falla, NO bloqueamos — es mejor datos un frame viejos
+        // que congelar la UI.
+        // ═══ CADA TICK: pollTelemetryFromBackups() (60fps) para metadatos instantáneos ═══
+        // Antes: timerTick % 2 == 0 (30fps). Ahora: SIEMPRE en cada tick (60fps).
+        // Esto asegura que cambios de nombre/color/bus desde el Messenger se
+        // detecten en el próximo frame (~16ms) en lugar de esperar al bg worker.
         if (bgLock_.tryEnter())
         {
-            // Actualizar barras de Messengers (fluido a 60fps)
-            tabbedComponent_->getCoachPanel().updateMessengers(registry);
+            if (sharedData_->isSharedMemoryAvailable() && bgShmHealthy_.load())
+                registry.pollTelemetryFromShared();
+            else
+                registry.pollTelemetryFromBackups();
 
-            // ═══ METERS: Siempre actualizar (60fps) — SIN guard de visibilidad ═══
-            // CRÍTICO: Antes esto estaba dentro de `if (isAnalyzersVisible())`,
-            // lo que congelaba las agujas VU al cambiar de pestaña.
-            // Ahora los VU meters reciben datos SIEMPRE que el timer corre,
-            // independientemente de la pestaña activa.
-            // El Spectrograph también se actualiza siempre (no pesa si no es visible).
-            tabbedComponent_->fastUpdateSpectrograph(registry);
-            tabbedComponent_->getAnalyzersPanel().fastUpdateMeters(registry);
+            if (meteringTabActive)
+            {
+                tabbedComponent_->fastUpdateSpectrograph(registry);
+                tabbedComponent_->getAnalyzersPanel().fastUpdateMeters(registry);
+            }
             bgLock_.exit();
         }
+
+        // ═══ PASO C: Refrescar datos de messengers SIEMPRE (sin lock) ═════════
+        // CRÍTICO: syncTelemetryFromRegistry() SOLO lee del buffer thread-safe
+        // de telemetría (TelemetryBuffer::latest()). NO necesita bgLock_.
+        // Al ejecutarse SIEMPRE a 60fps, el barLevel se actualiza continuamente
+        // aunque tryEnter() falle, eliminando el congelamiento post-resize.
+        tabbedComponent_->getCoachPanel().refreshMessengerTelemetry(registry);
 
         // ─── Slow update: Full panel update (frecuencia adaptativa)
         // updateAllPanels actualiza LUFS, VU, vectorscope, crest, etc.
@@ -728,9 +695,9 @@ void MixCoachAudioProcessorEditor::resized()
 
     auto area = getLocalBounds();
 
-    // Header ultra-compacto (ahorrado 12px para contenido)
-    auto headerBounds = area.removeFromTop(24);
-    versionLabel_.setBounds(headerBounds.removeFromRight(60));
+    // Header con tabs + branding (36px)
+    auto headerBounds = area.removeFromTop(36);
+    juce::ignoreUnused(headerBounds);
 
     if (tabbedComponent_) {
         tabbedComponent_->setBounds(area);
@@ -760,107 +727,152 @@ void MixCoachAudioProcessorEditor::paint(juce::Graphics& g)
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  HEADER BAR — Premium brand header (28px)
-    //  T-RackS style: gradient background with thin accent underline
+    //  HEADER BAR — Premium brand header (36px) con tabs integrados
+    //  Layout: [⚡ MixCoach] [AI COACH | ANALYZERS] [VERIFICAR PROGRESO] [≡ ? ⚙]
     // ═══════════════════════════════════════════════════════════════════════
-    auto headerBounds = bounds.removeFromTop(28);
+    auto headerBounds = bounds.removeFromTop(36);
 
-    // Background: gradient from canvas to elevated
-    juce::ColourGradient headerBgGrad(
-        MixCoachTheme::bgDark(),
-        juce::Point<float>(0.0f, 0.0f),
-        MixCoachTheme::bgCanvas(),
-        juce::Point<float>(0.0f, (float)headerBounds.getHeight()),
-        false);
-    g.setGradientFill(headerBgGrad);
+    // ─── Background sólido oscuro ───────────────────────────────────────
+    g.setColour(MixCoachTheme::bgDark().darker(0.85f));
     g.fillRect(headerBounds);
 
-    // Subtle cyan glow on left edge
+    // Subtle accent glow on top edge
     juce::ColourGradient headerGlow(
-        MixCoachTheme::accent().withAlpha(0.08f),
-        juce::Point<float>((float)headerBounds.getX(), 0.0f),
+        MixCoachTheme::accent().withAlpha(0.06f),
+        juce::Point<float>(0.0f, 0.0f),
         MixCoachTheme::accent().withAlpha(0.0f),
-        juce::Point<float>((float)headerBounds.getX() + 200.0f, 0.0f),
+        juce::Point<float>(200.0f, 0.0f),
         false);
     g.setGradientFill(headerGlow);
     g.fillRect(headerBounds);
 
-    // ═══ Header accent underline (multi-layer glow) ═══════════════════════
+    // ─── Accent underline ────────────────────────────────────────────────
     auto accentLineY = headerBounds.getBottom() - 1;
     int headerW = headerBounds.getWidth();
-
-    // Layer 1: Outer glow (wide, faint)
-    g.setColour(MixCoachTheme::accentGlow().withAlpha(0.06f));
-    g.drawHorizontalLine(accentLineY - 2, 0.0f, (float)headerW);
-    // Layer 2: Mid glow
-    g.setColour(MixCoachTheme::accent().withAlpha(0.10f));
+    g.setColour(MixCoachTheme::accent().withAlpha(0.08f));
     g.drawHorizontalLine(accentLineY - 1, 0.0f, (float)headerW);
-    // Layer 3: Core line (bright)
-    g.setColour(MixCoachTheme::accent().withAlpha(0.5f));
+    g.setColour(MixCoachTheme::accent().withAlpha(0.35f));
     g.drawHorizontalLine(accentLineY, 0.0f, (float)headerW);
-    // Layer 4: Inner glow below
-    g.setColour(MixCoachTheme::accentGlow().withAlpha(0.15f));
-    g.drawHorizontalLine(accentLineY + 1, 0.0f, (float)headerW);
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  BRANDING — MixCoach logo identity
-    //  Layout: [AI icon] [MixCoach] [divider] [tagline]        [version]
+    //  LEFT: ⚡ MixCoach branding
     // ═══════════════════════════════════════════════════════════════════════
-    auto brandingArea = headerBounds.reduced(12, 0);
+    auto headerInner = headerBounds.reduced(0, 2);
 
-    // ─── AI Icon (violet glow circle) ────────────────────────────────────
-    auto iconArea = brandingArea.removeFromLeft(24);
-    auto iconCentre = iconArea.getCentre().toFloat();
-
-    // Outer glow ring
-    g.setColour(MixCoachTheme::accentAI().withAlpha(0.15f));
-    g.fillEllipse(juce::Rectangle<float>(iconCentre.x - 10.0f, iconCentre.y - 10.0f, 20.0f, 20.0f));
-    // Icon background
-    g.setColour(MixCoachTheme::accentAI().withAlpha(0.20f));
-    g.fillRoundedRectangle(iconArea.toFloat().reduced(2.0f), 4.0f);
-    // AI icon text
-    g.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
+    // ─── Bolt icon ───────────────────────────────────────────────────────
+    auto leftArea = headerInner.removeFromLeft(140);
+    auto iconArea = leftArea.removeFromLeft(32);
+    g.setFont(juce::Font(juce::FontOptions(20.0f)));
     g.setColour(MixCoachTheme::accentAIGlow());
-    g.drawText("AI", iconArea, juce::Justification::centred);
+    g.drawText(juce::CharPointer_UTF8("\xE2\x9A\xA1"), iconArea, juce::Justification::centred);
 
-    brandingArea.removeFromLeft(6);
+    leftArea.removeFromLeft(4);
 
-    // ─── MixCoach title ──────────────────────────────────────────────────
-    auto titleArea = brandingArea.removeFromLeft(110);
-    g.setFont(juce::Font(juce::FontOptions(15.0f)).boldened());
+    // ─── MixCoach name ───────────────────────────────────────────────────
+    auto nameArea = leftArea.removeFromLeft(95);
+    g.setFont(juce::Font(juce::FontOptions(16.0f)).boldened());
     g.setColour(MixCoachTheme::textBright());
-    g.drawText("MixCoach", titleArea, juce::Justification::centredLeft);
+    g.drawText("MIXCOACH", nameArea, juce::Justification::centredLeft);
 
-    // ─── Subtle vertical divider ─────────────────────────────────────────
-    auto sepArea = brandingArea.removeFromLeft(1);
-    g.setColour(MixCoachTheme::divider());
-    g.fillRect(sepArea.withTop(4).withBottom(headerBounds.getBottom() - 8));
-    brandingArea.removeFromLeft(8);
+    // ═══════════════════════════════════════════════════════════════════════
+    //  CENTER: Custom tabs "AI COACH" | "ANALYZERS"
+    // ═══════════════════════════════════════════════════════════════════════
+    auto centreArea = headerInner.removeFromLeft(280);
+    int tabY = centreArea.getY();
+    int tabH = centreArea.getHeight();
 
-    // ─── Tagline ─────────────────────────────────────────────────────────
-    g.setFont(juce::Font(juce::FontOptions(9.0f)));
-    g.setColour(MixCoachTheme::textDim());
-    g.drawText("AI-POWERED MIXING MENTOR", brandingArea, juce::Justification::centredLeft);
+    // ─── Tab 1: AI COACH ─────────────────────────────────────────────────
+    auto tab1Area = centreArea.removeFromLeft(100);
+    headerTab1Bounds_ = tab1Area;
+    bool isTab1Active = (headerActiveTab_ == 0);
 
-    // ─── Version label (right side) ──────────────────────────────────────
-    auto versionArea = headerBounds.removeFromRight(60);
-    g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+    // Active tab background
+    if (isTab1Active) {
+        g.setColour(juce::Colour(0x14FFFFFF));
+        g.fillRoundedRectangle(tab1Area.toFloat().reduced(2, 2), 4.0f);
+    }
+
+    g.setFont(juce::Font(juce::FontOptions(11.0f)).boldened());
+    g.setColour(isTab1Active ? MixCoachTheme::accent() : MixCoachTheme::textDim());
+    g.drawText("AI COACH", tab1Area.reduced(0, 4), juce::Justification::centred);
+
+    // Active underline
+    if (isTab1Active) {
+        auto underline = juce::Rectangle<int>(tab1Area.getX() + 12, tab1Area.getBottom() - 4,
+                                               tab1Area.getWidth() - 24, 2);
+        g.setColour(MixCoachTheme::accent());
+        g.fillRoundedRectangle(underline.toFloat(), 1.0f);
+    }
+
+    centreArea.removeFromLeft(4);
+
+    // ─── Tab 2: ANALYZERS ────────────────────────────────────────────────
+    auto tab2Area = centreArea.removeFromLeft(110);
+    headerTab2Bounds_ = tab2Area;
+    bool isTab2Active = (headerActiveTab_ == 1);
+
+    if (isTab2Active) {
+        g.setColour(juce::Colour(0x14FFFFFF));
+        g.fillRoundedRectangle(tab2Area.toFloat().reduced(2, 2), 4.0f);
+    }
+
+    g.setColour(isTab2Active ? MixCoachTheme::accent() : MixCoachTheme::textDim());
+    g.drawText("ANALYZERS", tab2Area.reduced(0, 4), juce::Justification::centred);
+
+    if (isTab2Active) {
+        auto underline = juce::Rectangle<int>(tab2Area.getX() + 12, tab2Area.getBottom() - 4,
+                                               tab2Area.getWidth() - 24, 2);
+        g.setColour(MixCoachTheme::accent());
+        g.fillRoundedRectangle(underline.toFloat(), 1.0f);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  RIGHT: VERIFICAR PROGRESO button + icons
+    // ═══════════════════════════════════════════════════════════════════════
+    auto rightArea = headerInner.removeFromRight(300);
+
+    // ─── Icon buttons (≡ ? ⚙) ────────────────────────────────────────────
+    auto iconsArea = rightArea.removeFromRight(90);
+    int iconW = 28;
+
+    // Menu icon ≡
+    auto menuIconArea = iconsArea.removeFromRight(iconW);
+    g.setFont(juce::Font(juce::FontOptions(16.0f)));
     g.setColour(MixCoachTheme::textMuted());
-    g.drawText("v1.0.0", versionArea, juce::Justification::centredRight);
+    g.drawText(juce::CharPointer_UTF8("\xE2\x89\xA1"), menuIconArea, juce::Justification::centred);
+
+    // Help icon ?
+    auto helpIconArea = iconsArea.removeFromRight(iconW);
+    g.setFont(juce::Font(juce::FontOptions(14.0f)).boldened());
+    g.drawText("?", helpIconArea, juce::Justification::centred);
+
+    // Settings icon ⚙
+    auto settingsIconArea = iconsArea.removeFromRight(iconW);
+    g.setFont(juce::Font(juce::FontOptions(14.0f)));
+    g.drawText(juce::CharPointer_UTF8("\xE2\x9A\x99"), settingsIconArea, juce::Justification::centred);
+
+    rightArea.removeFromRight(8);
+
+    // ─── VERIFICAR PROGRESO button ─────────────────────────────────────
+    auto verifyArea = rightArea.removeFromRight(160);
+    headerVerifyBounds_ = verifyArea;
+
+    // Button background (violeta sólido)
+    g.setColour(MixCoachTheme::accent());
+    g.fillRoundedRectangle(verifyArea.toFloat().reduced(1, 6), 5.0f);
+
+    // Button hover glow
+    g.setColour(MixCoachTheme::accentGlow().withAlpha(0.2f));
+    g.fillRoundedRectangle(verifyArea.toFloat().reduced(1, 6), 5.0f);
+
+    // Button text
+    g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
+    g.setColour(juce::Colours::white);
+    g.drawText(juce::CharPointer_UTF8("VERIFICAR PROGRESO"), verifyArea.reduced(4, 2), juce::Justification::centred);
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  DECORATIVE ELEMENTS
+    //  DECORATIVE: Corner accent (bottom-left)
     // ═══════════════════════════════════════════════════════════════════════
-
-    // ─── Status dot (top-right corner, AI active indicator) ──────────────
-    auto dotArea = headerBounds.removeFromRight(8).removeFromTop(8);
-    float pulse = 0.6f + 0.4f * std::sin(juce::Time::getMillisecondCounter() * 0.004f);
-    g.setColour(MixCoachTheme::accentAIGlow().withAlpha(pulse * 0.3f));
-    g.fillEllipse(dotArea.toFloat().expanded(4.0f));
-    g.setColour(MixCoachTheme::accentAI().withAlpha(pulse));
-    g.fillEllipse(dotArea.toFloat());
-
-    // ─── Corner accent (bottom-left decorative line) ─────────────────────
     auto cornerArea = juce::Rectangle<int>(0, getHeight() - 20, 40, 20).toFloat();
     juce::ColourGradient cornerGrad(
         MixCoachTheme::accent().withAlpha(0.06f),
@@ -873,6 +885,54 @@ void MixCoachAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(MixCoachTheme::accent().withAlpha(0.08f));
     g.fillRect(0.0f, (float)getHeight() - 1.0f, 40.0f, 1.0f);
     g.fillRect(0.0f, (float)getHeight() - 20.0f, 1.0f, 20.0f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  mouseDown — Manejo de clicks en el header (tabs, botones, iconos)
+// ═══════════════════════════════════════════════════════════════════════════
+void MixCoachAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
+{
+    if (editorBeingDestroyed_ || !tabbedComponent_)
+        return;
+
+    auto pos = e.getPosition();
+
+    // ─── Tab click: AI COACH (tab 0) ─────────────────────────────────────
+    if (headerTab1Bounds_.contains(pos) && headerActiveTab_ != 0)
+    {
+        headerActiveTab_ = 0;
+        tabbedComponent_->setCurrentTabIndex(0);
+        repaint();
+        return;
+    }
+
+    // ─── Tab click: ANALYZERS (tab 1) ────────────────────────────────────
+    if (headerTab2Bounds_.contains(pos) && headerActiveTab_ != 1)
+    {
+        headerActiveTab_ = 1;
+        tabbedComponent_->setCurrentTabIndex(1);
+        repaint();
+        return;
+    }
+
+    // ─── VERIFICAR PROGRESO button ───────────────────────────────────────
+    if (headerVerifyBounds_.contains(pos))
+    {
+        // Trigger a full re-scan + coach analysis
+        if (sharedData_)
+        {
+            bgBackupScanRequested_.store(true);
+            bgForceSyncRequested_.store(true);
+        }
+
+        // Notificar al coach engine para evaluar progreso
+        auto* coach = processorRef_.getCoachEngine();
+        if (coach != nullptr)
+            coach->periodicAnalysis();
+
+        repaint();
+        return;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -896,8 +956,8 @@ void MixCoachAudioProcessorEditor::detectNewMessengers()
 
         registry.forEachActive([&](const SlotInfo& info) {
             int idx = info.slotIndex;
-            if (idx >= 0 && idx < SlotRegistry::kMaxSlots && !announcedSlots_[idx]) {
-                announcedSlots_[idx] = true;
+            if (idx >= 0 && idx < SlotRegistry::kMaxSlots && !s_announcedSlots_[idx]) {
+                s_announcedSlots_[idx] = true;
                 coach->announceNewTrack(idx,
                                         juce::String(info.trackName),
                                         info.colour);
@@ -907,8 +967,8 @@ void MixCoachAudioProcessorEditor::detectNewMessengers()
         if (currentActiveCount < lastActiveSlotCount_) {
             for (int i = 0; i < SlotRegistry::kMaxSlots; ++i) {
                 auto info = registry.getSlotInfo(i);
-                if (!info.active && announcedSlots_[i]) {
-                    announcedSlots_[i] = false;
+                if (!info.active && s_announcedSlots_[i]) {
+                    s_announcedSlots_[i] = false;
                 }
             }
         }

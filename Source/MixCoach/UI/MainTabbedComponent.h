@@ -27,6 +27,11 @@ public:
     // Actualización rápida del spectrograph (60fps ligero)
     void fastUpdateSpectrograph(SlotRegistry& registry);
 
+    // Smooth de meters y spectrograph SIN lock (60fps, no necesita SlotRegistry)
+    void smoothMeters() { coachPanel_->smoothMeters(); }
+    void smoothAnalyzersPanel(double sampleRateHz = 60.0);
+    void smoothSpectrograph() { smoothAnalyzersPanel(60.0); }
+
 private:
     juce::AudioProcessor&           processorRef_;
     SharedData&                     sharedData_;

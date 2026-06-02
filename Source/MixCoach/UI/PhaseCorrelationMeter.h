@@ -17,9 +17,11 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void setCorrelation(float value);
+    bool advanceFrame(double sampleRateHz = 60.0, bool allowRepaint = true);
 
 private:
     SmoothValue correlation_{ 1.0f, 5.0f, 100.0f };
+    float correlationTarget_ = 1.0f;
     juce::Label titleLabel_;
     juce::Label valueLabel_;
 };

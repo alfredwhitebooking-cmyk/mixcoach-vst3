@@ -9,6 +9,8 @@
 ### 🧭 Cómo navegar este documento (para IA)
 
 ```
+AGENTS.md → entrada rapida para Codex, Antigravity, Freebuff y otros agentes
+    ↓
 AI_CONTEXT.md (ESTE ARCHIVO) → lectura completa recomendada
     ↓
 workspace_memory/project_map.md → mapa arquitectónico con diagramas
@@ -28,6 +30,7 @@ workspace_memory/current_state.md → estado actual y próximos pasos
 | Cómo se comunican los plugins | `Common/memory/SlotRegistry.h` + `SharedMemory.h` |
 | Análisis FFT/RMS/fase | `Messenger/telemetry/TelemetryCollector.h` + `Common/audio/AudioAnalysis.h` |
 | Lógica de mentoría IA | `MixCoach/engine/CoachEngine.h` + `PhaseManager.h` |
+| Vision UI / referencias visuales | `AGENTS.md` + `workspace_memory/visual_design.md` + `UI_REFERENCES/*.png` |
 | UI de analizadores | `MixCoach/ui/AnalyzersPanelComponent.h` |
 | Cómo se inicializa el plugin | `MixCoach/core/PluginProcessor.h` |
 | Cómo compilar y validar | `build.ps1` + `scripts/validate.ps1` |

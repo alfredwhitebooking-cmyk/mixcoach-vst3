@@ -64,7 +64,7 @@ static void test_construction() {
 
     auto img = renderComponent(meter, 400, 200);
     TEST("empty paint completes without crash", true);
-    TEST("default paint has content (title + empty bars)", imageHasContent(img));
+    TEST("default paint has content (meters + readouts)", imageHasContent(img));
 }
 
 static void test_update_data_basic() {
@@ -159,7 +159,7 @@ static void test_update_data_with_lufs_fallback() {
     mixcoach::MeterComponent meter;
     meter.setSize(400, 200);
 
-    // When lufsIntegrated is -100 (< -99), MeterComponent falls back to peakValue - 14
+    // When lufsIntegrated is invalid, short-term / readout may stay at floor
     mixcoach::TrackTelemetry telem{};
     telem.peakLeft = -12.0f;
     telem.peakRight = -12.0f;

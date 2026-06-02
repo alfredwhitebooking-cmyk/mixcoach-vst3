@@ -1,48 +1,77 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_graphics/juce_graphics.h>
-#include <cmath>
 #include <vector>
+#include "SmoothValue.h"
 #include "MixCoachTheme.h"
 
 namespace mixcoach {
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  SpectrographComponent — Espectrograma estilo IK Multimedia
-//  Rango 20 Hz – 20 kHz, mapeo logarítmico, barras dinámicas con colores
-//  profesionales, suavizado fluido por banda.
-// ═══════════════════════════════════════════════════════════════════════════
-class SpectrographComponent : public juce::Component {
+// SESIÓN 3 – RTA (barras log 20 Hz–20 kHz, estilo UI_REFERENCES Tab2)
+class SpectrographComponent : public juce::Component
+{
 public:
     SpectrographComponent();
     ~SpectrographComponent() override = default;
+
     void paint(juce::Graphics& g) override;
     void resized() override;
+
+    void setSampleRate(double sampleRate);
     void updateSpectrum(const float* data, int numBins);
+    /** Avanza suavizado de barras RTA a sampleRateHz (p. ej. 60). */
+    bool smoothSpectrum(double sampleRateHz = 60.0, bool allowRepaint = true);
 
 private:
-    static constexpr int kNumDisplayBins = 256;
-    static constexpr int kMaxFFTBins = 512;
-    static constexpr float kMinFreq = 20.0f;
-    static constexpr float kMaxFreq = 20000.0f;
+    static constexpr int   kNumRtaBands   = 40;
+    static constexpr int   kMaxFFTBins    = 512;
+    static constexpr int   kMessengerFftSize = 1024;
+    static constexpr float kMinFreq       = 20.0f;
+    static constexpr float kMaxFreq       = 20000.0f;
+    static constexpr float kDisplayTopDb  = 0.0f;
+    static constexpr float kDisplayBottomDb = -45.0f;
 
-    std::vector<float> displayBins_;      // smoothed display values
-    std::vector<float> rawBins_;          // raw incoming values
-    std::vector<float> peakHoldBins_;     // peak hold per bin
-    std::vector<int>   peakHoldTimers_;   // decay timers per bin
+    struct RtaBand {
+        float centerHz = 0.0f;
+        float lowHz    = 0.0f;
+        float highHz   = 0.0f;
+    };
 
-    juce::Label titleLabel_;
+    /** Geometría del gráfico, en coordenadas locales de staticCache_ (origen plotArea_). */
+    struct PlotLayout {
+        juce::Rectangle<float> plot;
+        juce::Rectangle<float> dbCol;
+        bool valid = false;
+    };
 
-    // Log-spaced frequency mapping table
-    std::vector<float> binFreqs_;
-    std::vector<float> fftWeights_;
+    double sampleRate_ = 48000.0;
+    std::vector<RtaBand> bands_;
+    std::vector<SmoothValue> bandLevels_;
 
-    juce::Colour getBinColour(float magnitude) const noexcept;
-    void buildFrequencyMap(int fftNumBins);
-    void drawGrid(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawSpectrumBars(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawPeakHold(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawFrequencyLabels(juce::Graphics& g, juce::Rectangle<float> bounds);
+    juce::Rectangle<int> plotArea_;
+    juce::Rectangle<int> settingsButton_;
+
+    juce::Image staticCache_;
+    bool staticCacheValid_ = false;
+    PlotLayout layout_;
+
+    void rebuildBands();
+    void invalidateStaticCache();
+    void rebuildStaticCache();
+
+    float freqToX(float freqHz, juce::Rectangle<float> plot) const noexcept;
+    float normToDb(float norm01) const noexcept;
+    float dbToDisplayNorm(float db) const noexcept;
+    void aggregateBand(const float* data, int numBins, int bandIndex, float& outDb) const;
+
+    PlotLayout computePlotLayout() const;
+
+    void drawPlotBackground(juce::Graphics& g, juce::Rectangle<float> plot) const;
+    void drawGrid(juce::Graphics& g, juce::Rectangle<float> plot) const;
+    void drawRtaBars(juce::Graphics& g, juce::Rectangle<float> plot) const;
+    void drawDbAxis(juce::Graphics& g, juce::Rectangle<float> labelCol) const;
+    void drawFreqAxis(juce::Graphics& g, juce::Rectangle<float> plot) const;
+    void drawSettingsChrome(juce::Graphics& g) const;
 };
 
 } // namespace mixcoach

@@ -1,18 +1,14 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
-#include <juce_graphics/juce_graphics.h>
 #include "SmoothValue.h"
-#include "MixCoachTheme.h"
+#include "VerticalGradientMeter.h"
 #include "../../Common/types/TelemetryData.h"
 
 namespace mixcoach {
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  MeterComponent — Panel compacto de medidores (25% centro-arriba)
-//  Izquierda: 2 barritas L/R | Centro: 4 numéricos (Peak,RMS,LUFS,DR)
-//  | Derecha: 2 barritas LUFS MDR
-// ═══════════════════════════════════════════════════════════════════════════
-class MeterComponent : public juce::Component {
+// SESIÓN 2 – METER (Tab Analyzers): VU L/R | PEAK/RMS/LUFS/DR | LUFS MDR L/R
+class MeterComponent : public juce::Component
+{
 public:
     MeterComponent();
     ~MeterComponent() override = default;
@@ -22,28 +18,35 @@ public:
 
     void updateData(const TrackTelemetry& telem);
 
+    /** Timer 60 Hz: avanza suavizado y repinta solo si hubo cambio visible. */
+    bool advanceVisuals(double sampleRateHz = 60.0, bool allowRepaint = true);
+
 private:
-    // L/R bar meters
-    SmoothValue leftLevel_{ -80.0f, 3.0f, 200.0f };
-    SmoothValue rightLevel_{ -80.0f, 3.0f, 200.0f };
+    SmoothValue leftBar_{ -80.0f, 1.5f, 35.0f };
+    SmoothValue rightBar_{ -80.0f, 1.5f, 35.0f };
+    SmoothValue lufsLeftBar_{ -30.0f, 3.0f, 45.0f };
+    SmoothValue lufsRightBar_{ -30.0f, 3.0f, 45.0f };
 
-    // Numeric values
-    float peakValue_ = -80.0f;
-    float rmsValue_ = -80.0f;
-    float lufsValue_ = -80.0f;
-    float drValue_ = 0.0f;
+    SmoothValue peakSmooth_{ -80.0f, 3.0f, 40.0f };
+    SmoothValue rmsSmooth_{ -80.0f, 4.0f, 50.0f };
+    SmoothValue lufsSmooth_{ -30.0f, 6.0f, 60.0f };
+    SmoothValue drSmooth_{ 0.0f, 12.0f, 80.0f };
 
-    // LUFS MDR bars
-    SmoothValue lufsMomentary_{ -30.0f, 5.0f, 150.0f };
-    SmoothValue lufsRange_{ 0.0f, 50.0f, 400.0f };
+    MeterChannelBallistics leftPeak_;
+    MeterChannelBallistics rightPeak_;
+    MeterChannelBallistics lufsLeftHold_;
+    MeterChannelBallistics lufsRightHold_;
 
-    juce::Label headerLabel_;
+    float lufsReadoutLeft_  = -100.0f;
+    float lufsReadoutRight_ = -100.0f;
 
-    void drawLevelBar(juce::Graphics& g, juce::Rectangle<float> bounds,
-                      float level, juce::Colour colour, const juce::String& label);
-    void drawNumericBox(juce::Graphics& g, juce::Rectangle<float> bounds,
-                        float value, const juce::String& label,
-                        const juce::String& unit, juce::Colour colour);
+    void paintStereoColumn(juce::Graphics& g, juce::Rectangle<int> area);
+    void paintNumericColumn(juce::Graphics& g, juce::Rectangle<int> area);
+    void paintLufsMdrColumn(juce::Graphics& g, juce::Rectangle<int> area);
+
+    void drawMetricRow(juce::Graphics& g, juce::Rectangle<float> row,
+                       const juce::String& label, float valueDb,
+                       const juce::String& suffix, bool isLufs = false);
 };
 
 } // namespace mixcoach

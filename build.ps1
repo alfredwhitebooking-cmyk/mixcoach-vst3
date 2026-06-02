@@ -7,6 +7,8 @@
 #   .\build.ps1 -Clean        Limpia build anterior y recompila
 #   .\build.ps1 -Debug        Compila Debug (para desarrollo)
 #   .\build.ps1 -NoDeploy     Solo compila, no despliega
+#   .\scripts\ProjectCheckpoint.ps1 -Action Save -Name "antes_de_cambiar"
+#                             Crea backup restaurable del proyecto
 # ──────────────────────────────────────────────────────────────────────────────
 
 param(
@@ -46,11 +48,14 @@ USO:
   .\build.ps1 -Clean      Limpia y recompila
   .\build.ps1 -Debug      Compila Debug
   .\build.ps1 -NoDeploy   Solo compila sin deploy
+  .\scripts\ProjectCheckpoint.ps1 -Action Save -Name "antes_de_cambiar"
+                         Crea backup restaurable del proyecto
 
 EJEMPLOS:
   .\build.ps1                         # Build rapido
   .\build.ps1 -Clean                  # Build desde cero
   .\build.ps1 -Debug -NoDeploy        # Debug sin deploy
+  .\scripts\ProjectCheckpoint.ps1 -Action List
 "@
     exit 0
 }
@@ -129,12 +134,14 @@ if ($needsConfig) {
 # ─── 3. Compilar ──────────────────────────────────────────────────────────────
 Write-Step "PASO 4/6: Compilando ($Config)"
 
+# Usar un SOLO archivo de log (se sobrescribe en cada build, sin acumular)
 $buildLog = Join-Path $ProjectRoot "build_output.txt"
+
 $buildResult = cmake --build $BuildDir --config $Config 2>&1 | Tee-Object -FilePath $buildLog
 
 if ($LASTEXITCODE -ne 0) {
     Write-Err "ERROR DE COMPILACION"
-    Write-Host "  Revisa el log: build_output.txt" -ForegroundColor $Yellow
+    Write-Host "  Revisa el log: $buildLog" -ForegroundColor $Yellow
     Write-Host "  Ultimas 20 lineas del error:" -ForegroundColor $Yellow
     $buildResult | Select-Object -Last 20 | ForEach-Object { Write-Host "    $_" -ForegroundColor $Red }
     exit 1
@@ -161,7 +168,7 @@ if (-not $NoDeploy) {
 
     $deployScript = Join-Path $ProjectRoot "DeployVST3.ps1"
     if (Test-Path $deployScript) {
-        powershell -ExecutionPolicy Bypass -File $deployScript
+        powershell -ExecutionPolicy Bypass -File $deployScript -Config $Config
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "Deploy fallo - FL Studio abierto?"
             Write-Host "  Cierra FL Studio y ejecuta: .\DeployVST3.ps1" -ForegroundColor $Yellow

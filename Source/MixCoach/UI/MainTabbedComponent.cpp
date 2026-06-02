@@ -12,27 +12,39 @@ MainTabbedComponent::MainTabbedComponent(juce::AudioProcessor& processor,
 {
     coachPanel_ = std::make_unique<MixCoachPanel>();
 
+    // ═══ Sync selection between tabs ═══
+    // Tab 1 (coach) -> Tab 2 (analyzers)
+    coachPanel_->onTrackSelected = [this](int slotIndex) {
+        analyzersPanel_->setSelectedSlot(slotIndex);
+    };
+
+    // Tab 2 (analyzers) -> Tab 1 (coach)
+    analyzersPanel_->onTrackSelected = [this](int slotIndex) {
+        coachPanel_->setSelectedTrackSlot(slotIndex);
+    };
+
     // ─── Tab 1: Mix Coach ──────────────────────────────────────────────────
-    // Chat general con IA + referencias (archivos/enlaces) + lista de Messengers
-    addTab(juce::CharPointer_UTF8("\xF0\x9F\x8E\x9B Mix Coach"),
+    addTab(juce::CharPointer_UTF8("\xF0\x9F\x8E\x9B  Mix Coach"),
            MixCoachTheme::bgPanel(), coachPanel_.get(), false, 0);
 
     // ─── Tab 2: Professional Metering ──────────────────────────────────────
-    // Analizadores profesionales estilo IK Multimedia
-               addTab(juce::CharPointer_UTF8("\xF0\x9F\x93\x8A Metering"),
-            MixCoachTheme::bgPanel(), analyzersPanel_.get(), false, 1);
+    addTab(juce::CharPointer_UTF8("\xF0\x9F\x93\x8A  Metering"),
+           MixCoachTheme::bgPanel(), analyzersPanel_.get(), false, 1);
 
-    setTabBarDepth(34);
-    getTabbedButtonBar().setColour(juce::TabbedButtonBar::tabTextColourId, MixCoachTheme::textPrimary());
-    getTabbedButtonBar().setColour(juce::TabbedButtonBar::frontOutlineColourId, MixCoachTheme::accent());
-    getTabbedButtonBar().setColour(juce::TabbedButtonBar::tabOutlineColourId, MixCoachTheme::border());
+    setTabBarDepth(0);
 
     setCurrentTabIndex(0);
 }
 
 void MainTabbedComponent::resized()
 {
-    juce::TabbedComponent::resized();
+    // Tab bar hidden (depth=0); header tabs live in PluginEditor.
+    // Size both tab panels — only sizing one child left AI Coach stale until resize.
+    auto area = getLocalBounds();
+    if (coachPanel_ != nullptr)
+        coachPanel_->setBounds(area);
+    if (analyzersPanel_ != nullptr)
+        analyzersPanel_->setBounds(area);
 }
 
 void MainTabbedComponent::updateAllPanels(SlotRegistry& registry, double sampleRate)
@@ -43,7 +55,7 @@ void MainTabbedComponent::updateAllPanels(SlotRegistry& registry, double sampleR
         // Update MixCoach panel messenger list
         coachPanel_->updateMessengers(registry);
         // Existing analyzers panel update
-        analyzersPanel_->updateAnalyzers(registry);
+        analyzersPanel_->updateAnalyzers(registry, sampleRate);
     }
     catch (const std::exception& e)
     {
@@ -80,6 +92,12 @@ void MainTabbedComponent::fastUpdateSpectrograph(SlotRegistry& registry)
         juce::Logger::outputDebugString("[MainTabbedComponent::fastUpdateSpectrograph] Exception: "
                                          + juce::String(e.what()));
     }
+}
+
+void MainTabbedComponent::smoothAnalyzersPanel(double sampleRateHz)
+{
+    if (analyzersPanel_)
+        analyzersPanel_->smoothVisuals(sampleRateHz);
 }
 
 } // namespace mixcoach
