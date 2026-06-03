@@ -18,8 +18,8 @@ VirtualBusesComponent::VirtualBusesComponent()
 
     // Buses predefinidos con colores profesionales
     const char* busNames[] = { "Bateria", "Bajo", "Guitarras", "Teclados", "Voces", "FX" };
-    for (int i = 0; i < 6; ++i) {
-        buses_.push_back({ busNames[i], getBusColour(i), -60.0f, 0 });
+    for (int i = 0; i < kNumBuses; ++i) {
+        buses_.push_back({ static_cast<BusType>(i), busNames[i], getBusColour(i), -60.0f, 0 });
     }
 }
 
@@ -50,12 +50,25 @@ void VirtualBusesComponent::paint(juce::Graphics& g)
         auto busArea = contentArea.removeFromTop(static_cast<int>(busHeight)).reduced(6, 4);
 
         // Glass card background
-        MixCoachTheme::fillGlassPanel(g, busArea.toFloat(), 6.0f);
+        bool isSelected = (selectedBus_ == bus.type);
+        if (isSelected) {
+            // Selected: filled background with bus colour
+            g.setColour(bus.colour.withAlpha(0.15f));
+            g.fillRoundedRectangle(busArea.toFloat(), 6.0f);
+            g.setColour(bus.colour.withAlpha(0.5f));
+            g.drawRoundedRectangle(busArea.toFloat(), 6.0f, 1.5f);
+        } else {
+            MixCoachTheme::fillGlassPanel(g, busArea.toFloat(), 6.0f);
+        }
 
         // Color accent bar (left)
         auto accentBar = busArea.removeFromLeft(5);
         g.setColour(bus.colour);
         g.fillRoundedRectangle(accentBar.toFloat(), 2.0f);
+        if (isSelected) {
+            g.setColour(bus.colour.brighter(0.3f));
+            g.fillRoundedRectangle(accentBar.toFloat().withWidth(3.0f), 2.0f);
+        }
 
         busArea.removeFromLeft(8);
 
@@ -70,12 +83,13 @@ void VirtualBusesComponent::paint(juce::Graphics& g)
             "\xF0\x9F\x94\x80"   // FX
         };
         g.setFont(juce::Font(juce::FontOptions(16.0f)));
+        g.setColour(isSelected ? bus.colour.brighter(0.5f) : MixCoachTheme::textPrimary());
         g.drawText(icons[i], iconArea, juce::Justification::centred);
 
         // Bus name
-        g.setColour(MixCoachTheme::textPrimary());
         g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeBody)).boldened());
         auto nameArea = busArea.removeFromLeft(100);
+        g.setColour(isSelected ? bus.colour.brighter(0.3f) : MixCoachTheme::textPrimary());
         g.drawText(bus.name, nameArea, juce::Justification::centredLeft);
 
         // Track count badge
@@ -112,6 +126,50 @@ void VirtualBusesComponent::paint(juce::Graphics& g)
                 false);
             g.setGradientFill(glow);
             g.fillRect(fillBar);
+        }
+    }
+}
+
+void VirtualBusesComponent::mouseDown(const juce::MouseEvent& e)
+{
+    int busIndex = hitTestBus(e.getPosition());
+    if (busIndex >= 0 && busIndex < static_cast<int>(buses_.size()))
+    {
+        selectedBus_ = buses_[busIndex].type;
+        repaint();
+        if (onBusSelected)
+            onBusSelected(selectedBus_);
+    }
+}
+
+int VirtualBusesComponent::hitTestBus(juce::Point<int> pos) const
+{
+    if (buses_.empty())
+        return -1;
+
+    auto area = getLocalBounds().reduced(8);
+    auto contentArea = area;
+    contentArea.removeFromTop(24);
+
+    float busHeight = static_cast<float>(contentArea.getHeight()) / static_cast<float>(buses_.size());
+
+    for (int i = 0; i < static_cast<int>(buses_.size()); ++i) {
+        auto busArea = contentArea.removeFromTop(static_cast<int>(busHeight)).reduced(6, 4);
+        if (busArea.contains(pos))
+            return i;
+    }
+
+    return -1;
+}
+
+void VirtualBusesComponent::setBusLevel(BusType bus, float levelDb, int trackCount)
+{
+    for (auto& b : buses_) {
+        if (b.type == bus) {
+            b.level = levelDb;
+            b.trackCount = trackCount;
+            repaint();
+            return;
         }
     }
 }

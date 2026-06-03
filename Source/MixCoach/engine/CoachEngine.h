@@ -45,6 +45,9 @@ private:
     void respondWithContext(const juce::String& text, const juce::String& context, MentorMessage::Type type);
     TrackTelemetry getLatestTelemetry(int slotIndex) const;
 
+    // ─── Resetear estados de pista (para /reset) ───────────────────────────
+    void resetTrackStates();
+
     // ═══ ANÁLISIS POR FASE (leen datos reales de telemetría) ═══════════════
 
     // Gain Staging — peaks, clipping, headroom

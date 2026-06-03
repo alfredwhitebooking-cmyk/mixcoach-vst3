@@ -56,6 +56,26 @@ void CoachEngine::respondWithContext(const juce::String& text,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  RESET — Reinicia estados de pista para empezar de nuevo la fase
+// ═══════════════════════════════════════════════════════════════════════════
+
+void CoachEngine::resetTrackStates()
+{
+    for (auto& state : trackStates_) {
+        state = TrackAnalysisState{};
+    }
+    lastPeakWarningUs_ = 0;
+    lastCrestWarningUs_ = 0;
+    lastPhaseWarningUs_ = 0;
+    lastHeadroomWarningUs_ = 0;
+    lastTonalWarningUs_ = 0;
+    lastDynamicWarningUs_ = 0;
+    lastLoudnessWarningUs_ = 0;
+    lastMaskingWarningUs_ = 0;
+    LogHelper::writeToLog("[CoachEngine] Track states and cooldowns reset");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  ANÁLISIS PERIÓDICO — Llama a los análisis según la fase actual
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -860,9 +880,173 @@ void CoachEngine::executeCommand(const juce::String& command)
         analyzeTonalBalanceReal();
         analyzeDynamicsReal();
         analyzePhaseReal();
-        analyzePhaseReal();
         analyzeSpectralMaskingReal();
         analyzeOverallMixReal();
+    }
+    else if (lower == "/historial" || lower == "/history") {
+        int count = sharedData_.getMessageCount();
+        int start = juce::jmax(0, count - 10);
+        int shown = count - start;
+        if (shown == 0) {
+            respondWith("📜 No hay mensajes en el historial aún.",
+                        MentorMessage::Type::Info);
+        } else {
+            respondWith("📜 **Últimos " + juce::String(shown) + " mensajes:**",
+                        MentorMessage::Type::Info);
+            for (int i = start; i < count; ++i) {
+                auto msg = sharedData_.getMessage(i);
+                juce::String prefix;
+                switch (msg.type) {
+                    case MentorMessage::Type::Warning:    prefix = "🔴"; break;
+                    case MentorMessage::Type::Tip:        prefix = "💡"; break;
+                    case MentorMessage::Type::Achievement: prefix = "🎉"; break;
+                    case MentorMessage::Type::Question:   prefix = "❓"; break;
+                    default:                              prefix = "📋"; break;
+                }
+                juce::String text = juce::String(msg.text).substring(0, 120);
+                respondWith(prefix + " " + text,
+                            msg.type);
+            }
+        }
+    }
+    else if (lower == "/reset" || lower == "/reiniciar") {
+        resetTrackStates();
+        auto phase = phaseManager_.getCurrentPhase();
+        juce::String phaseStr = phaseNames[static_cast<int>(phase)];
+        respondWith(
+            "🔄 **Estados reiniciados** para la fase '" + phaseStr + "'.\n"
+            "Los cooldowns se han limpiado — los análisis y advertencias "
+            "empezarán desde cero.",
+            MentorMessage::Type::Achievement);
+    }
+    else if (lower == "/phase" || lower == "/fase") {
+        auto phase = phaseManager_.getCurrentPhase();
+        auto phaseStr = juce::String(phaseNames[static_cast<int>(phase)]);
+        auto progress = phaseManager_.getPhaseProgress(phase);
+        auto minTracks = PhaseManager::minTracksForPhase(phase);
+        auto active = sharedData_.getSlotRegistry().activeCount();
+        bool complete = phaseManager_.isPhaseComplete(phase);
+        int achievements = phaseManager_.getAchievementCount();
+        respondWith(
+            "🗺️ **Fase actual:** '" + phaseStr + "' — "
+            + juce::String(phaseManager_.phaseDescription(phase)) + "\n\n"
+            "📊 **Progreso:** " + juce::String(static_cast<int>(progress * 100.0f)) + "%\n"
+            "🎯 **Pistas mínimas requeridas:** " + juce::String(minTracks) + "\n"
+            "🎛️ **Pistas activas:** " + juce::String(active) + "\n"
+            "🏆 **Logros:** " + juce::String(achievements) + "\n"
+            + (complete ? "✅ **Fase completada** — usa /next para avanzar" : "⏳ **Fase en progreso**"),
+            complete ? MentorMessage::Type::Achievement : MentorMessage::Type::Info);
+    }
+    else if (lower == "/export" || lower == "/reporte") {
+        auto& registry = sharedData_.getSlotRegistry();
+        int active = registry.activeCount();
+        if (active == 0) {
+            respondWith("📄 No hay pistas activas para exportar.",
+                        MentorMessage::Type::Info);
+        } else {
+            juce::String report;
+            report = "📄 **INFORME DE MEZCLA — MixCoach**\n"
+                     "═══════════════════════════════════\n\n"
+                     "📅 Generado: " + juce::String(juce::Time::getCurrentTime().formatted("%d/%m/%Y %H:%M")) + "\n"
+                     "🎛️ Pistas activas: " + juce::String(active) + "\n"
+                     "🗺️ Fase actual: " + juce::String(phaseNames[static_cast<int>(phaseManager_.getCurrentPhase())]) + "\n"
+                     "🏆 Logros: " + juce::String(phaseManager_.getAchievementCount()) + "\n\n"
+                     "── Pistas ──\n";
+
+            registry.forEachActive([&](const SlotInfo& info) {
+                auto telem = getLatestTelemetry(info.slotIndex);
+                juce::String name = juce::String(info.trackName).trim();
+                if (name.isEmpty()) name = "Pista " + juce::String(info.slotIndex + 1);
+                report += "\n  " + name;
+                juce::String busName = "Sin bus";
+                if (info.bus >= BusType::Drums && info.bus <= BusType::FX) {
+                    busName = juce::String(busNames[static_cast<int>(info.bus)]);
+                }
+                report += "  [Bus: " + busName + "]\n";
+                if (telem.timestamp != 0) {
+                    report += "    Peak: " + juce::String(telem.peakLeft, 1) + " dB | "
+                              "RMS: " + juce::String(telem.rmsLeft, 1) + " dB\n";
+                    if (telem.crestFactor > 0.0f)
+                        report += "    Crest: " + juce::String(telem.crestFactor, 1) + " dB | ";
+                    if (telem.correlation < 1.0f)
+                        report += "Corr: " + juce::String(telem.correlation, 2);
+                    report += "\n";
+                    if (telem.lufsMomentary > -80.0f)
+                        report += "    LUFS: " + juce::String(telem.lufsMomentary, 1) + " (M) / "
+                                  + juce::String(telem.lufsShortTerm, 1) + " (S)\n";
+                }
+            });
+
+            report += "\n═══════════════════════════════════\n"
+                      "💡 Consejo: copia este reporte y pégalo en tu DAW o "
+                      "en tus notas de sesión para llevar registro.";
+
+            respondWith(report, MentorMessage::Type::Info);
+        }
+    }
+    else if (lower == "/estadisticas" || lower == "/stats") {
+        auto& registry = sharedData_.getSlotRegistry();
+        int active = registry.activeCount();
+        if (active == 0) {
+            respondWith("📊 No hay pistas activas para generar estadísticas.",
+                        MentorMessage::Type::Info);
+        } else {
+            int clippingCount = 0;
+            int nearClipCount = 0;
+            int phaseIssueCount = 0;
+            int bussedCount = 0;
+            int unnamedCount = 0;
+            float sumCrest = 0.0f;
+            int crestCount = 0;
+            float sumRms = 0.0f;
+            int rmsCount = 0;
+
+            registry.forEachActive([&](const SlotInfo& info) {
+                auto telem = getLatestTelemetry(info.slotIndex);
+                if (telem.timestamp == 0) return;
+                float peak = juce::jmax(telem.peakLeft, telem.peakRight);
+                if (peak > -0.5f) clippingCount++;
+                else if (peak > -3.0f) nearClipCount++;
+                if (telem.correlation < 0.3f && telem.rmsLeft > -30.0f) phaseIssueCount++;
+                if (info.bus != BusType::None) bussedCount++;
+                juce::String name = juce::String(info.trackName).trim();
+                if (name.isEmpty() || name.startsWith("Pista")) unnamedCount++;
+                if (telem.crestFactor > 0.0f && telem.rmsLeft > -40.0f) {
+                    sumCrest += telem.crestFactor;
+                    crestCount++;
+                }
+                if (telem.rmsLeft > -60.0f) {
+                    sumRms += (telem.rmsLeft + telem.rmsRight) * 0.5f;
+                    rmsCount++;
+                }
+            });
+
+            juce::String stats;
+            stats = "📊 **ESTADÍSTICAS DE LA SESIÓN**\n"
+                    "═══════════════════════════════\n\n"
+                    "🎛️ Pistas activas: " + juce::String(active) + "\n"
+                    "🔤 Sin nombre: " + juce::String(unnamedCount) + "\n"
+                    "🔗 Con bus: " + juce::String(bussedCount) + "/" + juce::String(active) + "\n\n"
+                    "⚠️ **Problemas detectados:**\n"
+                    "🔴 Clipping: " + juce::String(clippingCount) + " pistas\n"
+                    "🟡 Near-clip: " + juce::String(nearClipCount) + " pistas\n"
+                    "🔮 Fase baja (<0.3): " + juce::String(phaseIssueCount) + " pistas\n\n";
+
+            if (crestCount > 0) {
+                float avgCrest = sumCrest / crestCount;
+                stats += "📈 **Rendimiento:**\n"
+                         "Crest factor promedio: " + juce::String(avgCrest, 1) + " dB\n";
+            }
+            if (rmsCount > 0) {
+                float avgRms = sumRms / rmsCount;
+                stats += "RMS promedio: " + juce::String(avgRms, 1) + " dB\n";
+            }
+
+            stats += "\n═══════════════════════════════\n"
+                     "Fase: " + juce::String(phaseNames[static_cast<int>(phaseManager_.getCurrentPhase())]);
+
+            respondWith(stats, MentorMessage::Type::Info);
+        }
     }
     else if (lower == "/help" || lower == "/ayuda") {
         respondWith(
@@ -870,6 +1054,11 @@ void CoachEngine::executeCommand(const juce::String& command)
             "/next — Avanzar a la siguiente fase\n"
             "/status — Ver progreso actual\n"
             "/analisis — Análisis completo de la mezcla\n"
+            "/historial — Últimos mensajes del chat\n"
+            "/reset — Reiniciar estados y cooldowns de la fase actual\n"
+            "/phase — Información detallada de la fase actual\n"
+            "/export — Generar informe de la mezcla\n"
+            "/estadisticas — Estadísticas de la sesión\n"
             "/help — Mostrar esta ayuda\n\n"
             "También puedes preguntar:\n"
             "• \"Cómo va la mezcla?\"\n"

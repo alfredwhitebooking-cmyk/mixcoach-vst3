@@ -74,7 +74,7 @@ private:
     float loudnessRange_  = 0.0f;
 
     int blocksSinceLastCalc_ = 0;
-    static constexpr int kCalcInterval = 10; // Cada 10 bloques recalcular
+    static constexpr int kCalcInterval = 20; // Cada 20 bloques recalcular (~40ms a 48kHz/96samples)
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -113,9 +113,23 @@ private:
     static constexpr int kSpectrumBins = 512;
 
     int blockCount_ = 0;
-    static constexpr int kFFTInterval = 4; // Cada 4 bloques computar FFT
+    static constexpr int kFFTInterval = 8; // Cada 8 bloques computar FFT (~16ms, spectrograph a ~60fps)
 
     double sampleRate_ = 44100.0;
+
+    // ─── Throttling: solo DSP completo cada N bloques ───────────────────
+    // Con 100+ Messengers, hacer FFT + LUFS + correlación en CADA bloque
+    // de audio satura la CPU. En bloques intermedios, solo actualizamos
+    // peak (ultra-ligero) y devolvemos telemetría cacheada.
+    // La UI de MixCoach se actualiza a 30fps máximo, así que el throttle
+    // de 4 bloques (~8ms a 48kHz/96samples) es suficiente para mantener
+    // la fluidez visual.
+    //
+    // BENEFICIO: Reduce CPU de DSP en ~75% (solo 1 de cada 4 bloques
+    // ejecuta FFT, LUFS, RMS, correlación. Los otros 3 solo computan peak).
+    int processCounter_ = 0;
+    static constexpr int kProcessInterval = 4;
+    TrackTelemetry lastTelemetry_;
 };
 
 } // namespace mixcoach

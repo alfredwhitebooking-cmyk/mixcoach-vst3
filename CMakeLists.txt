@@ -133,6 +133,8 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/UI/TrackDashboardComponent.cpp
     Source/MixCoach/UI/AnalyzersPanelComponent.h
     Source/MixCoach/UI/AnalyzersPanelComponent.cpp
+    Source/MixCoach/UI/TelemetryProvider.h
+    Source/MixCoach/UI/TelemetryProvider.cpp
     Source/MixCoach/UI/VirtualBusesComponent.h
     Source/MixCoach/UI/VirtualBusesComponent.cpp
     Source/MixCoach/UI/ReferencePanelComponent.h
@@ -491,6 +493,62 @@ set_target_properties(TestSlotRegistry PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: Stress Test — 50+ tracks (simulates FL Studio with 55 Messengers) ──
+add_executable(TestStress50Tracks
+    tests/TestStress50Tracks.cpp
+    Source/Common/memory/SlotRegistry.h
+    Source/Common/memory/SlotRegistry.cpp
+    Source/Common/memory/SharedMemory.h
+    Source/Common/memory/SharedMemory.cpp
+    Source/Common/types/Constants.h
+    Source/Common/types/Types.h
+    Source/Common/types/TelemetryData.h
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestStress50Tracks PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestStress50Tracks PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestStress50Tracks PRIVATE /W4)
+set_target_properties(TestStress50Tracks PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── STRESS TEST: 128 slots (maximum capacity — worst case) ──────────────────
+add_executable(TestStress128Slots
+    tests/TestStress128Slots.cpp
+    Source/Common/memory/SlotRegistry.h
+    Source/Common/memory/SlotRegistry.cpp
+    Source/Common/memory/SharedMemory.h
+    Source/Common/memory/SharedMemory.cpp
+    Source/Common/types/Constants.h
+    Source/Common/types/Types.h
+    Source/Common/types/TelemetryData.h
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestStress128Slots PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestStress128Slots PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestStress128Slots PRIVATE /W4)
+set_target_properties(TestStress128Slots PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Test: IPC Integration (SlotRegistry → Backup → SharedMemory pipeline) ──
 add_executable(TestIPCIntegration
     tests/TestIPCIntegration.cpp
@@ -532,9 +590,11 @@ add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestSpectrographComponent>
     COMMAND $<TARGET_FILE:TestVectorscopeComponent>
     COMMAND $<TARGET_FILE:TestPhaseCorrelationMeter>
+    COMMAND $<TARGET_FILE:TestStress50Tracks>
+    COMMAND $<TARGET_FILE:TestStress128Slots>
     COMMAND $<TARGET_FILE:TestMeterComponent>
     DEPENDS TestSmoothValue TestPhaseManager TestCoachEngine TestTelemetryDSP TestIPCIntegration
-            TestSharedMemory TestSlotRegistry
+            TestSharedMemory TestSlotRegistry TestStress50Tracks TestStress128Slots
             TestLUFSMeter TestSpectrographComponent TestVectorscopeComponent
             TestPhaseCorrelationMeter TestMeterComponent
     COMMENT "Running all unit tests..."

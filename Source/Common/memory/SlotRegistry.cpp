@@ -4,6 +4,7 @@
 #include <juce_graphics/juce_graphics.h>
 #include <juce_core/juce_core.h>
 #include <atomic>
+#include <vector>
 
 namespace mixcoach {
 
@@ -26,6 +27,49 @@ float readBackupFloat(juce::FileInputStream& fis)
     return val;
 }
 
+bool copyFftMagnitudesFromSharedEntry(const SharedSlotEntry& entry, TrackTelemetry& telem)
+{
+    // NOTA: fftTimestamp NO se chequea aquí (antes causaba falsos negativos por
+    // torn reads). Ahora readSlot() usa el spinlock para lectura segura, pero el
+    // check de magnitud (>0.0001f) es suficiente y más robusto que depender del
+    // timestamp.
+    bool hasMagnitude = false;
+    for (int fi = 0; fi < kNumSpectrumBins; ++fi)
+    {
+        if (entry.fftMagnitudes[fi] > 0.0001f)
+        {
+            hasMagnitude = true;
+            break;
+        }
+    }
+    if (!hasMagnitude)
+        return false;
+
+    std::copy(std::begin(entry.fftMagnitudes),
+              std::end(entry.fftMagnitudes),
+              std::begin(telem.spectrum));
+    return true;
+}
+
+bool telemetryHasSpectrum(const TrackTelemetry& telem)
+{
+    for (int fi = 0; fi < 256; ++fi)
+    {
+        if (telem.spectrum[fi] > 0.0001f)
+            return true;
+    }
+    return false;
+}
+
+void preserveSpectrumFromPrevious(const TrackTelemetry& prev, TrackTelemetry& telem)
+{
+    if (telemetryHasSpectrum(telem) || !telemetryHasSpectrum(prev))
+        return;
+
+    std::copy(std::begin(prev.spectrum), std::begin(prev.spectrum) + 256,
+              std::begin(telem.spectrum));
+}
+
 TrackTelemetry buildTelemetryFromSharedEntry(const SharedSlotEntry& entry, int slotIndex)
 {
     TrackTelemetry telem;
@@ -41,17 +85,7 @@ TrackTelemetry buildTelemetryFromSharedEntry(const SharedSlotEntry& entry, int s
     telem.sampleL      = entry.sampleL;
     telem.sampleR      = entry.sampleR;
 
-    if (entry.fftTimestamp > 0)
-    {
-        const auto now = juce::Time::getMillisecondCounter();
-        const auto fftAge = now - static_cast<int64_t>(entry.fftTimestamp / 1000);
-        if (fftAge < 500)
-        {
-            std::copy(std::begin(entry.fftMagnitudes),
-                      std::end(entry.fftMagnitudes),
-                      std::begin(telem.spectrum));
-        }
-    }
+    copyFftMagnitudesFromSharedEntry(entry, telem);
 
     telem.lufsIntegrated = entry.lufsIntegrated;
     telem.lufsShortTerm  = entry.lufsShortTerm;
@@ -68,9 +102,10 @@ TrackTelemetry buildTelemetryFromSharedEntry(const SharedSlotEntry& entry, int s
 //  Cada slot se guarda en: %%TEMP%%/MixCoach_SlotBackup/slot_N.bin
 //  Formato: [magic:4] [version:4] [slotIndex:4] [active:4] [bus:4] [colourARGB:4] [trackName:64]
 // ═══════════════════════════════════════════════════════════════════════════
-static constexpr uint32_t kSlotFileMagic   = 0x4D534C54; // "MSLT"
-static constexpr uint32_t kSlotFileVersion = 2; // V2 incluye telemetría (peaks, RMS, LUFS)
+static constexpr uint32_t kSlotFileMagic    = 0x4D534C54; // "MSLT"
+static constexpr uint32_t kSlotFileVersion  = 3; // V3 incluye V2 + FFT magnitudes (512 floats)
 static constexpr uint32_t kSlotFileVersionV1 = 1; // Legacy (solo registro)
+static constexpr uint32_t kSlotFileVersionV2 = 2; // V2: V1 + telemetría (peaks, RMS, LUFS)
 
 static juce::File getSlotBackupDir()
 {
@@ -109,20 +144,23 @@ static juce::File getSlotBackupMetaFile(int slotIndex)
     return getSlotBackupDir().getChildFile("slot_" + juce::String(slotIndex) + ".meta");
 }
 
-// ─── Offset de campos de telemetría en archivo V2 ───────────────────────────
-// V2 layout: [magic:4] [version:4] [slotIndex:4] [active:4] [bus:4]
+// ─── Offsets y tamaños del archivo de backup ────────────────────────────
+// V1 layout: [magic:4] [version:4] [slotIndex:4] [active:4] [bus:4]
 //            [colourARGB:4] [trackName:64]
-//            [peakLeft:4] [peakRight:4] [rmsLeft:4] [rmsRight:4]
-//            [correlation:4] [crestFactor:4] [sampleL:4] [sampleR:4]
-//            [lufsIntegrated:4] [lufsShortTerm:4]
-//            [lufsMomentary:4] [lufsTruePeak:4] [loudnessRange:4]
-// V1 size = 88, V2 size = 88 + 72 = 160
-static constexpr int kSlotFileV1Size = 88;
-static constexpr int kSlotFileV2Size = 140; // 88 (V1) + 13*4 (telemetría)
-static constexpr int kSlotFileTelemetryOffset = 88; // empieza después de V1
+// V2: V1 + [peakLeft:4] [peakRight:4] [rmsLeft:4] [rmsRight:4]
+//         [correlation:4] [crestFactor:4] [sampleL:4] [sampleR:4]
+//         [lufsIntegrated:4] [lufsShortTerm:4]
+//         [lufsMomentary:4] [lufsTruePeak:4] [loudnessRange:4]
+// V3: V2 + [fftData:2048] (512 floats, magnitudes FFT normalizadas 0..1)
+static constexpr int kSlotFileV1Size           = 88;
+static constexpr int kSlotFileV2Size           = 140; // V1 + 13*4 (telemetría)
+static constexpr int kSlotFileV3Size           = 2188; // V2 + 512*4 (FFT)
+static constexpr int kSlotFileTelemetryOffset  = 88;   // offsets de telemetría (V1 end)
+static constexpr int kSlotFileFftOffset        = 140;  // offsets de FFT (V2 end)
 
 static_assert(kSlotFileV1Size == 8 + 4 + 4 + 4 + 4 + 64, "V1 size mismatch");
 static_assert(kSlotFileV2Size == kSlotFileV1Size + 13 * 4, "V2 size mismatch");
+static_assert(kSlotFileV3Size == kSlotFileV2Size + 512 * 4, "V3 size mismatch");
 
 void SlotRegistry::saveSlotToBackupFile(int slotIndex, const SlotInfo& info)
 {
@@ -177,6 +215,14 @@ void SlotRegistry::saveSlotToBackupFile(int slotIndex, const SlotInfo& info)
         writeFloat(neg100); // lufsTruePeak
         writeFloat(zero);  // loudnessRange
 
+        // ─── V3: FFT magnitudes (todos ceros inicialmente) ──────────────────────
+        // Se actualizan via updateSlotBackupTelemetry() con fftData != nullptr
+        for (int fi = 0; fi < kNumSpectrumBins; ++fi) {
+            int intVal = 0;
+            std::memcpy(&intVal, &zero, sizeof(intVal));
+            fos.writeIntBigEndian(intVal);
+        }
+
         fos.flush();
     }
 
@@ -209,28 +255,27 @@ void SlotRegistry::updateSlotBackupTelemetry(int slotIndex,
                                                float sampleL, float sampleR,
                                                float lufsIntegrated, float lufsShortTerm,
                                                float lufsMomentary, float lufsTruePeak,
-                                               float loudnessRange)
+                                               float loudnessRange,
+                                               const float* fftData)
 {
     if (slotIndex < 0 || slotIndex >= kMaxSlots) return;
 
-    // Verificar que el archivo exista y tenga el tamaño V2 correcto
+    // Verificar que el archivo exista y tenga el tamaño V3 correcto
     auto file = getSlotBackupFile(slotIndex);
     if (!file.existsAsFile())
         return; // Backup no existe (aún no registrado) — no podemos actualizar
 
-    if (file.getSize() < static_cast<juce::int64>(kSlotFileV2Size))
+    auto fileSize = file.getSize();
+    if (fileSize < static_cast<juce::int64>(kSlotFileV2Size))
         return; // Tamaño incorrecto (no tiene telemetría V2)
 
-    // Abrir el archivo en modo lectura/escritura y saltar directamente al
-    // offset de telemetría.
     juce::FileOutputStream fos(file);
     if (!fos.openedOk()) return;
 
-    // Mover el cursor al offset donde empiezan los campos de telemetría
+    // ─── Escribir telemetría V2 en offset 88 ──────────────────────────────
     if (!fos.setPosition(kSlotFileTelemetryOffset))
         return;
 
-    // Escribir cada campo de telemetría en orden secuencial
     auto writeFloat = [&](float val) {
         int intVal;
         std::memcpy(&intVal, &val, sizeof(intVal));
@@ -250,6 +295,20 @@ void SlotRegistry::updateSlotBackupTelemetry(int slotIndex,
     writeFloat(lufsMomentary);
     writeFloat(lufsTruePeak);
     writeFloat(loudnessRange);
+
+    // ─── Escribir FFT (V3) si hay datos y el archivo es V3 ───────────────
+    if (fftData != nullptr && fileSize >= static_cast<juce::int64>(kSlotFileV3Size))
+    {
+        if (fos.setPosition(kSlotFileFftOffset))
+        {
+            for (int fi = 0; fi < kNumSpectrumBins; ++fi)
+            {
+                int intVal;
+                std::memcpy(&intVal, &fftData[fi], sizeof(intVal));
+                fos.writeIntBigEndian(intVal);
+            }
+        }
+    }
 
     fos.flush();
 }
@@ -283,7 +342,7 @@ int SlotRegistry::loadSlotsFromBackupFiles(bool forceOverwrite)
         if (magic != kSlotFileMagic) continue;
 
         auto version = static_cast<uint32_t>(fis.readIntBigEndian());
-        if (version != kSlotFileVersion && version != kSlotFileVersionV1) continue;
+        if (version != kSlotFileVersion && version != kSlotFileVersionV2 && version != kSlotFileVersionV1) continue;
 
         int slotIndex  = fis.readIntBigEndian();
         int active     = fis.readIntBigEndian();
@@ -311,8 +370,8 @@ int SlotRegistry::loadSlotsFromBackupFiles(bool forceOverwrite)
                 local.colour    = juce::Colour(colourARGB);
                 strncpy_s(local.trackName, sizeof(local.trackName), trackName, _TRUNCATE);
 
-                // ─── V2: Leer telemetría si está disponible ───────────────
-                if (version == kSlotFileVersion)
+                // ─── V2/V3: Leer telemetría si está disponible ──────────
+                if (version == kSlotFileVersion || version == kSlotFileVersionV2)
                 {
                     auto readFloat = [&]() -> float {
                         if (fis.getNumBytesRemaining() < 4) return -100.0f;
@@ -336,7 +395,8 @@ int SlotRegistry::loadSlotsFromBackupFiles(bool forceOverwrite)
                     float lufsTP  = readFloat();
                     float lr      = readFloat();
 
-                    // Push telemetría al buffer local para que la UI la vea
+                    // ─── V3: Leer FFT si está disponible ─────────────────
+                    bool hasFFT = false;
                     TrackTelemetry telem;
                     telem.timestamp    = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
                     telem.slotIndex    = slotIndex;
@@ -354,6 +414,18 @@ int SlotRegistry::loadSlotsFromBackupFiles(bool forceOverwrite)
                     telem.lufsMomentary  = lufsMom;
                     telem.lufsTruePeak   = lufsTP;
                     telem.loudnessRange  = lr;
+
+                    if (version == kSlotFileVersion &&
+                        fis.getNumBytesRemaining() >= static_cast<juce::int64>(kNumSpectrumBins * 4))
+                    {
+                        for (int fi = 0; fi < kNumSpectrumBins && fis.getNumBytesRemaining() >= 4; ++fi)
+                        {
+                            float val = readFloat();
+                            telem.spectrum[fi] = val;
+                            if (val > 0.0001f) hasFFT = true;
+                        }
+                    }
+
                     telemetry_[slotIndex].push(telem);
                 }
 
@@ -446,10 +518,16 @@ bool SlotRegistry::syncFromShared()
     localChangeCount_ = sharedCC;
     everSynced_ = true;
 
-    // Leer todos los slots activos desde shared memory
+    // ═══ BATCH READ sync: 1 lock para TODOS los slots ═══════════════════════
+    // Antes: 128 llamadas a readSlot() = 128 acquire/releaseLock.
+    // AHORA: 1 acquireLock, leer todos los slots directamente del bloque,
+    // 1 releaseLock. Reduce contención del spinlock en 128×.
+    if (!shm_->acquireLock())
+        return false;
+
     for (int i = 0; i < kMaxSlots; ++i) {
-        SharedSlotEntry entry;
-        if (shm_->readSlot(i, entry) && entry.active) {
+        SharedSlotEntry entry = shm_->getBlock()->slots[i];
+        if (entry.active) {
             // ─── Slot activo en shared memory ────────────────────────────
             auto& local = slots_[i];
             bool wasActive = local.active;
@@ -491,6 +569,7 @@ bool SlotRegistry::syncFromShared()
         }
     }
 
+    shm_->releaseLock();
     return true;
 }
 
@@ -499,25 +578,97 @@ void SlotRegistry::pollTelemetryFromShared()
     if (shm_ == nullptr)
         return;
 
+    int64_t nowUs = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
+
+    // ═══ BATCH READ: 1 sola adquisición de lock para todos los slots ═══
+    // CRÍTICO: Con 60+ Messengers, el spinlock de shared memory tiene
+    // contención. Antes: 1 acquireLock/releaseLock por slot activo = 60+
+    // operaciones atómicas. AHORA: 1 acquireLock para leer todos los slots
+    // activos a un buffer local (heap), 1 releaseLock. Reducción de 60× en
+    // contención del spinlock.
+    //
+    // El buffer local se procesa SIN el spinlock (solo necesita bgLock_,
+    // que el caller ya tiene).
+    //
+    // ═══ HEAP ALLOCATION: Usar std::vector para evitar ~274KB en el stack ═══
+    // SharedSlotEntry pesa ~2196 bytes × 128 = 274KB. En el stack de un VST3
+    // (que puede tener stack limitado dentro de FL Studio), esto es riesgoso.
+    // std::vector aloca en heap, seguro y sin cambio de performance.
+    std::vector<SharedSlotEntry> batchBuffer(kMaxSlots);
+    std::vector<char> readSuccess(kMaxSlots, 0);
+
+    // 1. Leer TODOS los slots activos bajo 1 solo lock
+    {
+        if (!shm_->acquireLock())
+            return;  // Lock no disponible (timeout 5ms) → skip, datos viejos
+
+        for (int i = 0; i < kMaxSlots; ++i)
+        {
+            if (!slots_[i].active)
+                continue;
+
+            if (shm_->getBlock()->slots[i].active)
+            {
+                batchBuffer[i] = shm_->getBlock()->slots[i];
+                readSuccess[i] = 1;
+            }
+        }
+
+        shm_->releaseLock();
+    }
+
+    // 2. Procesar buffer local (sin spinlock)
     for (int i = 0; i < kMaxSlots; ++i)
     {
-        if (! slots_[i].active)
+        if (!slots_[i].active)
             continue;
 
-        SharedSlotEntry entry;
-        if (! shm_->readSlot(i, entry) || ! entry.active)
+        if (!readSuccess[i])
+        {
+            // ─── Slot inactivo en SHM: stale check ───────────────────
+            if (!slots_[i].stale)
+            {
+                auto age = nowUs - telemetry_[i].latest().timestamp;
+                if (age > kStaleTimeoutUs)
+                {
+                    slots_[i].stale = true;
+                    if (onSlotChanged) onSlotChanged(i);
+                }
+            }
             continue;
+        }
 
-        telemetry_[i].push(buildTelemetryFromSharedEntry(entry, i));
+        // ─── Datos frescos ───────────────────────────────────────────
+        if (slots_[i].stale)
+        {
+            slots_[i].stale = false;
+            if (onSlotChanged) onSlotChanged(i);
+        }
+
+        auto telem = buildTelemetryFromSharedEntry(batchBuffer[i], i);
+        preserveSpectrumFromPrevious(telemetry_[i].latest(), telem);
+        telemetry_[i].push(telem);
     }
 }
 
 void SlotRegistry::pollTelemetryFromBackups()
 {
+    int64_t nowUs = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
+
     for (int i = 0; i < kMaxSlots; ++i)
     {
         if (! slots_[i].active)
             continue;
+
+        // ─── Check stale por timestamp local ────────────────────────────
+        {
+            auto age = nowUs - telemetry_[i].latest().timestamp;
+            if (age > kStaleTimeoutUs && !slots_[i].stale)
+            {
+                slots_[i].stale = true;
+                if (onSlotChanged) onSlotChanged(i);
+            }
+        }
 
         auto file = getSlotBackupFile(i);
         if (! file.existsAsFile()
@@ -559,7 +710,7 @@ void SlotRegistry::pollTelemetryFromBackups()
             continue;
 
         auto ver = static_cast<uint32_t>(fis.readIntBigEndian());
-        if (ver != kSlotFileVersion && ver != kSlotFileVersionV1)
+        if (ver != kSlotFileVersion && ver != kSlotFileVersionV2 && ver != kSlotFileVersionV1)
             continue;
 
         int slotIdx = fis.readIntBigEndian();
@@ -618,13 +769,78 @@ void SlotRegistry::pollTelemetryFromBackups()
         telem.lufsTruePeak   = readBackupFloat(fis);
         telem.loudnessRange  = readBackupFloat(fis);
 
+        // ─── V3: Leer FFT si el archivo tiene el tamaño correcto ─────────
+        if (ver == kSlotFileVersion &&
+            file.getSize() >= static_cast<juce::int64>(kSlotFileV3Size))
+        {
+            for (int fi = 0; fi < kNumSpectrumBins && fis.getNumBytesRemaining() >= 4; ++fi)
+                telem.spectrum[fi] = readBackupFloat(fis);
+        }
+
+        preserveSpectrumFromPrevious(telemetry_[i].latest(), telem);
         telemetry_[i].push(telem);
+
+            // ─── Datos frescos desde backup: limpiar stale ─────────────
+        if (slots_[i].stale)
+        {
+            slots_[i].stale = false;
+            if (onSlotChanged) onSlotChanged(i);
+        }
 
         // Cachear timestamp del meta file (si existe) para saltar en el
         // próximo poll. El meta file SOLO cambia con metadatos, así que
         // saltamos hasta que el usuario vuelva a cambiar nombre/color/bus.
         if (metaExists)
             lastMetaModTimeMs_[i] = metaMod;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SlotRegistry::checkStaleSlots — Marca stale slots sin telemetría reciente
+//
+//  Recorre todos los slots activos y verifica que su último timestamp de
+//  telemetría no supere kStaleTimeoutUs (3s). Si supera el timeout y el
+//  slot no está ya marcado stale, lo marca y dispara onSlotChanged.
+//  Si un slot stale recibe telemetría fresca (timestamp reciente), se
+//  limpia la flag automáticamente en pollTelemetryFromShared/Backups.
+//
+//  Llamar periódicamente desde el background worker (~1s).
+// ═══════════════════════════════════════════════════════════════════════════
+void SlotRegistry::checkStaleSlots()
+{
+    int64_t nowUs = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
+
+    for (int i = 0; i < kMaxSlots; ++i)
+    {
+        if (!slots_[i].active)
+            continue;
+
+        auto telem = telemetry_[i].latest();
+        
+        // ═══ FIX: timestamp == 0 significa slot NUEVO sin telemetría aún ═══
+        // No marcar como stale hasta que haya recibido al menos un dato.
+        // Si el Messenger fue registrado hace segundos pero aún no envió
+        // telemetría (proceso de inicialización), timestamp=0 y el cálculo
+        // age = nowUs - 0 = nowUs > 3s marcaría falsamente como stale.
+        if (telem.timestamp == 0)
+            continue;
+
+        int64_t age = nowUs - telem.timestamp;
+
+        if (age > kStaleTimeoutUs && !slots_[i].stale)
+        {
+            // Slot sin telemetría por más de 3s → stale
+            slots_[i].stale = true;
+            logSlot("STALE", i, "age=" + juce::String(static_cast<double>(age) / 1000000.0, 1) + "s");
+            if (onSlotChanged) onSlotChanged(i);
+        }
+        else if (age <= kStaleTimeoutUs && slots_[i].stale)
+        {
+            // Slot stale recibió datos nuevos → recuperado
+            slots_[i].stale = false;
+            logSlot("STALE_CLEAR", i, "track recovered");
+            if (onSlotChanged) onSlotChanged(i);
+        }
     }
 }
 
@@ -725,18 +941,7 @@ int SlotRegistry::forceFullSyncFromShm()
             telem.sampleL     = entry.sampleL;
             telem.sampleR     = entry.sampleR;
 
-            // ═══ FIX: Copiar datos FFT desde shared memory ═══════════════
-            // Si el Messenger escribió datos FFT recientes (< 500ms), copiarlos
-            // al TelemetryBuffer local para que el spectrograph los muestre.
-            if (entry.fftTimestamp > 0) {
-                auto now = juce::Time::getMillisecondCounter();
-                auto fftAge = now - static_cast<int64_t>(entry.fftTimestamp / 1000);
-                if (fftAge < 500) {
-                    std::copy(std::begin(entry.fftMagnitudes),
-                              std::end(entry.fftMagnitudes),
-                              std::begin(telem.spectrum));
-                }
-            }
+            copyFftMagnitudesFromSharedEntry(entry, telem);
 
             telem.lufsIntegrated = entry.lufsIntegrated;
             telem.lufsShortTerm  = entry.lufsShortTerm;
@@ -827,10 +1032,25 @@ int SlotRegistry::registerSlot(const std::string& trackName, const juce::Colour&
             " | bus=" + juce::String(static_cast<int>(bus)));
 
         if (onSlotRegistered) onSlotRegistered(i);
-        
-        // Backup a archivo (siempre, incluso si shared memory está disponible)
-        saveSlotToBackupFile(i, slots_[i]);
-        
+
+        // ═══ Backup SOLO cuando SHM no está disponible ═══════════════════
+        // ANTES: saveSlotToBackupFile() se llamaba SIEMPRE en cada registerSlot().
+        // Cuando FL Studio copia un Messenger a 100 tracks, cada nueva instancia
+        // llama a registerSlot() que escribe un archivo en disco. Con 60+
+        // instancias creándose en paralelo (FL Studio usa worker threads), 60+
+        // operaciones de archivo simultáneas saturan el I/O → FL Studio detecta
+        // timeout en el message thread → crash.
+        //
+        // AHORA: Solo escribimos backup cuando SHM no está disponible. Cuando
+        // SHM funciona (caso normal), CERO file I/O durante el registro.
+        // El backup se escribe igualmente desde:
+        //   1. updateSlotBackupTelemetry() en processBlock (si SHM falla)
+        //   2. updateSlotName/updateSlotColour/updateSlotBus (cambio metadatos)
+        //   3. loadSlotsFromBackupFiles + pollTelemetryFromBackups (lectura)
+        if (shm_ == nullptr || shm_->getBlock() == nullptr) {
+            saveSlotToBackupFile(i, slots_[i]);
+        }
+
         return i;
     }
 
@@ -992,11 +1212,21 @@ void SlotRegistry::updateSlotBus(int slotIndex, BusType bus)
 
 TelemetryBuffer& SlotRegistry::getTelemetry(int slotIndex)
 {
+    if (slotIndex < 0 || slotIndex >= kMaxSlots)
+    {
+        static TelemetryBuffer fallback;
+        return fallback;
+    }
     return telemetry_[slotIndex];
 }
 
 const TelemetryBuffer& SlotRegistry::getTelemetry(int slotIndex) const
 {
+    if (slotIndex < 0 || slotIndex >= kMaxSlots)
+    {
+        static TelemetryBuffer fallback;
+        return fallback;
+    }
     return telemetry_[slotIndex];
 }
 
@@ -1022,55 +1252,25 @@ void SlotRegistry::updateSharedTelemetry(int slotIndex,
                                           float lufsMomentary, float lufsTruePeak,
                                           float loudnessRange)
 {
-    // Solo escribir a shared memory (si está disponible)
-    // Los backup files se escriben desde el Messenger directamente
-    // con throttling para evitar I/O excesivo en el audio thread.
+    // ═══ WRITE DIRECT: 1 solo lock (no read previo) ═══════════════════════
+    // ANTES: readSlot() (acquire+release) + writeSlot() (acquire+release)
+    // = 2 locks por llamada. Con 60+ Messengers en paralelo, 120 locks
+    // por bloque de audio → contención masiva → spinlock timeout → crash.
+    // AHORA: writeSlotTelemetry() usa 1 solo lock y escribe DIRECTAMENTE
+    // los campos de telemetría sin leer primero.
     if (shm_ == nullptr || slotIndex < 0 || slotIndex >= kMaxSlots)
         return;
 
-    SharedSlotEntry entry;
-    if (!shm_->readSlot(slotIndex, entry))
-        return;
-
-    entry.peakLeft    = peakLeft;
-    entry.peakRight   = peakRight;
-    entry.rmsLeft     = rmsLeft;
-    entry.rmsRight    = rmsRight;
-    entry.correlation = correlation;
-    entry.crestFactor = crestFactor;
-    entry.sampleL     = sampleL;
-    entry.sampleR     = sampleR;
-    entry.telemetryTimestamp = static_cast<int64_t>(juce::Time::getMillisecondCounterHiRes() * 1000.0);
-
-    // Escribir datos FFT si se proporcionan (opcional, ~cada 40ms)
-    if (fftMagnitudes != nullptr) {
-        bool hasSpectrum = false;
-        for (int fi = 0; fi < kNumSpectrumBins; ++fi) {
-            if (fftMagnitudes[fi] > 0.001f) {
-                hasSpectrum = true;
-                break;
-            }
-        }
-        if (hasSpectrum) {
-            std::copy(fftMagnitudes, fftMagnitudes + kNumSpectrumBins, entry.fftMagnitudes);
-            // ═══ FIX: Overflow de uint32 ═══════════════════════════════
-            // getMillisecondCounter() retorna uint32_t. Multiplicar por 1000
-            // como uint32_t desborda tras ~1.2h de uptime, corrompiendo
-            // fftTimestamp. Al leerlo en forceFullSyncFromShm(), el chequeo
-            // fftAge < 500 falla SIEMPRE y el FFT nunca se copia.
-            // Cast a int64_t ANTES de multiplicar para evitar el overflow.
-            entry.fftTimestamp = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
-        }
-    }
-
-    // Escribir datos LUFS en shared memory
-    entry.lufsIntegrated = lufsIntegrated;
-    entry.lufsShortTerm  = lufsShortTerm;
-    entry.lufsMomentary  = lufsMomentary;
-    entry.lufsTruePeak   = lufsTruePeak;
-    entry.loudnessRange  = loudnessRange;
-
-    shm_->writeSlot(slotIndex, entry);
+    shm_->writeSlotTelemetry(
+        slotIndex,
+        peakLeft, peakRight,
+        rmsLeft, rmsRight,
+        correlation, crestFactor,
+        sampleL, sampleR,
+        fftMagnitudes,
+        lufsIntegrated, lufsShortTerm,
+        lufsMomentary, lufsTruePeak,
+        loudnessRange);
 }
 
 // ─── ChangeCount ────────────────────────────────────────────────────────────

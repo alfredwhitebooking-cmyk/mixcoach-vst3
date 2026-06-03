@@ -15,7 +15,6 @@
 #include "AnalogVUMeter.h"
 #include "VUMetersPanel.h"
 #include "PhaseScopePanel.h"
-#include "TelemetryProvider.h"
 
 namespace mixcoach {
 
@@ -45,13 +44,8 @@ public:
     void paint(juce::Graphics& g) override;
 
     void updateAnalyzers(SlotRegistry& registry, double sampleRate = 48000.0);
-    void refreshSpectrographFromProvider();
     PlaylistComponent& getPlaylist() noexcept { return playlist_; }
-    int getSelectedSlot() const noexcept { return telemetryProvider_.getSelectedSlot(); }
-    /** Retorna la telemetría según el modo actual del TelemetryProvider (Single/Master). */
-    TrackTelemetry getLatestTelemetry();
-    /** ¿Está en modo Master (ALL)? */
-    bool isMasterMode() const noexcept { return telemetryProvider_.isMaster(); }
+    int getSelectedSlot() const noexcept { return selectedSlot_; }
     SpectrographComponent& getSpectrograph() noexcept { return spectrograph_; }
 
     std::function<void()> onRescanRequested;
@@ -62,15 +56,6 @@ public:
 
     void setSelectedSlot(int slotIndex);
     std::function<void(int slotIndex)> onTrackSelected;
-
-    /** Actualiza colores y visibilidad del botón ALL según el modo actual. */
-    void updateAllButtonAppearance();
-
-    /** Cambia a Bus mode y selecciona un bus específico. */
-    void selectBus(BusType bus);
-
-    /** Cambia el título de la playlist (por defecto "SESIÓN 1 – PLAYLIST"). */
-    void setPlaylistTitle(const juce::String& newTitle) { playlistTitle_ = newTitle; repaint(); }
 
 private:
     // ─── Footer labels ─────────────────────────────────────────────────
@@ -86,19 +71,10 @@ private:
     PhaseScopePanel          phaseScope_;
     VUMetersPanel            vuMeters_;
 
-    // ─── TelemetryProvider (Single / Master) ────────────────────────────
-    TelemetryProvider telemetryProvider_;
+    // ─── Estado ─────────────────────────────────────────────────────────
     int selectedSlot_ = -1;
     juce::Colour selectedColour_{ 0xFF3498DB };
     SharedData& sharedData_;
-
-    // ─── Botón MASTER (ALL) ─────────────────────────────────────────────
-    juce::TextButton allButton_;
-
-    // ─── Título de la playlist (configurable) ────────────────────────────
-    juce::String playlistTitle_{ "SESI\xC3\x93N 1 \xE2\x80\x93 PLAYLIST" };
-    // Nota: el default usa escapes UTF-8 para compatibilidad, pero en paint()
-    // se usa el literal plano del .cpp que ya está en UTF-8.
 };
 
 } // namespace mixcoach

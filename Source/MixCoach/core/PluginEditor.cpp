@@ -223,16 +223,40 @@ void MixCoachAudioProcessorEditor::backgroundRunLoop()
             if (initialSyncDone && sharedData_->isAvailable())
             {
                 auto& registry = sharedData_->getSlotRegistry();
-                // ═══ CADA CICLO: poll desde backup (100ms) para cambios de metadatos ═══
-                // pollTelemetryFromBackups() ahora lee nombre/color/bus + telemetría.
-                // Al ejecutarse cada ciclo (sin modulo 3), los cambios del Messenger
-                // se reflejan en MixCoach en ~100ms máximo.
-                if (bgShmHealthy_.load())
+                bool shmHealthy = bgShmHealthy_.load();
+
+                // ═══ SHM HEALTHY: poll rápido desde shared memory (batch read, 1 lock) ═══
+                // Se ejecuta CADA ciclo (~100ms) porque es barato: 1 acquireLock, copia
+                // de ~2200 bytes por slot activo, 1 releaseLock. Sin I/O de disco.
+                if (shmHealthy)
                     registry.pollTelemetryFromShared();
-                else
+
+                // ═══ SHM NO DISPONIBLE: poll MUCHO más espaciado desde backup ══════
+                // pollTelemetryFromBackups() abre archivos en disco por cada slot activo.
+                // Con 60+ tracks, son 60+ operaciones de archivo que toman ~60-120ms
+                // en SSD. Ejecutarlo cada 100ms causa solapamiento → el BG thread se
+                // atrasa → FL Studio detecta timeout → crash.
+                // AHORA: solo se ejecuta cada ~1s (bgLoopCount % 10 == 0).
+                // Los metadatos (nombre/color/bus) tardan ~1s en reflejarse, pero
+                // evitamos el crash. La telemetría se cae a backup rate de 1Hz.
+                if (!shmHealthy && bgLoopCount % 10 == 0)
                     registry.pollTelemetryFromBackups();
 
+                // ═══ CADA ~1s: checkStaleSlots() para detectar tracks desconectados ═══
+                // El check usa timestamp local de telemetría (no shared memory), por
+                // lo que funciona incluso si SHM falla. Timeout: 3s sin telemetría.
                 if (bgLoopCount % 10 == 0)
+                    registry.checkStaleSlots();
+
+                // ═══ CADA ~5s: syncFromShared batch read ═════════════════════════
+                // syncFromShared() ahora hace batch read (1 lock para 128 slots).
+                // Pero aún así itera todos los slots y procesa cambios. Reducir su
+                // frecuencia de 1s→5s reduce la carga significativamente.
+                // Con nuevos Messengers, pollTelemetryFromShared() ya los detecta
+                // en ~100ms (batch read existente en esa función). syncFromShared
+                // solo es necesario para detectar cambios de changeCount (nuevos
+                // registros/liberaciones en SHM).
+                if (bgLoopCount % 50 == 0)
                     registry.syncFromShared();
             }
 
@@ -588,35 +612,43 @@ void MixCoachAudioProcessorEditor::timerCallback()
         if (meteringTabActive)
             tabbedComponent_->smoothAnalyzersPanel(60.0);
 
-        // ═══ PASO B: Poll telemetría (60 Hz, necesita lock para shared memory) ══
-        // pollTelemetryFromShared() necesita bgLock_ porque accede a shared memory.
-        // Pero si tryEnter() falla, NO bloqueamos — es mejor datos un frame viejos
-        // que congelar la UI.
-        // ═══ CADA TICK: pollTelemetryFromBackups() (60fps) para metadatos instantáneos ═══
-        // Antes: timerTick % 2 == 0 (30fps). Ahora: SIEMPRE en cada tick (60fps).
-        // Esto asegura que cambios de nombre/color/bus desde el Messenger se
-        // detecten en el próximo frame (~16ms) en lugar de esperar al bg worker.
-        if (bgLock_.tryEnter())
+        // ═══ PASO B + C: Poll + Refresh adaptativo (cacheando activeCount) ═══
+        // ═══ FIX ACTIVE_COUNT: Se cachea una sola vez por tick ════════════
+        // activeCount() itera todos los slots (128). Llamarlo dos veces
+        // duplica el overhead. Con 100+ tracks a 60fps, cada iteración
+        // cuenta.
+        //
+        // Frecuencia adaptativa:
+        //   ≤50 tracks: poll cada tick (60fps) — fluido
+        //   >50 tracks: poll cada 2 ticks (30fps) — reduce carga I/O
+        //   smoothMeters() sigue a 60fps (autónomo, no necesita lock)
         {
-            if (sharedData_->isSharedMemoryAvailable() && bgShmHealthy_.load())
-                registry.pollTelemetryFromShared();
-            else
-                registry.pollTelemetryFromBackups();
+            int activeForAdapt = registry.activeCount();
+            const bool heavyTick = (activeForAdapt > 50)
+                ? ((timerTick & 1) == 0)  // cada 2 ticks
+                : true;                     // cada tick
 
-            if (meteringTabActive)
+            if (bgLock_.tryEnter())
             {
-                tabbedComponent_->fastUpdateSpectrograph(registry);
-                tabbedComponent_->getAnalyzersPanel().fastUpdateMeters(registry);
-            }
-            bgLock_.exit();
-        }
+                // PASO B: Poll telemetría (solo en heavyTick)
+                if (heavyTick)
+                {
+                    if (sharedData_->isSharedMemoryAvailable() && bgShmHealthy_.load())
+                        registry.pollTelemetryFromShared();
+                    else
+                        registry.pollTelemetryFromBackups();
 
-        // ═══ PASO C: Refrescar datos de messengers SIEMPRE (sin lock) ═════════
-        // CRÍTICO: syncTelemetryFromRegistry() SOLO lee del buffer thread-safe
-        // de telemetría (TelemetryBuffer::latest()). NO necesita bgLock_.
-        // Al ejecutarse SIEMPRE a 60fps, el barLevel se actualiza continuamente
-        // aunque tryEnter() falle, eliminando el congelamiento post-resize.
-        tabbedComponent_->getCoachPanel().refreshMessengerTelemetry(registry);
+                    if (meteringTabActive)
+                        tabbedComponent_->getAnalyzersPanel().fastUpdateMeters(registry);
+                }
+
+                // PASO C: Refrescar messengers
+                if (heavyTick)
+                    tabbedComponent_->getCoachPanel().refreshMessengerTelemetry(registry);
+
+                bgLock_.exit();
+            }
+        }
 
         // ─── Slow update: Full panel update (frecuencia adaptativa)
         // updateAllPanels actualiza LUFS, VU, vectorscope, crest, etc.

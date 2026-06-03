@@ -6,7 +6,7 @@ namespace mixcoach {
 // ─── Constantes y enums globales ─────────────────────────────────────────────
 
 // Límites del sistema
-inline constexpr int    kMaxTracks        = 64;
+inline constexpr int    kMaxTracks        = 128;
 inline constexpr int    kFFTSize          = 1024;
 inline constexpr int    kNumSpectrumBins  = 512;
 inline constexpr double kAnalysisInterval = 0.5;   // segundos

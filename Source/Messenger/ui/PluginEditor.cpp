@@ -147,6 +147,21 @@ MessengerAudioProcessorEditor::MessengerAudioProcessorEditor(MessengerAudioProce
     notasEditor_.addListener(this);
     addAndMakeVisible(notasEditor_);
 
+    // ─── Row 7: MUTE ──────────────────────────────────────────────────
+    muteButton_.setButtonText("MUTE");
+    muteButton_.setClickingTogglesState(true);
+    muteButton_.setToggleState(processorRef_.isMuted(), juce::dontSendNotification);
+    muteButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2D1B1B));
+    muteButton_.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFFEF4444));
+    muteButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFF6B7280));
+    muteButton_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    muteButton_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    muteButton_.onClick = [this]() {
+        processorRef_.setMuted(muteButton_.getToggleState());
+        updateMuteDisplay();
+    };
+    addAndMakeVisible(muteButton_);
+
     // ═══════════════════════════════════════════════════════════════════════
     //  STATUS (compacto, integrado en info rows via paint)
     // ═══════════════════════════════════════════════════════════════════════
@@ -346,6 +361,27 @@ void MessengerAudioProcessorEditor::drawRowIcon(juce::Graphics& g, int rowIndex,
             p.addRoundedRectangle(cx - s * 0.2f, cy - s * 0.08f, s * 0.3f, s * 0.04f, s * 0.02f);
             break;
         }
+        case 6:  // MUTE - Microphone (tachado si muteado)
+        {
+            // Mic body (capsule)
+            float micW = s * 0.35f;
+            float micH = s * 0.5f;
+            p.addRoundedRectangle(cx - micW * 0.5f, cy - micH * 0.6f, micW, micH, s * 0.1f);
+            // Mic stand
+            p.addRoundedRectangle(cx - s * 0.04f, cy + micH * 0.3f, s * 0.08f, s * 0.35f, s * 0.04f);
+            // Mic base
+            p.addRoundedRectangle(cx - s * 0.2f, cy + s * 0.5f, s * 0.4f, s * 0.08f, s * 0.04f);
+
+            if (processorRef_.isMuted()) {
+                // Línea diagonal roja (tachado)
+                g.setColour(juce::Colour(0xFFEF4444));
+                juce::Path xLine;
+                xLine.startNewSubPath(cx - s * 0.6f, cy - s * 0.65f);
+                xLine.lineTo(cx + s * 0.6f, cy + s * 0.65f);
+                g.strokePath(xLine, juce::PathStrokeType(2.5f));
+            }
+            break;
+        }
     }
 
     g.fillPath(p);
@@ -445,6 +481,17 @@ void MessengerAudioProcessorEditor::resized()
         juce::ignoreUnused(labelArea);
 
         notasEditor_.setBounds(row.reduced(2, 2));
+    }
+
+    // ─── Row 7: MUTE ──────────────────────────────────────────────────
+    {
+        auto row = area.removeFromTop(rowH);
+        row.removeFromLeft(iconW + 4);
+
+        auto labelArea = row.removeFromLeft(labelW);
+        juce::ignoreUnused(labelArea);
+
+        muteButton_.setBounds(row.reduced(2, 3));
     }
 
     // ─── Status label (esquina superior derecha) ───────────────────────
@@ -555,14 +602,14 @@ void MessengerAudioProcessorEditor::paint(juce::Graphics& g)
     const int labelW = 58;
 
     const char* rowLabels[] = {
-        "NOMBRE", "GRUPO", "COLOR", "TIPO", "PRIORIDAD", "NOTAS"
+        "NOMBRE", "GRUPO", "COLOR", "TIPO", "PRIORIDAD", "NOTAS", "MUTE"
     };
     juce::Colour labelColour = juce::Colour(0xFF6B7280);
     juce::Colour sepColour = juce::Colour(0xFF1A1A2E);
 
     int y = 8 + infoHeaderH + 4;
 
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 7; ++i)
     {
         // ─── Icono vectorial ────────────────────────────────────────────
         drawRowIcon(g, i, juce::Rectangle<float>(12.0f, (float)y, (float)iconW, (float)rowH));
@@ -577,7 +624,7 @@ void MessengerAudioProcessorEditor::paint(juce::Graphics& g)
         y += rowH;
 
         // ─── Separator ────────────────────────────────────────────────
-        if (i < 5) {
+        if (i < 6) {
             g.setColour(sepColour);
             g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
             y += sepH;
@@ -585,7 +632,6 @@ void MessengerAudioProcessorEditor::paint(juce::Graphics& g)
     }
 
     // ─── Separador sutil entre INFO y NIVELES ───────────────────────────
-    //  Equivalente a removeFromTop(12) en resized()
     y += 5;
     g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
     g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
@@ -771,8 +817,22 @@ void MessengerAudioProcessorEditor::timerCallback()
             juce::dontSendNotification);
     }
 
+    // ─── Sincronizar estado del botón MUTE ───────────────────────────
+    // El estado puede cambiar externamente (e.g. al cargar preset)
+    if (muteButton_.getToggleState() != processorRef_.isMuted()) {
+        muteButton_.setToggleState(processorRef_.isMuted(), juce::dontSendNotification);
+        updateMuteDisplay();
+    }
+
     // ─── TIPO y PRIORIDAD (actualizados al cambiar bus) ───────────────
     // Ya se actualizan en busComboBox_.onChange
+}
+
+void MessengerAudioProcessorEditor::updateMuteDisplay()
+{
+    bool muted = processorRef_.isMuted();
+    muteButton_.setButtonText(muted ? "MUTED" : "MUTE");
+    repaint();  // Repaint icon overlay
 }
 
 // ─── Selector de color ────────────────────────────────────────────────────────

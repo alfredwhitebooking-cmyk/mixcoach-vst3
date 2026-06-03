@@ -12,7 +12,7 @@ namespace mixcoach {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Constantes ─────────────────────────────────────────────────────────────
-static constexpr int kSharedMaxSlots = 64;
+static constexpr int kSharedMaxSlots = 128;
 static constexpr int kSharedTrackNameLen = 64;
 
 // ─── Slot data en shared memory (POD-only, sin constructores/destructores) ──
@@ -58,7 +58,11 @@ struct SharedMemoryHeader {
     uint32_t ownerCheck = 0;
     // Version del struct (para detectar mismatches de tamaño)
     // Incrementar cada vez que SharedSlotEntry cambie de tamaño!
-    static constexpr uint32_t kCurrentStructVersion = 3;
+    // ═══ INCREMENTADO a 4 porque kSharedMaxSlots subió de 64→128
+    // Cambia el tamaño de sizeof(SharedMemoryBlock) ~140KB→275KB.
+    // Sin este incremento, el código abre un mapping viejo (64 slots)
+    // y accede a slots[64+] que no existen → ACCESS VIOLATION.
+    static constexpr uint32_t kCurrentStructVersion = 4;
     uint32_t structVersion = kCurrentStructVersion;
 };
 
@@ -73,7 +77,7 @@ struct SharedMemoryBlock {
 // IMPORTANTE: Incrementar cada vez que se agreguen/remuevan campos del
 // SharedSlotEntry para evitar access violations al abrir file mappings
 // viejos de sesiones anteriores con structs de diferente tamaño.
-static constexpr uint32_t kSharedMemoryStructVersion = 3;
+static constexpr uint32_t kSharedMemoryStructVersion = 4;
 
 // ─── Verificación de tamaño (no debe exceder ~1MB para mapeo eficiente) ─────
 static_assert(sizeof(SharedMemoryBlock) < 1024 * 1024,
@@ -99,16 +103,40 @@ public:
     // ─── Operaciones atómicas sobre shared memory ─────────────────────────
 
     // Lock para escritura exclusiva (spinlock con InterlockedExchange)
-    bool acquireLock(int timeoutMs = 100);
+    // ═══ FIX: timeout reducido de 100ms→5ms para no bloquear el message thread ═══
+    // Con 60+ Messengers escribiendo a shared memory (audio thread ~11ms),
+    // el lock puede estar ocupado cuando MixCoach intenta leer. Si el timer
+    // del message thread se bloquea 100ms en el spinlock, FL Studio detecta
+    // un plugin colgado y lo crashea. Con 5ms, si el lock no se libera rápido,
+    // la lectura se omite y los datos quedan ligeramente desactualizados
+    // (mejor que crashear).
+    bool acquireLock(int timeoutMs = 5);
     void releaseLock();
 
     // Leer changeCount de forma segura
     uint64_t getChangeCount() const noexcept;
 
-    // Leer un slot (thread-safe)
-    bool readSlot(int index, SharedSlotEntry& out) const noexcept;
+    // Leer un slot (thread-safe, adquiere lock internamente)
+    bool readSlot(int index, SharedSlotEntry& out) noexcept;
 
-    // Escribir un slot (requiere lock adquirido)
+    // Escribir telemetría directamente a un slot (1 solo lock, sin read previo)
+    // ═══ OPTIMIZACIÓN CRÍTICA: updateSharedTelemetry() antes hacía readSlot
+    // (acquire+release) + writeSlot (acquire+release) = 2 locks por llamada.
+    // Con 60+ Messengers en paralelo, la contención era masiva.
+    // writeSlotTelemetry() adquiere el lock 1 SOLA VEZ, escribe SOLO los campos
+    // de telemetría (sin tocar slotIndex/trackName/colour/bus), e incrementa
+    // changeCount. El slot DEBE estar ya registrado (active=1).
+    void writeSlotTelemetry(int index,
+                            float peakLeft, float peakRight,
+                            float rmsLeft, float rmsRight,
+                            float correlation, float crestFactor,
+                            float sampleL, float sampleR,
+                            const float* fftMagnitudes,
+                            float lufsIntegrated, float lufsShortTerm,
+                            float lufsMomentary, float lufsTruePeak,
+                            float loudnessRange) noexcept;
+
+    // Escribir un slot completo (requiere lock adquirido)
     void writeSlot(int index, const SharedSlotEntry& entry) noexcept;
 
     // Registrar nuevo slot (thread-safe, adquiere lock internamente)

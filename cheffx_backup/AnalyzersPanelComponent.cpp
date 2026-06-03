@@ -28,19 +28,14 @@ AnalyzersPanelComponent::AnalyzersPanelComponent(SharedData& sharedData)
     {
         // ─── Playlist (izquierda, scrollable) ──────────────────────────
         playlist_.onSlotSelected = [this](int slotIndex) {
-            telemetryProvider_.selectSlot(slotIndex);
             selectedSlot_ = slotIndex;
             auto& registry = sharedData_.getSlotRegistry();
             auto info = registry.getSlotInfo(slotIndex);
             selectedColour_ = info.colour;
             playlist_.setSelectedSlot(slotIndex);
-            telemetryProvider_.setRegistry(&registry);
-            refreshSpectrographFromProvider();
-            updateAllButtonAppearance();
             if (onTrackSelected)
                 onTrackSelected(slotIndex);
         };
-        playlist_.setViewport(&playlistViewport_);
         playlistViewport_.setViewedComponent(&playlist_, false);
         playlistViewport_.setScrollBarsShown(true, false);
         playlistViewport_.setScrollBarThickness(6);
@@ -74,37 +69,6 @@ AnalyzersPanelComponent::AnalyzersPanelComponent(SharedData& sharedData)
         footerStatusLabel_.setJustificationType(juce::Justification::centredRight);
         footerStatusLabel_.setColour(juce::Label::textColourId, MixCoachTheme::success().withAlpha(0.7f));
         addAndMakeVisible(footerStatusLabel_);
-
-        // ═══ Botón modo — TextButton real (clickeable) ═══════════════════
-        // Cicla: SGL → BUS:Drums → BUS:Bass → BUS:Guit → BUS:Keys
-        //        → BUS:Vox → BUS:FX → ALL → SGL
-        allButton_.setButtonText("SGL");
-        allButton_.setClickingTogglesState(false);
-        allButton_.onClick = [this]() {
-            auto mode = telemetryProvider_.getMode();
-            if (mode == TelemetryProvider::Mode::Single) {
-                telemetryProvider_.selectBus(BusType::Drums);
-            } else if (mode == TelemetryProvider::Mode::Bus) {
-                auto currentBus = telemetryProvider_.getSelectedBus();
-                if (currentBus < BusType::FX)
-                    telemetryProvider_.selectBus(static_cast<BusType>(static_cast<int>(currentBus) + 1));
-                else
-                    telemetryProvider_.setMode(TelemetryProvider::Mode::Master);
-            } else {
-                telemetryProvider_.setMode(TelemetryProvider::Mode::Single);
-            }
-            telemetryProvider_.setRegistry(&sharedData_.getSlotRegistry());
-            refreshSpectrographFromProvider();
-            updateAllButtonAppearance();
-            repaint();
-        };
-        // ═══ CRÍTICO: Configurar colores desde el constructor ═══════════
-        // Sin esto, TextButton usa colores default de JUCE (gris sobre
-        // gris oscuro) y el botón es invisible hasta que updateAnalyzers()
-        // se ejecute (~266ms después).
-        updateAllButtonAppearance();
-        addAndMakeVisible(allButton_);
-        allButton_.setVisible(false); // oculto hasta que updateAnalyzers() detecte tracks
     }
     catch (const std::exception& e)
     {
@@ -145,19 +109,16 @@ void AnalyzersPanelComponent::resized()
         footerActiveLabel_.setBounds(footerLeft);
         footerStatusLabel_.setBounds(footerRight);
 
-        // ─── Asignar bounds del viewport (la altura se calcula en updateAnalyzers tras updateList) ──
+        // ─── Asignar bounds ──────────────────────────────────────────────
         playlistViewport_.setBounds(playlistArea);
+        int prefH = playlist_.getPreferredHeight();
+        playlist_.setSize(playlistArea.getWidth(), juce::jmax(prefH, playlistArea.getHeight()));
+        // ═══ CRÍTICO: Forzar re-evaluación de scroll bars ─══════════════════
+        // setBounds() ya llamó a Viewport::resized() internamente, pero en ese
+        // momento playlist_ aún tenía su tamaño viejo (antes de setSize). Sin
+        // este resized() explícito, los scroll bars no aparecen hasta el próximo
+        // resize de la ventana, dejando la lista inaccesible al cambiar de tab.
         playlistViewport_.resized();
-
-        // ═══ Botón ALL: posicionar (la visibilidad la maneja updateAnalyzers) ═══
-        // NO hacer setVisible(true) aquí — updateAnalyzers() decide según
-        // activeCount. Si hay tracks, él mismo hace visible.
-        auto btnArea = playlistArea.removeFromRight(40).reduced(2, 2)
-                           .withHeight(14).withY(playlistArea.getY() + 8);
-        allButton_.setBounds(btnArea);
-        // Refrescar colores por si el modo cambió
-        updateAllButtonAppearance();
-
         meter_.setBounds(centerTop);
         phaseScope_.setBounds(centerBot);
         spectrograph_.setBounds(rightTop);
@@ -192,6 +153,7 @@ void AnalyzersPanelComponent::paint(juce::Graphics& g)
 
     // Playlist panel
     auto plPanel = area.removeFromLeft(plW).reduced(1);
+    // Center panel bounds
     auto ctPanel = area.removeFromLeft(ctW);
     auto rtPanel = area.reduced(1, 0);
 
@@ -214,10 +176,10 @@ void AnalyzersPanelComponent::paint(juce::Graphics& g)
     drawPanel(rtTop);
     drawPanel(rtBot);
 
-    // ─── Section labels ─────────────────────────────────────────────
+    // ─── Section labels (estilo referencia: SESIÓN N – NOMBRE, violeta ALL CAPS) ──
     g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
     g.setColour(MixCoachTheme::accentGlow());
-    g.drawText(playlistTitle_, plPanel.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
+    g.drawText("SESIÓN 1 – PLAYLIST", plPanel.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
     g.drawText("SESIÓN 2 – METER", ctTop.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
     g.drawText("SESIÓN 5 – PHASE SCOPE", ctBot.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
     g.drawText("SESIÓN 3 – SPECTRUM ANALYZER", rtTop.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
@@ -238,7 +200,11 @@ void AnalyzersPanelComponent::updateAnalyzers(SlotRegistry& registry, double sam
         playlist_.updateList(registry);
 
         // ═══ Actualizar tamaño del playlist + Viewport después de updateList ═══
-        // La altura se recalcula siempre con datos frescos (no de resized()).
+        // CRÍTICO: resized() establece el tamaño del playlist UNA VEZ al inicio,
+        // pero en ese momento activeCount_ puede ser 0 (aún no hay datos).
+        // updateList() cambia activeCount_ y por tanto getPreferredHeight(),
+        // pero el componente mantiene el tamaño viejo. Sin esta actualización,
+        // el Viewport nunca muestra scroll bars aunque haya 20 tracks.
         {
             auto viewBounds = playlistViewport_.getBounds();
             int prefH = playlist_.getPreferredHeight();
@@ -250,22 +216,19 @@ void AnalyzersPanelComponent::updateAnalyzers(SlotRegistry& registry, double sam
             }
         }
 
-        // ─── Auto-select first active slot (solo en Single mode) ───────
-        if (telemetryProvider_.isSingle() && telemetryProvider_.getSelectedSlot() < 0) {
+        // ─── Auto-select first active slot ────────────────────────────
+        if (selectedSlot_ < 0) {
             registry.forEachActive([&](const SlotInfo& info) {
-                if (telemetryProvider_.getSelectedSlot() < 0) {
-                    telemetryProvider_.selectSlot(info.slotIndex);
+                if (selectedSlot_ < 0) {
                     selectedSlot_ = info.slotIndex;
                     selectedColour_ = info.colour;
-                    playlist_.setSelectedSlot(info.slotIndex);
+                    playlist_.setSelectedSlot(selectedSlot_);
                 }
             });
         }
 
         if (registry.activeCount() == 0) {
-            telemetryProvider_.selectSlot(-1);
             selectedSlot_ = -1;
-            allButton_.setVisible(false);
             return;
         }
 
@@ -277,45 +240,42 @@ void AnalyzersPanelComponent::updateAnalyzers(SlotRegistry& registry, double sam
                                         juce::dontSendNotification);
         }
 
-        // ─── Botón ALL: visible SOLO cuando hay tracks activos ─────────
-        allButton_.setVisible(true);
-        updateAllButtonAppearance();
-
         // ─── Update all analyzers ─────────────────────────────────────
-        {
-            telemetryProvider_.setRegistry(&registry);
-            auto latest = telemetryProvider_.getLatest();
+        if (selectedSlot_ >= 0) {
+            auto& telem = registry.getTelemetry(selectedSlot_);
+            auto latest = telem.latest();
 
-            if (latest.active || telemetryProvider_.isMaster())
-            {
-                meter_.updateData(latest);
-                refreshSpectrographFromProvider();
+            meter_.updateData(latest);
 
-                phaseScope_.setCorrelation(latest.correlation);
-                phaseScope_.getVectorscope().setDisplayCorrelation(latest.correlation);
-                if (latest.sampleL != 0.0f || latest.sampleR != 0.0f) {
-                    float vL = juce::jlimit(-1.0f, 1.0f, latest.sampleL * 2.0f);
-                    float vR = juce::jlimit(-1.0f, 1.0f, latest.sampleR * 2.0f);
-                    phaseScope_.pushSample(vL, vR);
-                }
-                if (latest.crestFactor > 0.0f && latest.peakLeft > -60.0f) {
-                    // En ALL mode, crestFactor = maxPeak - loudestTrackRms.
-                    // Reconstruimos loudestTrackRms = peakLeft - crestFactor
-                    // para evitar el problema de promediar RMS en dB.
-                    float correctRms = latest.peakLeft - latest.crestFactor;
-                    phaseScope_.pushCrest(latest.peakLeft, correctRms);
-                }
-
-                float mid = (latest.sampleL + latest.sampleR) * 0.5f;
-                float side = (latest.sampleL - latest.sampleR) * 0.5f;
-                auto toDb = [](float s) -> float {
-                    return (std::abs(s) < 0.00001f) ? -80.0f : 20.0f * std::log10(std::abs(s));
-                };
-                vuMeters_.setLevel(0, toDb(latest.sampleL));
-                vuMeters_.setLevel(1, toDb(latest.sampleR));
-                vuMeters_.setLevel(2, toDb(mid));
-                vuMeters_.setLevel(3, toDb(side));
+            if (latest.active) {
+                bool hasFFT = false;
+                for (int fi = 0; fi < 256 && !hasFFT; ++fi)
+                    if (latest.spectrum[fi] > 0.01f) hasFFT = true;
+                if (hasFFT)
+                    spectrograph_.updateSpectrum(latest.spectrum, 256);
             }
+
+            phaseScope_.setCorrelation(latest.correlation);
+            phaseScope_.getVectorscope().setDisplayCorrelation(latest.correlation);
+            if (latest.sampleL != 0.0f || latest.sampleR != 0.0f) {
+                float vL = juce::jlimit(-1.0f, 1.0f, latest.sampleL * 2.0f);
+                float vR = juce::jlimit(-1.0f, 1.0f, latest.sampleR * 2.0f);
+                phaseScope_.pushSample(vL, vR);
+            }
+            if (latest.crestFactor > 0.0f && latest.peakLeft > -60.0f) {
+                float rms = (latest.rmsLeft + latest.rmsRight) * 0.5f;
+                phaseScope_.pushCrest(latest.peakLeft, rms);
+            }
+
+            float mid = (latest.sampleL + latest.sampleR) * 0.5f;
+            float side = (latest.sampleL - latest.sampleR) * 0.5f;
+            auto toDb = [](float s) -> float {
+                return (std::abs(s) < 0.00001f) ? -80.0f : 20.0f * std::log10(std::abs(s));
+            };
+            vuMeters_.setLevel(0, toDb(latest.sampleL));
+            vuMeters_.setLevel(1, toDb(latest.sampleR));
+            vuMeters_.setLevel(2, toDb(mid));
+            vuMeters_.setLevel(3, toDb(side));
         }
     }
     catch (const std::exception& e)
@@ -329,11 +289,10 @@ void AnalyzersPanelComponent::fastUpdateMeters(SlotRegistry& registry)
 {
     try
     {
-        telemetryProvider_.setRegistry(&registry);
-        auto latest = telemetryProvider_.getLatest();
+        if (selectedSlot_ < 0) return;
 
-        if (!latest.active && !telemetryProvider_.isMaster())
-            return;
+        auto& telem = registry.getTelemetry(selectedSlot_);
+        auto latest = telem.latest();
 
         meter_.updateData(latest);
         phaseScope_.setCorrelation(latest.correlation);
@@ -345,8 +304,8 @@ void AnalyzersPanelComponent::fastUpdateMeters(SlotRegistry& registry)
             phaseScope_.pushSample(vL, vR);
         }
         if (latest.crestFactor > 0.0f && latest.peakLeft > -60.0f) {
-            float correctRms = latest.peakLeft - latest.crestFactor;
-            phaseScope_.pushCrest(latest.peakLeft, correctRms);
+            float rms = (latest.rmsLeft + latest.rmsRight) * 0.5f;
+            phaseScope_.pushCrest(latest.peakLeft, rms);
         }
 
         float mid = (latest.sampleL + latest.sampleR) * 0.5f;
@@ -358,8 +317,6 @@ void AnalyzersPanelComponent::fastUpdateMeters(SlotRegistry& registry)
         vuMeters_.setLevel(1, toDb(latest.sampleR));
         vuMeters_.setLevel(2, toDb(mid));
         vuMeters_.setLevel(3, toDb(side));
-
-        refreshSpectrographFromProvider();
     }
     catch (const std::exception& e)
     {
@@ -386,10 +343,9 @@ void AnalyzersPanelComponent::setSelectedSlot(int slotIndex)
 {
     try
     {
-        if (slotIndex == telemetryProvider_.getSelectedSlot() && telemetryProvider_.isSingle())
+        if (slotIndex == selectedSlot_)
             return;
 
-        telemetryProvider_.selectSlot(slotIndex);
         selectedSlot_ = slotIndex;
         auto& registry = sharedData_.getSlotRegistry();
 
@@ -400,88 +356,21 @@ void AnalyzersPanelComponent::setSelectedSlot(int slotIndex)
         }
 
         playlist_.setSelectedSlot(slotIndex);
-        updateAllButtonAppearance();
 
-        telemetryProvider_.setRegistry(&registry);
-        refreshSpectrographFromProvider();
-
+        // Update all analyzers for the new slot
         if (slotIndex >= 0 && slotIndex < SlotRegistry::kMaxSlots)
-            meter_.updateData(registry.getTelemetry(slotIndex).latest());
+        {
+            auto& telem = registry.getTelemetry(slotIndex);
+            auto latest = telem.latest();
+            meter_.updateData(latest);
+            // Don't force spectrograph update here — fastUpdateSpectrograph handles it
+        }
     }
     catch (const std::exception& e)
     {
         juce::Logger::outputDebugString("[AnalyzersPanelComponent::setSelectedSlot] Exception: "
                                          + juce::String(e.what()));
     }
-}
-
-void AnalyzersPanelComponent::refreshSpectrographFromProvider()
-{
-    auto latest = telemetryProvider_.getLatest();
-
-    if (telemetryProvider_.isMaster())
-    {
-        spectrograph_.updateSpectrum(latest.spectrum, 256);
-        return;
-    }
-
-    if (telemetryProvider_.getSelectedSlot() >= 0 || latest.active)
-        spectrograph_.updateSpectrum(latest.spectrum, 256);
-}
-
-TrackTelemetry AnalyzersPanelComponent::getLatestTelemetry()
-{
-    auto& registry = sharedData_.getSlotRegistry();
-    telemetryProvider_.setRegistry(&registry);
-    return telemetryProvider_.getLatest();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  updateAllButtonAppearance — Colores y visibilidad del botón modo
-// ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
-//  selectBus — Cambia a Bus mode y selecciona un bus
-// ═══════════════════════════════════════════════════════════════════════════
-void AnalyzersPanelComponent::selectBus(BusType bus)
-{
-    telemetryProvider_.selectBus(bus);
-    auto& registry = sharedData_.getSlotRegistry();
-    telemetryProvider_.setRegistry(&registry);
-    refreshSpectrographFromProvider();
-    updateAllButtonAppearance();
-    repaint();
-}
-
-void AnalyzersPanelComponent::updateAllButtonAppearance()
-{
-    auto mode = telemetryProvider_.getMode();
-
-    juce::String text;
-    juce::Colour bg, fg;
-
-    switch (mode) {
-        case TelemetryProvider::Mode::Single:
-            text = "SGL";
-            bg = MixCoachTheme::textMuted().withAlpha(0.12f);
-            fg = MixCoachTheme::textMuted().withAlpha(0.5f);
-            break;
-        case TelemetryProvider::Mode::Bus:
-            text = telemetryProvider_.getSelectedBusName().substring(0, 3).toUpperCase();
-            bg = telemetryProvider_.getSelectedBusColour().withAlpha(0.3f);
-            fg = telemetryProvider_.getSelectedBusColour();
-            break;
-        case TelemetryProvider::Mode::Master:
-            text = "ALL";
-            bg = MixCoachTheme::accent();
-            fg = juce::Colours::white;
-            break;
-    }
-
-    allButton_.setButtonText(text);
-    allButton_.setColour(juce::TextButton::buttonColourId, bg);
-    allButton_.setColour(juce::TextButton::buttonOnColourId, bg.brighter(0.2f));
-    allButton_.setColour(juce::TextButton::textColourOffId, fg);
-    allButton_.setColour(juce::TextButton::textColourOnId, fg);
 }
 
 } // namespace mixcoach

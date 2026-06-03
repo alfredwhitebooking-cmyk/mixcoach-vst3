@@ -36,8 +36,14 @@ public:
     void setSelectedSlot(int slotIndex);
     [[nodiscard]] int getSelectedSlot() const noexcept { return selectedSlot_; }
     [[nodiscard]] int getPreferredHeight() const;
+    [[nodiscard]] int getActiveCount() const noexcept { return activeCount_; }
 
     std::function<void(int slotIndex)> onSlotSelected;
+    /** Callback para el botón "+ GRUPO". Si no se setea, no hace nada. */
+    std::function<void()> onAddGroupRequested;
+
+    /** Asigna el Viewport padre para auto-scroll al seleccionar un track. */
+    void setViewport(juce::Viewport* vp) noexcept { playlistViewport_ = vp; }
 
 private:
     struct TrackEntry {
@@ -54,7 +60,7 @@ private:
         std::array<int, SlotRegistry::kMaxSlots> slotIndices{};
     };
 
-    static constexpr int kMaxEntries = 32;
+    static constexpr int kMaxEntries = 128;
     std::array<TrackEntry, kMaxEntries> entries_{};
     std::array<PlBusGroup, kNumBuses + 1> busGroups_{};
     int activeCount_ = 0;
@@ -70,6 +76,12 @@ private:
     juce::Rectangle<int> subHeaderGrupoBounds_;
 
     juce::Label headerLabel_;
+
+    // ─── Viewport padre (para auto-scroll) ────────────────────────────
+    juce::Viewport* playlistViewport_ = nullptr;
+
+    /** Calcula la coordenada Y de un slot en la lista. Retorna -1 si no se encuentra. */
+    [[nodiscard]] int getSlotY(int slotIndex) const noexcept;
 
     // ─── LED strip animado ───────────────────────────────────────────
     static constexpr int kLEDCount = 24;

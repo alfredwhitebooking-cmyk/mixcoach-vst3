@@ -100,6 +100,8 @@ void MessengerAudioProcessor::ensureSlotRegistered()
             busAssignment_);
 
         if (slotIndex_ >= 0) {
+            slotRegistered_ = true;
+            pendingBackupWrite_ = true; // Backup se escribe desde el timer (~500ms)
             writeCrashLog("[Messenger] Slot registrado: "
                 + juce::String(slotIndex_) + " | name=" + trackName_);
         } else {
@@ -124,19 +126,40 @@ void MessengerAudioProcessor::ensureSlotRegistered()
 // Si el slot ya se registró (via setStateInformation o prepareToPlay), no-op.
 void MessengerAudioProcessor::timerCallback()
 {
-    // Siempre detener el timer tras el primer disparo (fire once).
-    // Si el slot ya está registrado, esta llamada es no-op.
-    stopTimer();
-
     // ═══ Bypass seguro: si ya estamos en shutdown, no hacer nada ═══════
     if (!juce::MessageManager::getInstance()->isThisTheMessageThread())
         return;
 
-    // Registrar slot si no se registró antes
+    // ═══ PASO 1: Registrar slot si no se registró antes ─────────────────
     if (slotIndex_ < 0) {
         writeCrashLog("[Messenger] timerCallback: registrando slot via timer (fire once 500ms)");
         ensureSlotRegistered();
     }
+
+    // ═══ PASO 2: Escribir backup file desde el message thread ──────────
+    // CRÍTICO: saveSlotToBackupFile() hace file I/O. NO debe ejecutarse
+    // desde el audio thread (processBlock). El timer corre en el message
+    // thread de FL Studio, que es seguro para file I/O.
+    //
+    // El backup se escribe UNA SOLA VEZ, ~500ms después del registro.
+    // Esto es intencional: durante la inserción masiva de 60+ Messengers,
+    // el registro es ultra-rápido (sin file I/O). Los backups se escriben
+    // ~500ms después, cuando FL Studio ya terminó de crear las instancias.
+    //
+    // Si el slot ya tiene un backup (de sesión anterior), se sobreescribe.
+    if (pendingBackupWrite_ && slotIndex_ >= 0 && sharedData_) {
+        pendingBackupWrite_ = false;
+        auto& registry = sharedData_->getSlotRegistry();
+        auto slotInfo = registry.getSlotInfo(slotIndex_);
+        if (slotInfo.active && slotInfo.slotIndex == slotIndex_) {
+            SlotRegistry::saveSlotToBackupFile(slotIndex_, slotInfo);
+            writeCrashLog("[Messenger] Backup escrito para slot "
+                + juce::String(slotIndex_) + " (diferido al timer)");
+        }
+    }
+
+    // ═══ Siempre detener el timer tras el primer disparo (fire once) ──
+    stopTimer();
 }
 
 void MessengerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -175,59 +198,91 @@ void MessengerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     auto numSamples = buffer.getNumSamples();
     auto numChannels = buffer.getNumChannels();
 
-    // Asegurar que el slot esté registrado
-    if (slotIndex_ < 0)
+    // ═══ Hot path: slot ya registrado (flags chequeada en 1ns, sin branch cost) ═══
+    // ensureSlotRegistered() se llama UNA SOLA VEZ desde prepareToPlay,
+    // setStateInformation, o el timer. En processBlock solo verificamos la
+    // flag booleana. Evitamos la llamada a función, try/catch, y chequeos
+    // redundantes en el audio thread.
+    if (!slotRegistered_) {
         ensureSlotRegistered();
-
-    if (slotIndex_ < 0 || !sharedData_)
-        return;
+        if (!slotRegistered_ || !sharedData_)
+            return;
+    }
 
     auto& registry = sharedData_->getSlotRegistry();
+
+    // ─── Si está muteado, no enviar telemetría ─────────────────────────
+    if (muted_) {
+        // El audio sigue pasando (Messenger es transparente por defecto)
+        return;
+    }
 
     // 1. Recopilar telemetria
     auto telemetry = collector_.collect(buffer);
     telemetry.slotIndex = slotIndex_;
 
     // 2. Almacenar localmente
-    localTelemetry_.push(telemetry);
+    // Push telemetry to background manager (lock‑free queue)
+    TelemetryManager::instance().pushTelemetry(slotIndex_, telemetry);
 
     // 3. Enviar telemetria al SharedData
     registry.setActive(slotIndex_, true);
     registry.getTelemetry(slotIndex_).push(telemetry);
 
-    // 3b. Sincronizar a shared memory (IPC)
+    // 3b. Sincronizar a shared memory (IPC) — con throttling
     shmWriteCounter_++;
-    // ═══ FIX: Siempre pasar datos FFT a shared memory ═══════════════════
-    // ANTES: (shmWriteCounter_ % 8 == 0) causaba que los contadores
-    // blockCount_ (FFT se computa cada 4 bloques) y shmWriteCounter_
-    // (envío a shared memory cada 8) NUNCA se alinearan:
-    //   - FFT computado en bloques 0, 4, 8, 12...
-    //   - FFT enviado en escrituras 8, 16, 24... (bloques 7, 15, 23...)
-    //   → El FFT NUNCA llegaba a shared memory → spectrograph NEGRO.
-    // AHORA: Siempre pasamos telemetry.spectrum. updateSharedTelemetry()
-    // internamente chequea hasSpectrum > 0.001f y solo escribe datos
-    // válidos, ignorando ceros cuando el FFT no se computó.
-    const float* fftData = telemetry.spectrum;
+    // ═══ THROTTLE: Escribir a shared memory cada 2 bloques ═══════════════
+    // Con 100+ Messengers, CADA UNO adquiriendo el spinlock en CADA bloque
+    // = 100 adquisiciones por ciclo de audio (~2ms). Aunque writeSlotTelemetry()
+    // usa 1 solo lock (vs los 2 originales), 100 × 1μs de spinlock overhead
+    // = 100μs por bloque = 5% de CPU solo en contención del spinlock.
+    //
+    // Escribiendo cada 2 bloques reducimos la contención del spinlock a la
+    // MITAD. Además, collect() ahora solo ejecuta DSP completo cada 4 bloques,
+    // así que los valores de RMS/FFT/LUFS solo cambian cada 4 bloques. Escribir
+    // a SHM cada 2 bloques asegura que los datos frescos lleguen en ≤ 2 intentos.
+    //
+    // Los meters de MixCoach se actualizan a 30fps (~33ms de intervalo).
+    // Incluso 2 bloques (~4ms a 48kHz/96samples) es 8× más rápido que la UI
+    // puede mostrar. El usuario NO percibe diferencia.
+    if (shmWriteCounter_ % 2 == 0)
+    {
+        const float* fftData = telemetry.spectrum;
 
-    registry.updateSharedTelemetry(
-        slotIndex_,
-        telemetry.peakLeft, telemetry.peakRight,
-        telemetry.rmsLeft, telemetry.rmsRight,
-        telemetry.correlation,
-        telemetry.crestFactor,
-        telemetry.sampleL, telemetry.sampleR,
-        fftData,
-        telemetry.lufsIntegrated,
-        telemetry.lufsShortTerm,
-        telemetry.lufsMomentary,
-        telemetry.lufsTruePeak,
-        telemetry.loudnessRange);
+        registry.updateSharedTelemetry(
+            slotIndex_,
+            telemetry.peakLeft, telemetry.peakRight,
+            telemetry.rmsLeft, telemetry.rmsRight,
+            telemetry.correlation,
+            telemetry.crestFactor,
+            telemetry.sampleL, telemetry.sampleR,
+            fftData,
+            telemetry.lufsIntegrated,
+            telemetry.lufsShortTerm,
+            telemetry.lufsMomentary,
+            telemetry.lufsTruePeak,
+            telemetry.loudnessRange);
+    }
 
-    // 3c. Backup file (cada 16 bloques ~ cada 32-64ms)
-    //    Este es el mecanismo GARANTIZADO para que MixCoach detecte
-    //    este Messenger incluso si shared memory falla.
-    //    El backup file contiene nombre, color, ruta y telemetría.
-    if (shmWriteCounter_ % 16 == 0) {
+    // 3c. Backup file SOLO cuando SHM no está disponible
+    //    ═══ FIX CRÍTICO: Eliminar file I/O del audio thread cuando SHM funciona ═══
+    //    ANTES: updateSlotBackupTelemetry() se llamaba CADA 16 BLOQUES (~32-64ms)
+    //    desde el audio thread, incluso con SHM saludable. Con 60+ Messengers,
+    //    eso son 60+ archivos abiertos/escritos/cerrados en paralelo desde
+    //    audio threads → contención de disco → audio glitches → FL Studio crash.
+    //
+    //    AHORA: Solo se escribe backup cuando SHM NO está disponible (cada 64
+    //    bloques ~128-256ms). Cuando SHM funciona (caso normal), CERO file I/O
+    //    desde el audio thread. La telemetría viaja por shared memory que es
+    //    órdenes de magnitud más rápida que el disco.
+    //
+    //    El backup sigue siendo el mecanismo de FALLBACK para cuando la shared
+    //    memory entre DLLs separadas falla — pero no debe ejecutarse en el path
+    //    caliente del audio thread si no es necesario.
+    if (shmWriteCounter_ % 64 == 0
+        && sharedData_
+        && !sharedData_->isSharedMemoryAvailable())
+    {
         registry.updateSlotBackupTelemetry(
             slotIndex_,
             telemetry.peakLeft, telemetry.peakRight,
@@ -239,7 +294,8 @@ void MessengerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
             telemetry.lufsShortTerm,
             telemetry.lufsMomentary,
             telemetry.lufsTruePeak,
-            telemetry.loudnessRange);
+            telemetry.loudnessRange,
+            telemetry.spectrum);
     }
 
     // 4. Compartir audio al ring buffer
@@ -296,6 +352,15 @@ void MessengerAudioProcessor::setBusAssignment(BusType bus)
     catch (...) {}
 }
 
+void MessengerAudioProcessor::setMuted(bool mute)
+{
+    muted_ = mute;
+    if (mute && slotIndex_ >= 0 && sharedData_) {
+        // Marcar slot como inactivo para que MixCoach no muestre datos stale
+        sharedData_->getSlotRegistry().setActive(slotIndex_, false);
+    }
+}
+
 // --- Estado persistente ---
 
 void MessengerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
@@ -310,6 +375,7 @@ void MessengerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
             mos.write(nameStr.data(), nameLen);
         mos.writeInt(static_cast<int>(trackColour_.getARGB()));
         mos.writeInt(static_cast<int>(busAssignment_));
+    mos.writeInt(muted_ ? 1 : 0);
     }
     catch (...) {}
 }
@@ -378,6 +444,29 @@ void MessengerAudioProcessor::setStateInformation(const void* data, int sizeInBy
             writeCrashLog("[Messenger] setStateInformation: slot "
                 + juce::String(slotIndex_) + " sincronizado: name=" + trackName_);
         }
+    }
+    catch (const std::exception& e)
+    {
+        writeCrashLog("[Messenger] EXCEPCION en setStateInformation (metadata sync): " + juce::String(e.what()));
+    }
+    catch (...)
+    {
+        writeCrashLog("[Messenger] EXCEPCION desconocida en setStateInformation (metadata sync)");
+    }
+
+    try {
+
+    // Formato mínimo con mute: slotIndex(4)+nameLen(4)+name(N)+colour(4)+bus(4)+muted(4) = 20+N
+    if (sizeInBytes >= 20) {
+        juce::MemoryInputStream mis2(data, sizeInBytes, false);
+        mis2.readInt(); // slotIndex
+        auto nameLen2 = mis2.readInt();
+        if (nameLen2 > 0 && mis2.getNumBytesRemaining() >= nameLen2)
+            mis2.skipForward(nameLen2);
+        mis2.readInt(); // colour
+        mis2.readInt(); // bus
+        if (mis2.getNumBytesRemaining() >= 4)
+            muted_.store(mis2.readInt() != 0, std::memory_order_relaxed);
     }
     catch (const std::exception& e) {
         writeCrashLog("[Messenger] EXCEPCION en setStateInformation: " + juce::String(e.what()));

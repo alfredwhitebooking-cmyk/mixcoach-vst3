@@ -52,15 +52,10 @@ void MainTabbedComponent::updateAllPanels(SlotRegistry& registry, double sampleR
     juce::ignoreUnused(sampleRate);
     try
     {
-        // Update MixCoach panel messenger list (siempre, para Tab 1)
+        // Update MixCoach panel messenger list
         coachPanel_->updateMessengers(registry);
-
-        // ═══ Actualizar analyzers SOLO si Tab 2 (Metering) está activo ═══
-        // Esto ahorra CPU evitando actualizaciones costosas de espectrograma,
-        // vectorscope, VU meters y playlist cuando el usuario está en Tab 1.
-        // Al cambiar al Tab 2, el próximo tick del timer refrescará todo.
-        if (getCurrentTabIndex() == 1)
-            analyzersPanel_->updateAnalyzers(registry, sampleRate);
+        // Existing analyzers panel update
+        analyzersPanel_->updateAnalyzers(registry, sampleRate);
     }
     catch (const std::exception& e)
     {
@@ -73,19 +68,24 @@ void MainTabbedComponent::fastUpdateSpectrograph(SlotRegistry& registry)
 {
     try
     {
-        // ═══ TelemetryProvider decide la fuente (Single/Master) ════════
-        // NOTA: Esta función ya NO llama a getLatestTelemetry() porque
-        // refreshSpectrographFromProvider() internamente ya llama a
-        // telemetryProvider_.getLatest() — un getLatestTelemetry() extra
-        // solo ejecutaba buildMaster() y descartaba el resultado.
-        //
-        // Además: fastUpdateMeters() en AnalyzersPanelComponent TAMBIÉN
-        // llama a refreshSpectrographFromProvider(), por lo que esta
-        // función es REDUNDANTE cuando se llama desde el timer junto con
-        // fastUpdateMeters(). Se mantiene como punto de entrada único
-        // por si algún caller futuro solo quiere actualizar el spectrograph.
-        juce::ignoreUnused(registry);
-        analyzersPanel_->refreshSpectrographFromProvider();
+        // Leer slot seleccionado de AnalyzersPanel
+        int selSlot = analyzersPanel_->getSelectedSlot();
+        if (selSlot < 0)
+            return;
+
+        auto& telem = registry.getTelemetry(selSlot);
+        auto latest = telem.latest();
+
+        // Quick FFT update (no necesita bloqueo — solo lectura)
+        if (latest.active) {
+            bool hasFFT = false;
+            for (int fi = 0; fi < 256 && !hasFFT; ++fi) {
+                if (latest.spectrum[fi] > 0.01f) hasFFT = true;
+            }
+            if (hasFFT) {
+                analyzersPanel_->getSpectrograph().updateSpectrum(latest.spectrum, 256);
+            }
+        }
     }
     catch (const std::exception& e)
     {

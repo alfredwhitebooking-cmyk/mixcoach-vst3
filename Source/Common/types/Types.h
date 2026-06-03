@@ -61,6 +61,7 @@ struct SlotInfo {
     char        trackName[64] = {0};
     juce::Colour colour    = juce::Colours::grey;
     bool        active    = false;
+    bool        stale     = false;   // Sin telemetría por > 3s (Messenger desconectado)
     BusType     bus       = BusType::None;
 
     // Acceso trackName como std::string

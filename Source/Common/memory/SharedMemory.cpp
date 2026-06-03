@@ -1,6 +1,7 @@
 #include "SharedMemory.h"
 #include "../types/LogHelper.h"
 #include <atomic>
+#include <immintrin.h>  // _mm_pause()
 
 #ifdef _WIN32
 #include <windows.h>
@@ -175,14 +176,41 @@ bool SharedMemoryManager::acquireLock(int timeoutMs)
 
     auto start = GetTickCount64();
 
-    // Spinlock: esperar hasta que writeLock sea 0, luego ponerlo en 1
+    // ═══ SPINLOCK DE DOS FASES: _mm_pause() + luego Sleep(0) ═══════════════
+    // FASE 1: ~1000 iteraciones de _mm_pause() (~1μs). NO hay syscall,
+    //          solo una instrucción CPU que indica hyper-threading: "no hagas
+    //          nada útil, el lock está tomado". Esto es ~100× más rápido que
+    //          Sleep(0) que causa context switch completo (~1-15μs).
+    // FASE 2: Si el lock sigue ocupado, ceder el timeslice via Sleep(0).
+    //          Esto permite que el thread que tiene el lock pueda ejecutarse.
+    //
+    // ═══ CRÍTICO: Sleep(0) con 60+ threads ════════════════════════════════
+    // ANTES: Sleep(0) en CADA iteración del while. Con 60+ threads todos
+    // esperando el mismo spinlock, cada Sleep(0) causa un context switch.
+    // El scheduler de Windows se satura: 60 threads compitiendo, cada uno
+    // ejecutándose ~15μs, luego durmiendo, luego despertando... el overhead
+    // de scheduler DOMINA y el lock apenas progresa. El resultado es que
+    // threads pueden esperar DECENAS de MILISEGUNDOS aunque el lock solo
+    // esté tomado ~1μs. Esto bloquea los audio threads → FL Studio crash.
+    //
+    // AHORA: Dos fases. La Fase 1 es ultra-rápida (sin syscalls). La Fase 2
+    // es el fallback lento cuando hay verdadera contención prolongada.
+    int pauseCount = 0;
     while (InterlockedExchange(&block_->header.writeLock, 1) != 0) {
         if (GetTickCount64() - start > static_cast<ULONGLONG>(timeoutMs)) {
             LogHelper::writeToLog("[SharedMemory] TIMEOUT adquiriendo writeLock; se omite la operacion");
             return false;
         }
-        // Yield opcional para no quemar CPU en espera corta
-        Sleep(0);
+
+        // Fase 1: _mm_pause() por ~1000 ciclos (~1μs)
+        if (pauseCount < 1000) {
+            _mm_pause();
+            ++pauseCount;
+        }
+        // Fase 2: Sleep(0) si el lock sigue ocupado
+        else {
+            Sleep(0);
+        }
     }
     return true;
 #else
@@ -209,14 +237,17 @@ uint64_t SharedMemoryManager::getChangeCount() const noexcept
 #endif
 }
 
-bool SharedMemoryManager::readSlot(int index, SharedSlotEntry& out) const noexcept
+bool SharedMemoryManager::readSlot(int index, SharedSlotEntry& out) noexcept
 {
     if (block_ == nullptr || index < 0 || index >= kSharedMaxSlots)
         return false;
 
-    // Copia segura del slot (no necesita lock para lectura porque
-    // las escrituras de un slot son atómicas en x64 para este tamaño)
+    if (!acquireLock())
+        return false;
+
     out = block_->slots[index];
+
+    releaseLock();
     return true;
 }
 
@@ -231,6 +262,70 @@ void SharedMemoryManager::writeSlot(int index, const SharedSlotEntry& entry) noe
     block_->slots[index] = entry;
 
     // Incrementar changeCount atómicamente
+#ifdef _WIN32
+    InterlockedIncrement64(
+        reinterpret_cast<volatile LONG64*>(&block_->header.changeCount));
+#else
+    block_->header.changeCount++;
+#endif
+
+    releaseLock();
+}
+
+void SharedMemoryManager::writeSlotTelemetry(int index,
+                                              float peakLeft, float peakRight,
+                                              float rmsLeft, float rmsRight,
+                                              float correlation, float crestFactor,
+                                              float sampleL, float sampleR,
+                                              const float* fftMagnitudes,
+                                              float lufsIntegrated, float lufsShortTerm,
+                                              float lufsMomentary, float lufsTruePeak,
+                                              float loudnessRange) noexcept
+{
+    if (block_ == nullptr || index < 0 || index >= kSharedMaxSlots)
+        return;
+
+    if (!acquireLock())
+        return;
+
+    // ═══ ESCRIBIR SOLO TELEMETRIA (1 lock, sin read previo) ═══════════
+    // NO tocamos slotIndex, trackName, colourARGB, bus, active — el slot
+    // ya debe estar registrado (active=1). Solo actualizamos datos de
+    // telemetría que cambian en cada processBlock.
+    auto& slot = block_->slots[index];
+    slot.peakLeft     = peakLeft;
+    slot.peakRight    = peakRight;
+    slot.rmsLeft      = rmsLeft;
+    slot.rmsRight     = rmsRight;
+    slot.correlation  = correlation;
+    slot.crestFactor  = crestFactor;
+    slot.sampleL      = sampleL;
+    slot.sampleR      = sampleR;
+    slot.telemetryTimestamp = static_cast<int64_t>(juce::Time::getMillisecondCounterHiRes() * 1000.0);
+
+    // FFT data (if provided and has content)
+    if (fftMagnitudes != nullptr) {
+        bool hasSpectrum = false;
+        for (int fi = 0; fi < 512; ++fi) {
+            if (fftMagnitudes[fi] > 0.001f) {
+                hasSpectrum = true;
+                break;
+            }
+        }
+        if (hasSpectrum) {
+            std::copy(fftMagnitudes, fftMagnitudes + 512, slot.fftMagnitudes);
+            slot.fftTimestamp = static_cast<int64_t>(juce::Time::getMillisecondCounter()) * 1000;
+        }
+    }
+
+    // LUFS data
+    slot.lufsIntegrated = lufsIntegrated;
+    slot.lufsShortTerm  = lufsShortTerm;
+    slot.lufsMomentary  = lufsMomentary;
+    slot.lufsTruePeak   = lufsTruePeak;
+    slot.loudnessRange  = loudnessRange;
+
+    // Incrementar changeCount
 #ifdef _WIN32
     InterlockedIncrement64(
         reinterpret_cast<volatile LONG64*>(&block_->header.changeCount));

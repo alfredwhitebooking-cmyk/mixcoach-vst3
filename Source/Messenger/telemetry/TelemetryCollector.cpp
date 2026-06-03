@@ -240,18 +240,66 @@ void TelemetryCollector::prepare(double sampleRate, int /*samplesPerBlock*/)
     fftBuffer_.assign(kFFTSize, 0.0f);
     fftWritePos_ = 0;
 
+    // Resetear cache de telemetría para evitar valores stale
+    // después de un cambio de sample rate o re-inicialización
+    lastTelemetry_ = TrackTelemetry{};
+    processCounter_ = 0;
+
     loudnessMeter_.prepare(sampleRate);
 }
 
 TrackTelemetry TelemetryCollector::collect(const juce::AudioBuffer<float>& buffer)
 {
+    processCounter_++;
+    blockCount_++;
+
+    auto numSamples = buffer.getNumSamples();
+    auto numChannels = buffer.getNumChannels();
+
+    // ═══ TWO-PATH DSP: Full vs Lightweight ═══════════════════════════════
+    // Con 100+ Messengers, ejecutar FFT + LUFS + correlación en CADA bloque
+    // de audio satura la CPU. Este throttle ejecuta DSP completo solo en 1
+    // de cada kProcessInterval bloques. En los bloques intermedios, solo
+    // actualizamos PEAK (el más barato: 1 loop, sin log, sin log10, sin FFT).
+    //
+    // ¿Por qué solo peak en bloques intermedios?
+    // - Peak: 1 loop, 1 abs(), 1 max() → ultra-ligero
+    // - RMS: 1 loop, multiplicaciones, sqrt(), log10() → más pesado
+    // - Correlation: 3 multiplicaciones por sample → moderado
+    // - FFT: 1024-point con ventana Hann → pesado
+    // - LUFS: 2 biquads por sample + mean square → EL MÁS PESADO
+    //
+    // La UI de MixCoach se actualiza a 30fps (~33ms). Incluso a 1/4 de
+    // frecuencia (~8ms entre DSPs), los datos llegan ~4× más rápido de lo
+    // que la UI puede mostrar. El usuario ve actualizaciones fluidas.
+    //
+    // BENEFICIO: ~75% menos CPU en el pipeline DSP.
+    if (processCounter_ % kProcessInterval != 0) {
+        // ─── LIGHTWEIGHT PATH: solo actualizar peak ─────────────────────
+        // El peak es el único valor que necesita frescura máxima para
+        // detectar transientes. RMS, FFT y LUFS pueden permitirse ~8ms
+        // de latencia sin que el usuario lo note en los meters.
+        if (numSamples > 0) {
+            if (numChannels >= 2) {
+                auto left  = buffer.getReadPointer(0);
+                auto right = buffer.getReadPointer(1);
+                lastTelemetry_.peakLeft  = computePeak(left, numSamples);
+                lastTelemetry_.peakRight = computePeak(right, numSamples);
+            } else if (numChannels == 1) {
+                auto mono = buffer.getReadPointer(0);
+                lastTelemetry_.peakLeft  = computePeak(mono, numSamples);
+                lastTelemetry_.peakRight = lastTelemetry_.peakLeft;
+            }
+        }
+        lastTelemetry_.timestamp = juce::Time::getMillisecondCounter() * 1000;
+        return lastTelemetry_;
+    }
+
+    // ─── FULL DSP PATH: telemetría completa ─────────────────────────────
     TrackTelemetry telemetry;
     telemetry.timestamp = juce::Time::getMillisecondCounter() * 1000;
     telemetry.slotIndex = -1;
     telemetry.active    = true;
-
-    auto numSamples = buffer.getNumSamples();
-    auto numChannels = buffer.getNumChannels();
 
     if (numSamples > 0) {
         if (numChannels >= 2) {
@@ -305,7 +353,8 @@ TrackTelemetry TelemetryCollector::collect(const juce::AudioBuffer<float>& buffe
     telemetry.lufsTruePeak   = juce::jmax(telemetry.peakLeft, telemetry.peakRight);
     telemetry.loudnessRange  = loudnessMeter_.getLoudnessRange();
 
-    blockCount_++;
+    // Cachear para bloques intermedios
+    lastTelemetry_ = telemetry;
     return telemetry;
 }
 

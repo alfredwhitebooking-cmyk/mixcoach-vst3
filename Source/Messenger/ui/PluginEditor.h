@@ -80,6 +80,9 @@ private:
     // Row 6: NOTAS
     juce::TextEditor notasEditor_;
 
+    // Row 7: MUTE button
+    juce::TextButton muteButton_;
+
     // ─── 3-Column NIVELES: INPUT | REDUCCIÓN DE GANANCIA | OUTPUT ──────
 
     // Column headers
@@ -123,6 +126,7 @@ private:
     ColourSelectorListener colourListener_;
 
     void applyPresetColour(juce::Colour colour);
+    void updateMuteDisplay();
 
     // ─── Helpers inline (evitan problemas de encoding con MSVC) ──────
     static juce::String getTipoForBus(BusType bus) {

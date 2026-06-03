@@ -2,6 +2,17 @@
 
 namespace mixcoach {
 
+namespace {
+
+/** Convierte BusType a índice de bus groups. None/UNASSIGNED → kNumBuses. */
+int busToIndex(BusType bus) noexcept
+{
+    int idx = static_cast<int>(bus);
+    return (idx >= 0 && idx < kNumBuses) ? idx : kNumBuses;
+}
+
+} // namespace
+
 PlaylistComponent::PlaylistComponent()
 {
     headerLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x93\x8B Playlist"),
@@ -44,8 +55,7 @@ void PlaylistComponent::updateList(SlotRegistry& registry)
         if (entryPeak > maxPeak) maxPeak = entryPeak;
 
         // ─── Agrupar por bus ─────────────────────────────────────────────
-        int busIdx = static_cast<int>(info.bus);
-        if (busIdx < 0) busIdx = kNumBuses; // UNASSIGNED
+        int busIdx = busToIndex(info.bus);
         auto& group = busGroups_[busIdx];
         if (group.count < SlotRegistry::kMaxSlots)
             group.slotIndices[group.count++] = count;
@@ -90,12 +100,68 @@ int PlaylistComponent::getPreferredHeight() const
 void PlaylistComponent::setSelectedSlot(int slotIndex)
 {
     if (selectedSlot_ == slotIndex) return;
+
+    // ─── Validación: -1 (deseleccionar) o rango válido ────────────────
+    if (slotIndex < -1 || slotIndex >= SlotRegistry::kMaxSlots)
+        return;
+
     selectedSlot_ = slotIndex;
 
     for (int i = 0; i < activeCount_; ++i) {
         entries_[i].selected = (entries_[i].slotIndex == slotIndex);
     }
+
+    // ─── Auto-scroll: hacer visible el track seleccionado ──────────────
+    if (playlistViewport_ != nullptr && slotIndex >= 0)
+    {
+        int rowY = getSlotY(slotIndex);
+        if (rowY >= 0)
+        {
+            auto viewPos = playlistViewport_->getViewPosition();
+            int viewH = playlistViewport_->getMaximumVisibleHeight();
+            // Si está debajo del área visible → scroll down
+            if (rowY + kPlCardHeight > viewPos.getY() + viewH)
+                playlistViewport_->setViewPosition(viewPos.getX(),
+                    rowY + kPlCardHeight - viewH);
+            // Si está arriba del área visible → scroll up
+            else if (rowY < viewPos.getY())
+                playlistViewport_->setViewPosition(viewPos.getX(), rowY);
+        }
+    }
+
     repaint();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  getSlotY — Calcula la coordenada Y absoluta de un slot en la lista
+//  Sigue la misma lógica de layout que paint() y mouseDown()
+// ═══════════════════════════════════════════════════════════════════════════
+int PlaylistComponent::getSlotY(int slotIndex) const noexcept
+{
+    if (slotIndex < 0 || activeCount_ == 0)
+        return -1;
+
+    int y = 2 + kPlLEDStripH + kPlLabelH + 16; // +16 for sub-header
+
+    for (int busIdx = 0; busIdx <= kNumBuses; ++busIdx)
+    {
+        auto& group = busGroups_[busIdx];
+        if (group.count == 0) continue;
+
+        y += kPlBusHeaderH + 2;
+
+        for (int r = 0; r < group.count; ++r)
+        {
+            int entryIdx = group.slotIndices[r];
+            if (entries_[entryIdx].slotIndex == slotIndex)
+                return y;
+            y += kPlCardHeight + kPlCardGap;
+        }
+
+        y += 4;
+    }
+
+    return -1;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -108,7 +174,8 @@ void PlaylistComponent::mouseDown(const juce::MouseEvent& e)
     // ─── + GRUPO click ───────────────────────────────────────────────────
     if (subHeaderGrupoBounds_.contains(pos))
     {
-        // Placeholder: notificar al host o mostrar diálogo
+        if (onAddGroupRequested)
+            onAddGroupRequested();
         return;
     }
 
@@ -272,50 +339,56 @@ void PlaylistComponent::drawTrackCard(juce::Graphics& g, juce::Rectangle<int> bo
                                        const TrackEntry& entry)
 {
     auto b = bounds.toFloat();
+    bool isStale = entry.info.stale;
 
-    int busIdx = static_cast<int>(entry.info.bus);
-    juce::Colour busCol = (busIdx >= 0) ? getBusColour(busIdx) : MixCoachTheme::textMuted();
+    int busIdx = busToIndex(entry.info.bus);
+    juce::Colour busCol = (busIdx < kNumBuses) ? getBusColour(busIdx) : MixCoachTheme::textMuted();
 
-    // ─── Background con tint sutil del bus ──────────────────────────────
-    if (entry.selected && selectedSlot_ == entry.slotIndex) {
+    // ─── Background ─────────────────────────────────────────────────────
+    if (isStale) {
+        // Stale: fondo gris con alpha bajo
+        g.setColour(MixCoachTheme::border().withAlpha(0.08f));
+        g.fillRoundedRectangle(b, 4.0f);
+    } else if (entry.selected && selectedSlot_ == entry.slotIndex) {
         g.setColour(MixCoachTheme::accent().withAlpha(0.10f));
         g.fillRoundedRectangle(b, 4.0f);
         g.setColour(MixCoachTheme::accent().withAlpha(0.35f));
         g.drawRoundedRectangle(b, 4.0f, 1.0f);
     } else {
-        // Card bg con tint sutil del color del bus
         g.setColour(MixCoachTheme::bgPanel().withAlpha(0.4f));
         g.fillRoundedRectangle(b, 4.0f);
     }
 
-    // ═══ Bus color bar (4px izquierda — más ancha y del color del bus) ═══
+    // ═══ Bus color bar ──────────────────────────────────────────────────
     auto busBar = b.removeFromLeft(4);
-    g.setColour(busCol.withAlpha(0.8f));
+    g.setColour(busCol.withAlpha(isStale ? 0.2f : 0.8f));
     g.fillRoundedRectangle(busBar.reduced(0, 5), 2.0f);
     b.removeFromLeft(2);
 
-    // ─── Type icon (basado en bus) + track color dot ──────────────────
-    // Type icon placeholder
+    // ─── Type icon ──────────────────────────────────────────────────────
     auto typeArea = b.removeFromLeft(12).reduced(0, 7);
     juce::String typeIcon;
     switch (entry.info.bus) {
-        case BusType::Drums:   typeIcon = juce::CharPointer_UTF8("\xF0\x9F\xA5\x81"); break; // 🥁
-        case BusType::Bass:    typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB8"); break; // 🎸
-        case BusType::Guitars: typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB8"); break; // 🎸
-        case BusType::Keys:    typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB9"); break; // 🎹
-        case BusType::Vocals:  typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xA4"); break; // 🎤
+        case BusType::Drums:   typeIcon = juce::CharPointer_UTF8("\xF0\x9F\xA5\x81"); break;
+        case BusType::Bass:    typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB8"); break;
+        case BusType::Guitars: typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB8"); break;
+        case BusType::Keys:    typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB9"); break;
+        case BusType::Vocals:  typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xA4"); break;
         default:               typeIcon.clear(); break;
     }
     if (typeIcon.isNotEmpty()) {
         g.setFont(juce::Font(juce::FontOptions(9.0f)));
-        g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
+        g.setColour(isStale ? MixCoachTheme::textMuted().withAlpha(0.2f)
+                            : MixCoachTheme::textMuted().withAlpha(0.5f));
         g.drawText(typeIcon, typeArea.toNearestInt(), juce::Justification::centred);
     }
     b.removeFromLeft(1);
 
     // ─── Signal indicator ───────────────────────────────────────────────
     auto sigArea = b.removeFromLeft(4).reduced(0, 11);
-    if (entry.hasSignal) {
+    if (isStale) {
+        g.setColour(MixCoachTheme::error().withAlpha(0.35f));  // Rojo fijo para stale
+    } else if (entry.hasSignal) {
         float pulse = 0.6f + 0.4f * std::sin(juce::Time::getMillisecondCounter() * 0.005f);
         g.setColour(MixCoachTheme::success().withAlpha(pulse));
     } else {
@@ -330,83 +403,94 @@ void PlaylistComponent::drawTrackCard(juce::Graphics& g, juce::Rectangle<int> bo
 
     auto nameArea = b.removeFromLeft(64);
     g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-    g.setColour(entry.selected ? MixCoachTheme::textBright() : MixCoachTheme::textPrimary());
+    if (isStale) {
+        g.setColour(MixCoachTheme::textMuted().withAlpha(0.4f));  // Atenuado
+    } else {
+        g.setColour(entry.selected ? MixCoachTheme::textBright() : MixCoachTheme::textPrimary());
+    }
     g.drawText(name, nameArea.toNearestInt(), juce::Justification::centredLeft);
     b.removeFromLeft(2);
 
-    // ═══ ··· button + bus badge + stats ═══════════════════════════════
+    // ═══ ··· button + SIN SEÑAL badge + stats ═══════════════════════════
     // ··· button (rightmost)
     auto dotsArea = b.removeFromRight(14).reduced(0, 6);
-    g.setColour(MixCoachTheme::textMuted().withAlpha(0.35f));
+    g.setColour(MixCoachTheme::textMuted().withAlpha(isStale ? 0.12f : 0.35f));
     g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
     g.drawText("\xC2\xB7\xC2\xB7\xC2\xB7", dotsArea.toNearestInt(), juce::Justification::centred);
     b.removeFromRight(1);
 
-    // ═══ Bus badge prominente (pill coloreado con glow) ════════════════
-    juce::String busAbbr;
-    switch (entry.info.bus) {
-        case BusType::Drums:    busAbbr = "DRM"; break;
-        case BusType::Bass:     busAbbr = "BAS"; break;
-        case BusType::Guitars:  busAbbr = "GTR"; break;
-        case BusType::Keys:     busAbbr = "KEY"; break;
-        case BusType::Vocals:   busAbbr = "VOX"; break;
-        case BusType::FX:       busAbbr = "FX";  break;
-        default:                busAbbr = (busIdx >= 0) ? juce::String(busNames[busIdx]).substring(0, 3) : ""; break;
-    }
-
-    if (busIdx >= 0 && busAbbr.isNotEmpty()) {
-        auto badgeArea = b.removeFromRight(42).reduced(0, 4);
-
-        // Outer glow
-        auto glowArea = badgeArea.expanded(2.0f, 2.0f).toFloat();
-        g.setColour(busCol.withAlpha(0.12f));
-        g.fillRoundedRectangle(glowArea, 5.0f);
-
-        // Badge background sólido
-        g.setColour(busCol.withAlpha(0.45f));
-        g.fillRoundedRectangle(badgeArea.toFloat(), 4.0f);
-
-        // Inner highlight (top edge)
-        auto innerGlow = badgeArea.toFloat().withHeight(badgeArea.getHeight() * 0.4f);
-        g.setColour(juce::Colours::white.withAlpha(0.10f));
-        g.fillRoundedRectangle(innerGlow, 4.0f);
-
-        // Border vibrante
-        g.setColour(busCol.withAlpha(0.75f));
-        g.drawRoundedRectangle(badgeArea.toFloat(), 4.0f, 1.0f);
-
-        // Abreviatura blanca bold
-        g.setColour(juce::Colours::white);
-        g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
-        g.drawFittedText(busAbbr, badgeArea.toNearestInt(),
+    // ═══ SIN SEÑAL badge (para stale) ══════════════════════════════════
+    if (isStale)
+    {
+        auto staleBadge = b.removeFromRight(54).reduced(0, 4);
+        g.setColour(MixCoachTheme::error().withAlpha(0.20f));
+        g.fillRoundedRectangle(staleBadge.toFloat(), 4.0f);
+        g.setColour(MixCoachTheme::error().withAlpha(0.6f));
+        g.drawRoundedRectangle(staleBadge.toFloat(), 4.0f, 1.0f);
+        g.setColour(MixCoachTheme::error().withAlpha(0.8f));
+        g.setFont(juce::Font(juce::FontOptions(6.5f)).boldened());
+        g.drawFittedText(juce::CharPointer_UTF8("SIN SE\xC3\x91" "AL"), staleBadge.toNearestInt(),
                          juce::Justification::centred, 1);
         b.removeFromRight(2);
     }
+    else
+    {
+        // ═══ Bus badge (solo si NO es stale) ═════════════════════════════
+        juce::String busAbbr;
+        switch (entry.info.bus) {
+            case BusType::Drums:    busAbbr = "DRM"; break;
+            case BusType::Bass:     busAbbr = "BAS"; break;
+            case BusType::Guitars:  busAbbr = "GTR"; break;
+            case BusType::Keys:     busAbbr = "KEY"; break;
+            case BusType::Vocals:   busAbbr = "VOX"; break;
+            case BusType::FX:       busAbbr = "FX";  break;
+            default:                busAbbr = (busIdx >= 0) ? juce::String(busNames[busIdx]).substring(0, 3) : ""; break;
+        }
 
-    // ─── Stats: PK + mini VU ─────────────────────────────────────────────
-    auto statsArea = b.removeFromRight(48).reduced(0, 4);
-    g.setFont(juce::Font(juce::FontOptions(6.5f)));
-    g.setColour(MixCoachTheme::textMuted().withAlpha(0.6f));
-    g.drawText("PK " + juce::String(entry.peakLeft, 1),
-               statsArea.toNearestInt(), juce::Justification::centredLeft);
-    b.removeFromRight(2);
+        if (busIdx >= 0 && busAbbr.isNotEmpty()) {
+            auto badgeArea = b.removeFromRight(42).reduced(0, 4);
+            auto glowArea = badgeArea.expanded(2.0f, 2.0f).toFloat();
+            g.setColour(busCol.withAlpha(0.12f));
+            g.fillRoundedRectangle(glowArea, 5.0f);
+            g.setColour(busCol.withAlpha(0.45f));
+            g.fillRoundedRectangle(badgeArea.toFloat(), 4.0f);
+            auto innerGlow = badgeArea.toFloat().withHeight(badgeArea.getHeight() * 0.4f);
+            g.setColour(juce::Colours::white.withAlpha(0.10f));
+            g.fillRoundedRectangle(innerGlow, 4.0f);
+            g.setColour(busCol.withAlpha(0.75f));
+            g.drawRoundedRectangle(badgeArea.toFloat(), 4.0f, 1.0f);
+            g.setColour(juce::Colours::white);
+            g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+            g.drawFittedText(busAbbr, badgeArea.toNearestInt(),
+                             juce::Justification::centred, 1);
+            b.removeFromRight(2);
+        }
 
-    // ─── Mini VU horizontal ───────────────────────────────────────────────
-    if (entry.hasSignal && b.getWidth() > 20) {
-        auto vuArea = b.reduced(0, 8).toFloat();
-        g.setColour(MixCoachTheme::bgDarker());
-        g.fillRoundedRectangle(vuArea, 1.5f);
+        // ─── Stats: PK + mini VU ─────────────────────────────────────────
+        auto statsArea = b.removeFromRight(48).reduced(0, 4);
+        g.setFont(juce::Font(juce::FontOptions(6.5f)));
+        g.setColour(MixCoachTheme::textMuted().withAlpha(0.6f));
+        g.drawText("PK " + juce::String(entry.peakLeft, 1),
+                   statsArea.toNearestInt(), juce::Justification::centredLeft);
+        b.removeFromRight(2);
 
-        float norm = juce::jlimit(0.0f, 1.0f, (entry.peakLeft + 60.0f) / 66.0f);
-        if (norm > 0.01f) {
-            auto fillW = juce::jmax(2.0f, vuArea.getWidth() * norm);
-            auto fillRect = vuArea.withWidth(fillW);
+        // ─── Mini VU horizontal ───────────────────────────────────────────
+        if (entry.hasSignal && b.getWidth() > 20) {
+            auto vuArea = b.reduced(0, 8).toFloat();
+            g.setColour(MixCoachTheme::bgDarker());
+            g.fillRoundedRectangle(vuArea, 1.5f);
 
-            juce::Colour fillCol = entry.peakLeft > -6.0f ? MixCoachTheme::error()
-                                  : entry.peakLeft > -12.0f ? MixCoachTheme::warning()
-                                  : MixCoachTheme::success();
-            g.setColour(fillCol);
-            g.fillRoundedRectangle(fillRect, 1.5f);
+            float norm = juce::jlimit(0.0f, 1.0f, (entry.peakLeft + 60.0f) / 66.0f);
+            if (norm > 0.01f) {
+                auto fillW = juce::jmax(2.0f, vuArea.getWidth() * norm);
+                auto fillRect = vuArea.withWidth(fillW);
+
+                juce::Colour fillCol = entry.peakLeft > -6.0f ? MixCoachTheme::error()
+                                      : entry.peakLeft > -12.0f ? MixCoachTheme::warning()
+                                      : MixCoachTheme::success();
+                g.setColour(fillCol);
+                g.fillRoundedRectangle(fillRect, 1.5f);
+            }
         }
     }
 }

@@ -18,7 +18,7 @@ namespace mixcoach {
 // desde shared → local se hace via syncFromShared().
 class SlotRegistry {
 public:
-    static constexpr int kMaxSlots = 64;
+    static constexpr int kMaxSlots = 128;
 
     SlotRegistry();
 
@@ -90,6 +90,18 @@ public:
     // True si ya se hizo al menos una sincronización exitosa desde shared memory
     [[nodiscard]] bool hasEverSynced() const noexcept { return everSynced_; }
 
+    // ─── Stale data detection ────────────────────────────────────────────
+    /** Timeout: si un slot no recibe telemetría por >3s, se marca stale. */
+    static constexpr int64_t kStaleTimeoutUs = 3 * 1000 * 1000;  // 3 segundos
+
+    /**
+     * Escanea todos los slots activos y marca como stale aquellos cuyo
+     * último timestamp de telemetría supere kStaleTimeoutUs.
+     * Si un slot stale recibe datos nuevos, se limpia la flag.
+     * Llamar periódicamente desde el background worker (~1s).
+     */
+    void checkStaleSlots();
+
     // ─── Observer callbacks ───────────────────────────────────────────────
     std::function<void(int slotIndex)> onSlotChanged{nullptr};
     std::function<void(int slotIndex)> onSlotRegistered{nullptr};
@@ -110,9 +122,10 @@ public:
     //
     // FORMATO:
     //   V1 (legacy): magic + version + slotIndex + active + bus + colourARGB + trackName[64]
-    //   V2 (actual): V1 + peakLeft + peakRight + rmsLeft + rmsRight +
-    //                correlation + crestFactor + sampleL + sampleR +
-    //                lufsIntegrated + lufsShortTerm + lufsMomentary + lufsTruePeak + loudnessRange
+    //   V2: V1 + peakLeft + peakRight + rmsLeft + rmsRight +
+    //       correlation + crestFactor + sampleL + sampleR +
+    //       lufsIntegrated + lufsShortTerm + lufsMomentary + lufsTruePeak + loudnessRange
+    //   V3 (actual): V2 + fftData[512] (magnitudes FFT, 2048 bytes)
     static void saveSlotToBackupFile(int slotIndex, const SlotInfo& info);
     static void removeSlotBackupFile(int slotIndex);
     // Lee todos los slots desde archivos de backup.
@@ -120,7 +133,8 @@ public:
     // forceOverwrite=true: sobrescribe datos locales aunque el slot ya esté activo.
     int loadSlotsFromBackupFiles(bool forceOverwrite = true);
     // Actualiza SOLO la telemetría en un backup file existente (rápido, no toca nombre/color/bus)
-    // Llamado desde updateSharedTelemetry() en el audio thread del Messenger
+    // Llamado desde el audio thread del Messenger
+    // fftData: opcional (nullptr = saltar), array de kNumSpectrumBins floats
     static void updateSlotBackupTelemetry(int slotIndex,
                                            float peakLeft, float peakRight,
                                            float rmsLeft, float rmsRight,
@@ -128,7 +142,8 @@ public:
                                            float sampleL, float sampleR,
                                            float lufsIntegrated, float lufsShortTerm,
                                            float lufsMomentary, float lufsTruePeak,
-                                           float loudnessRange);
+                                           float loudnessRange,
+                                           const float* fftData = nullptr);
 
 private:
     std::array<SlotInfo, kMaxSlots>        slots_{};

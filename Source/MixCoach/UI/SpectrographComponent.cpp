@@ -5,6 +5,8 @@ namespace mixcoach {
 
 namespace {
 
+static constexpr float kMinFreq = 1.0f;
+
 constexpr float kLabelFreqsHz[] = {
     20.0f, 30.0f, 50.0f, 70.0f, 100.0f,
     200.0f, 300.0f, 500.0f, 700.0f, 1000.0f,
@@ -139,8 +141,11 @@ float SpectrographComponent::dbToDisplayNorm(float db) const noexcept
 
 float SpectrographComponent::freqToX(float freqHz, juce::Rectangle<float> plot) const noexcept
 {
-    freqHz = juce::jlimit(kMinFreq, kMaxFreq, freqHz);
-    const float norm = std::log2(freqHz / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
+    // Clamp frequency to the supported range. 0 Hz is treated as the DC bin (mapped to the left edge).
+    freqHz = juce::jlimit(0.0f, kMaxFreq, freqHz);
+    const float norm = (freqHz <= kMinFreq)
+        ? 0.0f
+        : std::log2(freqHz / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
     return plot.getX() + norm * plot.getWidth();
 }
 
@@ -219,6 +224,11 @@ void SpectrographComponent::drawGrid(juce::Graphics& g, juce::Rectangle<float> p
         g.drawHorizontalLine((int) y, plot.getX(), plot.getRight());
     }
 
+    // Add a 0 Hz tick at the extreme left (optional – comment if not wanted)
+    const float x0 = freqToX(0.0f, plot);
+    g.setColour(MixCoachTheme::rowDivider().withAlpha(0.35f));
+    g.drawVerticalLine((int) x0, plot.getY(), plot.getBottom());
+    // Existing labelled frequencies
     for (float freq : kLabelFreqsHz)
     {
         const float x = freqToX(freq, plot);

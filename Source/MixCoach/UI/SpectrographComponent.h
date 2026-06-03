@@ -26,7 +26,7 @@ private:
     static constexpr int   kNumRtaBands   = 40;
     static constexpr int   kMaxFFTBins    = 512;
     static constexpr int   kMessengerFftSize = 1024;
-    static constexpr float kMinFreq       = 20.0f;
+    static constexpr float kMinFreq       = 1.0f;
     static constexpr float kMaxFreq       = 20000.0f;
     static constexpr float kDisplayTopDb  = 0.0f;
     static constexpr float kDisplayBottomDb = -45.0f;
