@@ -15,10 +15,11 @@ param(
     [switch]$Clean,
     [switch]$Debug,
     [switch]$NoDeploy,
+    [switch]$SkipPatternValidator,
     [switch]$Help
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BuildDir = Join-Path $ProjectRoot "build"
 $Config = if ($Debug) { "Debug" } else { "Release" }
@@ -67,7 +68,7 @@ Write-Host @"
 ╚═══════════════════════════════════════════════════════════════╝
 "@ -ForegroundColor $Cyan
 
-Write-Host "  Modo: $Config | Clean: $Clean | Deploy: $(-not $NoDeploy)" -ForegroundColor $Gray
+Write-Host "  Modo: $Config | Clean: $Clean | Deploy: $(-not $NoDeploy) | PatternValidator: $(-not $SkipPatternValidator)" -ForegroundColor $Gray
 
 # ─── 0. Verificar git status ───────────────────────────────────────────────
 Write-Step "PASO 1/6: Verificando estado del repositorio"
@@ -81,11 +82,33 @@ if ($gitStatus -and $gitStatus -isnot [System.ComponentModel.Win32Exception]) {
     Write-OK "Repositorio limpio"
 }
 
-# ─── 1. Verificar JUCE ──────────────────────────────────────────────────────
-Write-Step "PASO 2/6: Verificando JUCE"
+# ─── 1. Ejecutar Pattern Validator (pre-build lint) ────────────────────────
+if (-not $SkipPatternValidator) {
+    Write-Step "PASO 2/7: Pattern Validator — Verificando reglas arquitectónicas"
+    $pvScript = Join-Path $ProjectRoot "scripts/pattern_validator.py"
+    if (Test-Path $pvScript) {
+        $pvOutput = python $pvScript 2>&1
+        $pvExit = $LASTEXITCODE
+        if ($pvExit -ne 0) {
+            Write-Warn "Pattern validator encontro incidencias - continuando con build"
+        } else {
+            Write-OK "Pattern validator: todos los checks pasaron"
+        }
+        $pvOutput | ForEach-Object {
+            if ($_.Trim() -ne "") { Write-Host "    $_" -ForegroundColor $Gray }
+        }
+    } else {
+        Write-Warn "pattern_validator.py no encontrado (skip)"
+    }
+} else {
+    Write-Step "PASO 2/7: Pattern Validator — Omitido (-SkipPatternValidator)"
+}
+
+# ─── 2. Verificar JUCE ──────────────────────────────────────────────────────
+Write-Step "PASO 3/7: Verificando JUCE"
 
 # Leer ruta de JUCE desde CMakeLists.txt (fuente única de verdad)
-$juceRoot = Select-String -Path "$ProjectRoot/CMakeLists.txt" -Pattern 'set\(JUCE_ROOT "(.+)"\)' | ForEach-Object { $_.Matches.Groups[1].Value }
+$juceRoot = Select-String -Path "$ProjectRoot/CMakeLists.txt" -Pattern 'set\(JUCE_ROOT "([^"]+)"\)' | ForEach-Object { $_.Matches.Groups[1].Value }
 
 if (-not $juceRoot) {
     $juceRoot = "C:/MIX COACH SYSTEM/juce-8.0.13-windows/MixCoachAI/JUCE"
@@ -101,8 +124,8 @@ if ($juceOk) {
     exit 1
 }
 
-# ─── 2. Configurar CMake ──────────────────────────────────────────────────────
-Write-Step "PASO 3/6: Configurando CMake"
+# ─── 3. Configurar CMake ──────────────────────────────────────────────────────
+Write-Step "PASO 4/7: Configurando CMake"
 
 $cmakeCache = Join-Path $BuildDir "CMakeCache.txt"
 $needsConfig = $Clean -or -not (Test-Path $cmakeCache)
@@ -131,26 +154,43 @@ if ($needsConfig) {
     Write-OK "CMake ya configurado (usa -Clean para reconfigurar)"
 }
 
-# ─── 3. Compilar ──────────────────────────────────────────────────────────────
-Write-Step "PASO 4/6: Compilando ($Config)"
+# ─── 4. Compilar ──────────────────────────────────────────────────────────────
+Write-Step "PASO 5/7: Compilando ($Config)"
 
 # Usar un SOLO archivo de log (se sobrescribe en cada build, sin acumular)
 $buildLog = Join-Path $ProjectRoot "build_output.txt"
 
-$buildResult = cmake --build $BuildDir --config $Config 2>&1 | Tee-Object -FilePath $buildLog
+# ⚠️ CAPTURAR exit code ANTES de pipe — si no, Tee-Object traga el código de error
+# y los builds fallidos se reportan como exitosos (nos costó ~2h de debug).
+$buildResult = cmake --build $BuildDir --config $Config 2>&1
+$buildExitCode = $LASTEXITCODE
+$buildResult | Tee-Object -FilePath $buildLog
 
-if ($LASTEXITCODE -ne 0) {
+if ($buildExitCode -ne 0) {
     Write-Err "ERROR DE COMPILACION"
     Write-Host "  Revisa el log: $buildLog" -ForegroundColor $Yellow
     Write-Host "  Ultimas 20 lineas del error:" -ForegroundColor $Yellow
     $buildResult | Select-Object -Last 20 | ForEach-Object { Write-Host "    $_" -ForegroundColor $Red }
+    
+    # ─── AI Build Loop: Analizar errores con ERROR_PATTERNS.json ──────
+    Write-Host "  ─── AI Build Loop: Analizando errores ───" -ForegroundColor $Cyan
+    $blScript = Join-Path $ProjectRoot "ai_build_loop.py"
+    if (Test-Path $blScript) {
+        $blOutput = python $blScript --analyze-only $buildLog 2>&1
+        $blOutput | ForEach-Object {
+            if ($_.Trim() -ne "") { Write-Host "    $_" }
+        }
+    } else {
+        Write-Warn "ai_build_loop.py no encontrado (skip)"
+    }
+    
     exit 1
 }
 
 Write-OK "Compilacion exitosa ($Config)"
 
-# ─── 4. Verificar artefactos ──────────────────────────────────────────────────
-Write-Step "PASO 5/6: Verificando artefactos"
+# ─── 5. Verificar artefactos ──────────────────────────────────────────────────
+Write-Step "PASO 6/7: Verificando artefactos"
 
 $mixCoachVST3 = Join-Path $BuildDir "MixCoach_artefacts\$Config\VST3\MixCoach.vst3"
 $messengerVST3 = Join-Path $BuildDir "Messenger_artefacts\$Config\VST3\Messenger.vst3"
@@ -162,9 +202,9 @@ if (Test-Path $messengerVST3) { Write-OK "Messenger.vst3 generado" }
 if (Test-Path $mixCoachExe)   { Write-OK "MixCoach.exe (Standalone)" }
 if (Test-Path $messengerExe)  { Write-OK "Messenger.exe (Standalone)" }
 
-# ─── 5. Desplegar VST3 ────────────────────────────────────────────────────────
+# ─── 6. Desplegar VST3 ────────────────────────────────────────────────────────
 if (-not $NoDeploy) {
-    Write-Step "PASO 5/5: Desplegando VST3"
+    Write-Step "PASO 7/7: Desplegando VST3"
 
     $deployScript = Join-Path $ProjectRoot "DeployVST3.ps1"
     if (Test-Path $deployScript) {
@@ -179,7 +219,7 @@ if (-not $NoDeploy) {
         Write-Warn "DeployVST3.ps1 no encontrado - copia manual"
     }
 } else {
-    Write-Step "PASO 6/6: Omitido (-NoDeploy)"
+    Write-Step "PASO 7/7: Omitido (-NoDeploy)"
     Write-OK "VST3 disponibles en:"
     Write-Host "  MixCoach:  $mixCoachVST3" -ForegroundColor $Gray
     Write-Host "  Messenger: $messengerVST3" -ForegroundColor $Gray
