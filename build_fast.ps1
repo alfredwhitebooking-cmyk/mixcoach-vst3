@@ -1,4 +1,5 @@
 param(
+    [switch]$All,
     [switch]$NoDeploy,
     [switch]$SkipPatternValidator,
     [switch]$Help
@@ -13,9 +14,10 @@ $Gray   = "Gray"
 if ($Help) {
     Write-Host "MixCoach - Build Express v1.0" -ForegroundColor $Cyan
     Write-Host "Usage:"
-    Write-Host "  .\build_fast.ps1             Build Release MixCoach + deploy"
-    Write-Host "  .\build_fast.ps1 -NoDeploy    Build only, no deploy"
-    Write-Host "  .\build_fast.ps1 -Help        Show this help"
+    Write-Host "  .\build_fast.ps1              Build Release MixCoach + deploy"
+    Write-Host "  .\build_fast.ps1 -All          Build BOTH MixCoach + Messenger + deploy"
+    Write-Host "  .\build_fast.ps1 -NoDeploy     Build only, no deploy"
+    Write-Host "  .\build_fast.ps1 -Help         Show this help"
     exit 0
 }
 
@@ -80,13 +82,39 @@ if ($buildExitCode -ne 0) {
 
 Write-Host "[OK] Build successful" -ForegroundColor $Green
 
-# Step 2: Verify VST3 exists
+# Step 2: Verify MixCoach VST3 exists
 $vst3Path = Join-Path $BuildDir "MixCoach_artefacts/Release/VST3/MixCoach.vst3"
 if (-not (Test-Path $vst3Path)) {
     Write-Host "[FAIL] VST3 not found: $vst3Path" -ForegroundColor $Red
     exit 1
 }
 Write-Host "[OK] MixCoach.vst3 generated" -ForegroundColor $Green
+
+# ─── Step 2.5: Build Messenger_VST3 (solo con -All) ─────────────────────
+if ($All) {
+    Write-Host "[..] Building Messenger_VST3 (Release)..." -ForegroundColor $Yellow
+
+    $msgBuildResult = cmake --build $BuildDir --config Release --target Messenger_VST3 2>&1
+    $msgBuildExitCode = $LASTEXITCODE
+    $msgBuildResult | Out-File -FilePath $buildLog -Encoding utf8 -Append
+
+    if ($msgBuildExitCode -ne 0) {
+        Write-Host "[FAIL] Messenger build error (exit code: $msgBuildExitCode)" -ForegroundColor $Red
+        Write-Host "Log: $buildLog" -ForegroundColor $Yellow
+        Write-Host "Last lines:" -ForegroundColor $Yellow
+        $msgBuildResult | Select-Object -Last 10
+        exit 1
+    }
+    Write-Host "[OK] Messenger build successful" -ForegroundColor $Green
+
+    # Verify Messenger VST3
+    $msgVst3Path = Join-Path $BuildDir "Messenger_artefacts/Release/VST3/Messenger.vst3"
+    if (-not (Test-Path $msgVst3Path)) {
+        Write-Host "[FAIL] Messenger VST3 not found: $msgVst3Path" -ForegroundColor $Red
+        exit 1
+    }
+    Write-Host "[OK] Messenger.vst3 generated" -ForegroundColor $Green
+}
 
 # Step 3: Deploy
 if (-not $NoDeploy) {

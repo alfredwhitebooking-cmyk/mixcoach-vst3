@@ -9,109 +9,121 @@
 
 namespace mixcoach {
 
-class MessengerAudioProcessor;
+    class MessengerAudioProcessor;
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Messenger Audio Processor Editor
-//  ═══ TRACK INSPECTOR — Diseño premium tipo vidrio oscuro  ═══════════════
-//  Referencia visual: workspace_memory/referencias_visuales/Messenger.png
-//
-//  Layout:
-//    ┌─────────────────────────────────────────┐
-//    │  INFORMACION TRACK                 ●    │ ← Título púrpura + LED
-//    ├─────────────────────────────────────────┤ ← Divisor
-//    │  ✏️ NOMBRE     [________________]      │
-//    ├─────────────────────────────────────────┤
-//    │  🎨 COLOR      [● ▾______________]      │
-//    ├─────────────────────────────────────────┤
-//    │  📦 TIPO       [▾________________]      │
-//    ├─────────────────────────────────────────┤
-//    │  ➡️ RUTEO      [▾________________]      │
-//    └─────────────────────────────────────────┘
-// ═══════════════════════════════════════════════════════════════════════════
-class MessengerAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                      public juce::TextEditor::Listener,
-                                      private juce::Timer
-{
-public:
-    explicit MessengerAudioProcessorEditor(MessengerAudioProcessor&);
-    ~MessengerAudioProcessorEditor() override;
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Messenger Audio Processor Editor
+    //  ═══ TRACK INSPECTOR — Diseño premium tipo vidrio oscuro  ═══════════════
+    //  Referencia visual: workspace_memory/referencias_visuales/Messenger.png
+    //
+    //  Layout:
+    //    ┌─────────────────────────────────────────┐
+    //    │  INFORMACION TRACK                 ●    │ ← Título púrpura + LED
+    //    ├─────────────────────────────────────────┤ ← Divisor
+    //    │  ✏️ NOMBRE     [________________]      │
+    //    ├─────────────────────────────────────────┤
+    //    │  🎨 COLOR      [● ▾______________]      │
+    //    ├─────────────────────────────────────────┤
+    //    │  📦 TIPO       [▾________________]      │
+    //    ├─────────────────────────────────────────┤
+    //    │  ➡️ RUTEO      [▾________________]      │
+    //    └─────────────────────────────────────────┘
+    // ═══════════════════════════════════════════════════════════════════════════
+    class MessengerAudioProcessorEditor :
+        public juce::AudioProcessorEditor,
+        public juce::TextEditor::Listener,
+        private juce::Timer
+    {
+    public:
+        explicit MessengerAudioProcessorEditor(MessengerAudioProcessor&);
+        ~MessengerAudioProcessorEditor() override;
 
-    void resized() override;
-    void paint(juce::Graphics& g) override;
+        void resized() override;
+        void paint(juce::Graphics& g) override;
 
-private:
-    // TextEditor::Listener
-    void textEditorTextChanged(juce::TextEditor&) override;
-    void timerCallback() override;
+    private:
+        // TextEditor::Listener
+        void textEditorTextChanged(juce::TextEditor&) override;
+        void timerCallback() override;
 
-    MessengerAudioProcessor& processorRef_;
+        MessengerAudioProcessor& processorRef_;
 
-    // ─── Componentes UI ──────────────────────────────────────────────
+        // ─── Componentes UI ──────────────────────────────────────────────
 
-    // Título: "INFORMACION TRACK"
-    juce::Label titleLabel_;
+        // Título: "INFORMACION TRACK"
+        juce::Label titleLabel_;
 
-    // Nombre de pista (TextEditor)
-    juce::TextEditor nameEditor_;
+        // Nombre de pista (TextEditor)
+        juce::TextEditor nameEditor_;
 
-    // Tipo de instrumento (Kick, Snare, Voz, etc.)
-    juce::ComboBox typeComboBox_;
+        // Tipo de instrumento (Kick, Snare, Voz, etc.)
+        juce::ComboBox typeComboBox_;
 
-    // Ruteo (Bus)
-    juce::ComboBox busComboBox_;
+        // Ruteo (Bus)
+        juce::ComboBox busComboBox_;
 
-    // Color: dropdown con preview circle + PopupMenu
-    static constexpr int kNumColours = 8;
-    juce::Colour presetColours_[kNumColours];
-    juce::Rectangle<float> colourDropdownBounds_;  // Hit area: circle + arrow
-    juce::Rectangle<float> colourCircleBounds_;    // Color preview circle
-    int selectedColourIndex_ = 0;
+        // Color: dropdown con preview circle + PopupMenu
+        static constexpr int kNumColours = 8;
+        juce::Colour presetColours_[kNumColours];
+        juce::Rectangle<float> colourDropdownBounds_; // Hit area: circle + arrow
+        juce::Rectangle<float> colourCircleBounds_;   // Color preview circle
+        int selectedColourIndex_ = 0;
 
-    // ─── Layout bounds (para paint) ──────────────────────────────────
-    juce::Rectangle<int> titleDividerBounds_;
-    juce::Rectangle<int> nameDividerBounds_;
-    juce::Rectangle<int> colourDividerBounds_;
-    juce::Rectangle<int> typeDividerBounds_;
+        // ─── Layout bounds (para paint) ──────────────────────────────────
+        juce::Rectangle<int> titleDividerBounds_;
+        juce::Rectangle<int> nameDividerBounds_;
+        juce::Rectangle<int> colourDividerBounds_;
+        juce::Rectangle<int> typeDividerBounds_;
 
-    // ─── Icon helpers ────────────────────────────────────────────────
-    void drawPencilIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
-    void drawPaletteIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
-    void drawBoxIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
-    void drawArrowIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
-    void drawIconCircle(juce::Graphics& g, juce::Rectangle<float> bounds);
+        // ─── Mute/Solo bounds ────────────────────────────────────────
+        juce::Rectangle<int> muteButtonBounds_;
+        juce::Rectangle<int> soloButtonBounds_;
+        juce::Rectangle<int> estadoDividerBounds_;
+        juce::Rectangle<int> muteDividerBounds_;
 
-    // ─── Color dropdown ──────────────────────────────────────────────
-    void showColourPopup();
+        // ─── Icon helpers ────────────────────────────────────────────────
+        void drawPencilIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+        void drawPaletteIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+        void drawBoxIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+        void drawArrowIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+        void drawSpeakerIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour, bool muted);
+        void drawHeadphoneIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour, bool soloed);
+        void drawIconCircle(juce::Graphics& g, juce::Rectangle<float> bounds);
 
-    // ─── LED state ───────────────────────────────────────────────────
-    bool ledState_ = false;
+        // ─── Color dropdown ──────────────────────────────────────────────
+        void showColourPopup();
 
-    // ─── Animation state ────────────────────────────────────────────
-    SmoothValue iconHoverAlpha_[4];   // 0=normal, 1=hovered (4 icon rows)
-    SmoothValue colourHoverGlow_;     // 0=normal, 1=hovered (colour dropdown)
-    SmoothValue typeHoverGlow_;       // 0=normal, 1=hovered (TIPO combo)
-    SmoothValue busHoverGlow_;        // 0=normal, 1=hovered (RUTEO combo)
-    SmoothValue nameFocusGlow_;       // 0=normal, 1=focused (name editor)
-    SmoothValue ledGlow_;             // 0.0-1.0 smooth LED pulse
-    int hoveredRow_ = -1;            // -1=none, 0-3=row index
-    int hoveredCombo_ = -1;          // -1=none, 0=type, 1=bus
-    int iconRowY_[4] = {};           // cached Y position of each row start
-    uint32_t lastTimerMs_ = 0;       // for delta-time in 60fps timer
-    uint32_t lastTrackTypeSyncMs_ = 0; // throttle for Feedback Loop V9: sync TrackType ~1s
-    float ledPhase_ = 0.0f;          // phase accumulator for sine pulse
+        // ─── LED state ───────────────────────────────────────────────────
+        bool ledState_        = false;
+        bool lastMutedState_  = false;
+        bool lastSoloedState_ = false;
 
-    // ─── Actions ─────────────────────────────────────────────────────
-    void applyType(TrackType type);
-    void applyColour(int colourIndex);
-    void applyBus(BusType bus);
+        // ─── Animation state ────────────────────────────────────────────
+        SmoothValue iconHoverAlpha_[5];       // 0=normal, 1=hovered (5 rows: NOMBRE,COLOR,TIPO,RUTEO,ESTADO)
+        SmoothValue colourHoverGlow_;         // 0=normal, 1=hovered (colour dropdown)
+        SmoothValue typeHoverGlow_;           // 0=normal, 1=hovered (TIPO combo)
+        SmoothValue busHoverGlow_;            // 0=normal, 1=hovered (RUTEO combo)
+        SmoothValue nameFocusGlow_;           // 0=normal, 1=focused (name editor)
+        SmoothValue ledGlow_;                 // 0.0-1.0 smooth LED pulse
+        int hoveredRow_               = -1;   // -1=none, 0-4=row index
+        int hoveredCombo_             = -1;   // -1=none, 0=type, 1=bus
+        int hoveredEstado_            = -1;   // -1=none, 0=mute, 1=solo
+        int iconRowY_[5]              = {};   // cached Y position of each row start
+        uint32_t lastTimerMs_         = 0;    // for delta-time in 60fps timer
+        uint32_t lastTrackTypeSyncMs_ = 0;    // throttle for Feedback Loop V9: sync TrackType ~1s
+        float ledPhase_               = 0.0f; // phase accumulator for sine pulse
 
-    // Mouse handling
-    void mouseDown(const juce::MouseEvent& e) override;
-    void mouseMove(const juce::MouseEvent& e) override;
-    void mouseExit(const juce::MouseEvent& e) override;
+        // ─── Actions ─────────────────────────────────────────────────────
+        void applyType(TrackType type);
+        void applyColour(int colourIndex);
+        void applyBus(BusType bus);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MessengerAudioProcessorEditor)
-};
+        // Mouse handling
+        void mouseDown(const juce::MouseEvent& e) override;
+        void mouseMove(const juce::MouseEvent& e) override;
+        void mouseExit(const juce::MouseEvent& e) override;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MessengerAudioProcessorEditor)
+    };
 
 } // namespace mixcoach

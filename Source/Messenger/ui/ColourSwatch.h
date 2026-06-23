@@ -4,29 +4,30 @@
 
 namespace mixcoach {
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ColourSwatch — Muestra de color clickeable que abre selector
-// ═══════════════════════════════════════════════════════════════════════════
-class ColourSwatch : public juce::Component
-{
-public:
-    std::function<void()> onClick;
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  ColourSwatch — Muestra de color clickeable que abre selector
+    // ═══════════════════════════════════════════════════════════════════════════
+    class ColourSwatch : public juce::Component
+    {
+    public:
+        std::function<void()> onClick;
 
-    ColourSwatch();
+        ColourSwatch();
 
-    void setColour(juce::Colour col);
-    [[nodiscard]] juce::Colour getColour() const { return colour_; }
+        void setColour(juce::Colour col);
 
-    void mouseDown(const juce::MouseEvent&) override;
-    void mouseEnter(const juce::MouseEvent&) override;
-    void mouseExit(const juce::MouseEvent&) override;
+        [[nodiscard]] juce::Colour getColour() const { return colour_; }
 
-    void paint(juce::Graphics& g) override;
+        void mouseDown(const juce::MouseEvent&) override;
+        void mouseEnter(const juce::MouseEvent&) override;
+        void mouseExit(const juce::MouseEvent&) override;
 
-private:
-    juce::Colour colour_{0xFF808080};
+        void paint(juce::Graphics& g) override;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ColourSwatch)
-};
+    private:
+        juce::Colour colour_{0xFF808080};
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ColourSwatch)
+    };
 
 } // namespace mixcoach

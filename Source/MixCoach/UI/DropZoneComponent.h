@@ -5,53 +5,55 @@
 
 namespace mixcoach {
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  DropZoneComponent — Zona de arrastre + URL input unificados
-//  Acepta archivos (drag & drop) y URLs (input + tecla Enter)
-// ═══════════════════════════════════════════════════════════════════════════
-class DropZoneComponent : public juce::Component,
-                          public juce::FileDragAndDropTarget,
-                          public juce::TextEditor::Listener
-{
-public:
-    DropZoneComponent();
-    ~DropZoneComponent() override;
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  DropZoneComponent — Zona de arrastre + URL input unificados
+    //  Acepta archivos (drag & drop) y URLs (input + tecla Enter)
+    // ═══════════════════════════════════════════════════════════════════════════
+    class DropZoneComponent :
+        public juce::Component,
+        public juce::FileDragAndDropTarget,
+        public juce::TextEditor::Listener
+    {
+    public:
+        DropZoneComponent();
+        ~DropZoneComponent() override;
 
-    std::function<void(const juce::String&)> onFileDropped;
-    std::function<void(const juce::String&)> onURLAdded;
+        std::function<void(const juce::String&)> onFileDropped;
+        std::function<void(const juce::String&)> onURLAdded;
 
-    void paint(juce::Graphics& g) override;
-    void resized() override;
+        void paint(juce::Graphics& g) override;
+        void resized() override;
 
-    void mouseEnter(const juce::MouseEvent&) override;
-    void mouseExit(const juce::MouseEvent&) override;
+        void mouseEnter(const juce::MouseEvent&) override;
+        void mouseExit(const juce::MouseEvent&) override;
 
-    // FileDragAndDropTarget
-    bool isInterestedInFileDrag(const juce::StringArray&) override { return true; }
-    void fileDragEnter(const juce::StringArray&, int, int) override;
-    void fileDragExit(const juce::StringArray&) override;
-    void filesDropped(const juce::StringArray& files, int x, int y) override;
+        // FileDragAndDropTarget
+        bool isInterestedInFileDrag(const juce::StringArray&) override { return true; }
 
-    void setShowDropHint(bool showHint);
+        void fileDragEnter(const juce::StringArray&, int, int) override;
+        void fileDragExit(const juce::StringArray&) override;
+        void filesDropped(const juce::StringArray& files, int x, int y) override;
 
-    // TextEditor::Listener
-    void textEditorReturnKeyPressed(juce::TextEditor&) override;
+        void setShowDropHint(bool showHint);
 
-private:
-    void browseForFiles();
+        // TextEditor::Listener
+        void textEditorReturnKeyPressed(juce::TextEditor&) override;
 
-    juce::TextEditor  urlInput_;
-    juce::TextButton  browseButton_;
-    juce::TextButton  addUrlButton_;
-    bool isHovering_ = false;
-    bool isDragging_ = false;
-    bool showHint_   = true;
+    private:
+        void browseForFiles();
 
-    // Section bounds for paint (Audio left / Link right)
-    juce::Rectangle<int> audioSectionBounds_;
-    juce::Rectangle<int> linkSectionBounds_;
+        juce::TextEditor urlInput_;
+        juce::TextButton browseButton_;
+        juce::TextButton addUrlButton_;
+        bool isHovering_ = false;
+        bool isDragging_ = false;
+        bool showHint_   = true;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DropZoneComponent)
-};
+        // Section bounds for paint (Audio left / Link right)
+        juce::Rectangle<int> audioSectionBounds_;
+        juce::Rectangle<int> linkSectionBounds_;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DropZoneComponent)
+    };
 
 } // namespace mixcoach

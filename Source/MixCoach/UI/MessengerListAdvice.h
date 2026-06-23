@@ -5,23 +5,23 @@
 
 namespace mixcoach {
 
-// Forward declarations
-class CoachEngine;
-class MessengerListComponent;
-enum class SuggestionStatus : uint8_t;
+    // Forward declarations
+    class CoachEngine;
+    class MessengerListComponent;
+    enum class SuggestionStatus : uint8_t;
 
-// ═══ TrackSuggestion — Resultado del analizador por track ═══════════
-struct TrackSuggestion {
-    juce::String      text;
-    SuggestionStatus  status;
-};
+    // ═══ TrackSuggestion — Resultado del analizador por track ═══════════
+    struct TrackSuggestion
+    {
+        juce::String text;
+        SuggestionStatus status;
+    };
 
-// ═══ Helpers de sugerencia por track ═══════════════════════════════
-juce::String getBusEmoji(BusType bus) noexcept;
-TrackSuggestion analyzeTrackSuggestion(float peakDb, float rmsDb, bool hasSignal,
-                                         const SlotInfo& info);
+    // ═══ Helpers de sugerencia por track ═══════════════════════════════
+    juce::String getBusEmoji(BusType bus) noexcept;
+    TrackSuggestion analyzeTrackSuggestion(float peakDb, float rmsDb, bool hasSignal, const SlotInfo& info);
 
-// ═══ Coach advice — actualiza entradas desde CoachEngine ═══════════
-void updateCoachAdviceInternal(MessengerListComponent& component, CoachEngine& coach);
+    // ═══ Coach advice — actualiza entradas desde CoachEngine ═══════════
+    void updateCoachAdviceInternal(MessengerListComponent& component, CoachEngine& coach);
 
 } // namespace mixcoach

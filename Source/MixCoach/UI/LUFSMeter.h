@@ -6,44 +6,74 @@
 
 namespace mixcoach {
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  LUFSMeter — EBU R128 con target markers
-// ═══════════════════════════════════════════════════════════════════════════
-class LUFSMeter : public juce::Component {
-public:
-    LUFSMeter();
-    ~LUFSMeter() override = default;
-    void paint(juce::Graphics& g) override;
-    void resized() override;
-    void setIntegrated(float value)  { integrated_.setTarget(value);  repaint(); }
-    void setShortTerm(float value)   { shortTerm_.setTarget(value);   repaint(); }
-    void setMomentary(float value)   { momentary_.setTarget(value);   repaint(); }
-    void setTruePeak(float value)    { truePeak_.setTarget(value);    repaint(); }
-    void setRange(float value)       { range_.setTarget(value);       repaint(); }
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  LUFSMeter — EBU R128 con target markers
+    // ═══════════════════════════════════════════════════════════════════════════
+    class LUFSMeter : public juce::Component
+    {
+    public:
+        LUFSMeter();
+        ~LUFSMeter() override = default;
+        void paint(juce::Graphics& g) override;
+        void resized() override;
 
-    /** Avanza la interpolación de todos los valores suavizados (llamar a 60fps).
-     *  @param sampleRateHz  Frecuencia de actualización (60 = 60fps)
-     *  @param allowRepaint  Si false, no llama a repaint() individualmente
-     *  @return true si algún valor cambió visiblemente
-     */
-    bool advanceVisuals(double sampleRateHz = 60.0, bool allowRepaint = true);
+        void setIntegrated(float value)
+        {
+            integrated_.setTarget(value);
+            repaint();
+        }
 
-private:
-    // Ballistics DAW-smooth: attack rápido, release suave
-    SmoothValue integrated_{ -30.0f, 5.0f,  200.0f };
-    SmoothValue shortTerm_{  -30.0f, 3.0f,  200.0f };
-    SmoothValue momentary_{  -30.0f, 2.0f,  150.0f };
-    SmoothValue truePeak_{   -30.0f, 1.0f,  100.0f };
-    SmoothValue range_{       0.0f,  10.0f, 300.0f };
-    juce::Label titleLabel_;
+        void setShortTerm(float value)
+        {
+            shortTerm_.setTarget(value);
+            repaint();
+        }
 
-    static constexpr float kTargetIntegrated = -23.0f;
-    static constexpr float kTargetStreaming  = -14.0f;
-    static constexpr float kTargetBroadcast  = -16.0f;
+        void setMomentary(float value)
+        {
+            momentary_.setTarget(value);
+            repaint();
+        }
 
-    void drawBar(juce::Graphics& g, juce::Rectangle<float> bounds,
-                 float value, const juce::String& label, const juce::String& unit,
-                 juce::Colour colour, float targetLine = -1.0f);
-};
+        void setTruePeak(float value)
+        {
+            truePeak_.setTarget(value);
+            repaint();
+        }
+
+        void setRange(float value)
+        {
+            range_.setTarget(value);
+            repaint();
+        }
+
+        /** Avanza la interpolación de todos los valores suavizados (llamar a 60fps).
+         *  @param sampleRateHz  Frecuencia de actualización (60 = 60fps)
+         *  @param allowRepaint  Si false, no llama a repaint() individualmente
+         *  @return true si algún valor cambió visiblemente
+         */
+        bool advanceVisuals(double sampleRateHz = 60.0, bool allowRepaint = true);
+
+    private:
+        // Ballistics DAW-smooth: attack rápido, release suave
+        SmoothValue integrated_{-30.0f, 5.0f, 200.0f};
+        SmoothValue shortTerm_{-30.0f, 3.0f, 200.0f};
+        SmoothValue momentary_{-30.0f, 2.0f, 150.0f};
+        SmoothValue truePeak_{-30.0f, 1.0f, 100.0f};
+        SmoothValue range_{0.0f, 10.0f, 300.0f};
+        juce::Label titleLabel_;
+
+        static constexpr float kTargetIntegrated = -23.0f;
+        static constexpr float kTargetStreaming  = -14.0f;
+        static constexpr float kTargetBroadcast  = -16.0f;
+
+        void drawBar(juce::Graphics& g,
+                     juce::Rectangle<float> bounds,
+                     float value,
+                     const juce::String& label,
+                     const juce::String& unit,
+                     juce::Colour colour,
+                     float targetLine = -1.0f);
+    };
 
 } // namespace mixcoach

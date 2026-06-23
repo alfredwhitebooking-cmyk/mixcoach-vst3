@@ -133,6 +133,9 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/engine/CoachEngineContext.cpp
     Source/MixCoach/engine/CoachEngineReference.cpp
     Source/MixCoach/engine/CoachEngineSetup.cpp
+    Source/MixCoach/engine/CoachEngine_Analysis.cpp
+    Source/MixCoach/engine/CoachEngine_Identity.cpp
+    Source/MixCoach/engine/CoachEngine_Messages.cpp
     Source/MixCoach/engine/TrackRole.h
     Source/MixCoach/engine/SpectralProfiler.h
     Source/MixCoach/engine/SpectralProfiler.cpp
@@ -316,6 +319,9 @@ add_executable(TestCoachEngine
     Source/MixCoach/engine/CoachEngineContext.cpp
     Source/MixCoach/engine/CoachEngineReference.cpp
     Source/MixCoach/engine/CoachEngineSetup.cpp
+    Source/MixCoach/engine/CoachEngine_Analysis.cpp
+    Source/MixCoach/engine/CoachEngine_Identity.cpp
+    Source/MixCoach/engine/CoachEngine_Messages.cpp
     Source/MixCoach/engine/PhaseManager.h
     Source/MixCoach/engine/PhaseManager.cpp
     Source/MixCoach/engine/TrackRole.h
@@ -461,6 +467,17 @@ target_link_libraries(TestVectorscopeComponent PRIVATE
     juce_gui_basics
 )
 target_compile_options(TestVectorscopeComponent PRIVATE /W4)
+# ═══ MSB6006 mitigation: CL.exe crashea con STATUS_ACCESS_VIOLATION (-1073741819)
+#     cuando compila translation units que incluyen juce_gui_basics.h en Release
+#     con /O2. El frontend de CL.exe se queda sin memoria de pila al optimizar
+#     las funciones inline de JUCE. Solución: /MP1 (serial) + /bigobj.
+#     Mismo fix que TestExperienceLevel.
+if(MSVC)
+    target_compile_options(TestVectorscopeComponent PRIVATE
+        /MP1
+        /bigobj
+    )
+endif()
 set_target_properties(TestVectorscopeComponent PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED YES
@@ -686,6 +703,9 @@ add_executable(TestExperienceLevel
     Source/MixCoach/engine/CoachEngineContext.cpp
     Source/MixCoach/engine/CoachEngineReference.cpp
     Source/MixCoach/engine/CoachEngineSetup.cpp
+    Source/MixCoach/engine/CoachEngine_Analysis.cpp
+    Source/MixCoach/engine/CoachEngine_Identity.cpp
+    Source/MixCoach/engine/CoachEngine_Messages.cpp
     Source/MixCoach/engine/PhaseManager.h
     Source/MixCoach/engine/PhaseManager.cpp
     Source/MixCoach/engine/TrackRole.h

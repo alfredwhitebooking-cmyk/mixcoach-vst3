@@ -5,18 +5,18 @@
 
 namespace mixcoach {
 
-class MessengerListComponent;
+    class MessengerListComponent;
 
-// ═══ Role colour helper ═══════════════════════════════════════════
-juce::Colour roleColourForCategory(RoleCategory cat) noexcept;
+    // ═══ Role colour helper ═══════════════════════════════════════════
+    juce::Colour roleColourForCategory(RoleCategory cat) noexcept;
 
-// ═══ Role menu ID mapping ═════════════════════════════════════════
-TrackRole roleFromMenuId(int menuId);
+    // ═══ Role menu ID mapping ═════════════════════════════════════════
+    TrackRole roleFromMenuId(int menuId);
 
-// ═══ Build role popup menu ════════════════════════════════════════
-juce::PopupMenu buildRoleMenuStatic();
+    // ═══ Build role popup menu ════════════════════════════════════════
+    juce::PopupMenu buildRoleMenuStatic();
 
-// ═══ Sync roles from CoachEngine → messengers_ ═══════════════════
-void syncRolesFromCoachInternal(MessengerListComponent& component);
+    // ═══ Sync roles from CoachEngine → messengers_ ═══════════════════
+    void syncRolesFromCoachInternal(MessengerListComponent& component);
 
 } // namespace mixcoach

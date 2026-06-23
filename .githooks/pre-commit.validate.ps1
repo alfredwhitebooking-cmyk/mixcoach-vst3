@@ -187,6 +187,71 @@ if ($ExitCode -eq 0) {
     Write-Host "  [OK] No V2 legacy modules detected" -ForegroundColor Green
 }
 
+# ─── RULE 6: Quick build check (time-bounded, warning only) ──────────────
+Write-Host "`n▸ Rule 6: Quick build check (affected target, 30s timeout)" -ForegroundColor Yellow
+
+function Get-AffectedBuildTarget {
+    param([string[]]$Files)
+    $all = ($Files -join " ")
+    if ($all -match 'Source/MixCoach/') { return 'MixCoach_VST3' }
+    if ($all -match 'Source/Messenger/') { return 'Messenger_VST3' }
+    if ($all -match 'Source/Common/') { return 'MixCoach_VST3' }
+    return $null
+}
+
+# Solo correr si hay cambios en Source/ (no docs, scripts, etc.)
+$sourceChanges = $StagedFiles | Where-Object { $_ -match '^Source/.*\.(cpp|h)$' }
+if ($sourceChanges.Count -gt 0) {
+    $buildTarget = Get-AffectedBuildTarget -Files $sourceChanges
+    if ($buildTarget) {
+        $buildDir = Join-Path $ProjectRoot "build"
+
+        Write-Host "  Build target: $buildTarget" -ForegroundColor Gray
+        Write-Host "  Files changed: $($sourceChanges.Count) .cpp/.h" -ForegroundColor Gray
+        Write-Host "  Running build (max 30s)..." -ForegroundColor Gray
+        
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $buildJob = Start-Job -ScriptBlock {
+            param($bd, $bt)
+            $output = cmake --build $bd --config Release --target $bt 2>&1
+            $exitCode = $LASTEXITCODE
+            # Devolver output y exit code como hashtable
+            @{ Output = $output; ExitCode = $exitCode }
+        } -ArgumentList $buildDir, $buildTarget
+        
+        if (Wait-Job $buildJob -Timeout 30) {
+            $sw.Stop()
+            $result = Receive-Job $buildJob
+            Remove-Job $buildJob -Force
+            
+            $buildExitCode = if ($result -is [Hashtable] -and $result.ContainsKey('ExitCode')) {
+                $result['ExitCode']
+            } else { -1 }
+            $buildOutput = if ($result -is [Hashtable]) { $result['Output'] } else { $result }
+            
+            if ($buildExitCode -eq 0 -or ($buildOutput -match 'Build succeeded')) {
+                Write-Host "  [OK] Build passed in $($sw.Elapsed.TotalSeconds.ToString('0.0'))s" -ForegroundColor Green
+            } else {
+                Write-Host "  [WARN] Build failed in $($sw.Elapsed.TotalSeconds.ToString('0.0'))s" -ForegroundColor Yellow
+                if ($buildOutput) {
+                    $buildOutput | Select-String "error" | Select-Object -First 5 | ForEach-Object {
+                        Write-Host "    $_" -ForegroundColor Red
+                    }
+                }
+                Write-Host "    → Review errors before pushing. Commit permitted (warning only)" -ForegroundColor Yellow
+            }
+        } else {
+            $sw.Stop()
+            Stop-Job $buildJob -ErrorAction SilentlyContinue
+            Remove-Job $buildJob -Force
+            Write-Host "  [WARN] Build timed out after 30s (commit permitted)" -ForegroundColor Yellow
+            Write-Host "    → Run .\scripts\quick_validate.ps1 manually to verify" -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "  [SKIP] No source files changed" -ForegroundColor Gray
+}
+
 # ─── Summary ─────────────────────────────────────────────────────────────
 Write-Host ""
 if ($ExitCode -eq 0) {

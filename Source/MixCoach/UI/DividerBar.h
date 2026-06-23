@@ -4,12 +4,11 @@
 
 namespace mixcoach {
 
-// ─── Divider bar con pintado personalizado ──────────────────────────────────
-class DividerBar : public juce::Component {
-public:
-    void paint(juce::Graphics& g) override {
-        g.fillAll(MixCoachTheme::divider().withAlpha(0.25f));
-    }
-};
+    // ─── Divider bar con pintado personalizado ──────────────────────────────────
+    class DividerBar : public juce::Component
+    {
+    public:
+        void paint(juce::Graphics& g) override { g.fillAll(MixCoachTheme::divider().withAlpha(0.25f)); }
+    };
 
 } // namespace mixcoach

@@ -5,20 +5,21 @@
 
 namespace mixcoach {
 
-class MessengerListComponent;
+    class MessengerListComponent;
 
-// ═══ Telemetry sync — lee datos de SharedAudioMemory ══════════════
-void syncTelemetryFromRegistryInternal(MessengerListComponent& component,
-                                        SlotRegistry& registry, bool& anyDataOut,
-                                        SharedData& sharedData);
+    // ═══ Telemetry sync — lee datos de SharedAudioMemory ══════════════
+    void syncTelemetryFromRegistryInternal(MessengerListComponent& component,
+                                           SlotRegistry& registry,
+                                           bool& anyDataOut,
+                                           SharedData& sharedData);
 
-// ═══ Rebuild bus groups from messenger data ══════════════════════
-void rebuildBusGroupsInternal(MessengerListComponent& component);
+    // ═══ Rebuild bus groups from messenger data ══════════════════════
+    void rebuildBusGroupsInternal(MessengerListComponent& component);
 
-// ═══ Smooth meters — fixed decay per frame ═══════════════════════
-void smoothMetersInternal(MessengerListComponent& component);
+    // ═══ Smooth meters — fixed decay per frame ═══════════════════════
+    void smoothMetersInternal(MessengerListComponent& component);
 
-// ═══ Restore from persistent static data ════════════════════════
-void restoreFromPersistentInternal(MessengerListComponent& component);
+    // ═══ Restore from persistent static data ════════════════════════
+    void restoreFromPersistentInternal(MessengerListComponent& component);
 
 } // namespace mixcoach
