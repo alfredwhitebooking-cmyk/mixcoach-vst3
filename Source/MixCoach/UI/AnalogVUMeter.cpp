@@ -3,20 +3,20 @@
 namespace mixcoach {
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Colores fijos del estilo vintage VU
-//  (usamos constexpr uint32_t para evitar MSVC "most vexing parse")
+//  Colores del estilo vintage VU
 // ═══════════════════════════════════════════════════════════════════════════
 constexpr uint32_t kBezelFrame      = 0xFF1A1A1A;
 constexpr uint32_t kBezelHighlight  = 0xFF2A2A2A;
-constexpr uint32_t kWoodBase        = 0xFFC4A35A;
-constexpr uint32_t kWoodDark        = 0xFFA6843E;
-constexpr uint32_t kWoodEdge        = 0xFF8B6F32;
+constexpr uint32_t kPaperBase       = 0xFFF0DDB8;  // Cream/yellowish warm base
+constexpr uint32_t kPaperBright     = 0xFFF8EDD0;  // Brighter center
+constexpr uint32_t kPaperEdge       = 0xFFC4A878;  // Darker warm edge
+constexpr uint32_t kPaperShadow     = 0xFFA08860;  // Deepest edge shadow
 constexpr uint32_t kNeedleDark      = 0xFF2D2D2D;
 constexpr uint32_t kNeedleLight     = 0xFF4A4A4A;
 constexpr uint32_t kScaleText       = 0xFF1A1A1A;
 constexpr uint32_t kScaleTick       = 0xFF1A1A1A;
 constexpr uint32_t kRedZone         = 0xFFEF4444;
-constexpr uint32_t kLabelVu         = 0xFF4A3A20;
+constexpr uint32_t kLabelVu         = 0xFF8B7A5A;
 
 AnalogVUMeter::AnalogVUMeter()
 {
@@ -102,85 +102,13 @@ void AnalogVUMeter::rebuildFaceCache()
 
 void AnalogVUMeter::paintStaticFace(juce::Graphics& g, juce::Rectangle<float> bounds) const
 {
-    float h = bounds.getHeight();
-    auto labelArea = bounds.removeFromTop(juce::jmin(14.0f, h * 0.13f));
-    bounds.removeFromBottom(juce::jmin(14.0f, h * 0.13f));
     auto faceBounds = bounds;
 
     drawBezel(g, faceBounds);
-    drawWoodBackground(g, faceBounds);
+    drawPaperBackground(g, faceBounds);
     drawScale(g, faceBounds);
     drawVuLabel(g, faceBounds);
-
-    if (! labelText_.isEmpty())
-    {
-        g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
-        if (labelColourOverride_ != juce::Colour(0x00000000))
-            g.setColour(labelColourOverride_);
-        else
-            g.setColour(MixCoachTheme::textDim());
-        g.drawText(labelText_, labelArea.reduced(2, 0), juce::Justification::centred);
-    }
-}
-
-void AnalogVUMeter::paintNeedleAndReadout(juce::Graphics& g, juce::Rectangle<float> faceBounds,
-                                            juce::Rectangle<float> valArea) const
-{
-    const float currentVu = smoothedVu_.getCurrent();
-    const float needleAngle = valueToAngle(currentVu);
-    drawNeedle(g, faceBounds, needleAngle);
-
-    const float peakVu = peakHoldVu_.getCurrent();
-    if (peakVu > kVuMin + 1.0f)
-    {
-        const float pkAngle = valueToAngle(peakVu);
-        auto innerFace = faceBounds.reduced(3.0f, 3.0f);
-        const float cx = innerFace.getCentreX();
-        const float pivotY = innerFace.getBottom() - 8.0f;
-        const float scaleRadius = (innerFace.getHeight() - 8.0f) * 0.78f;
-        const float markerR = scaleRadius * 0.88f;
-
-        const float mx = cx + std::cos(pkAngle) * markerR;
-        const float my = pivotY + std::sin(pkAngle) * markerR;
-
-        const float perpAngle = pkAngle + juce::MathConstants<float>::halfPi;
-        const float triSize = 4.0f;
-        const float tx1 = mx + std::cos(perpAngle) * triSize;
-        const float ty1 = my + std::sin(perpAngle) * triSize;
-        const float tx2 = mx - std::cos(perpAngle) * triSize;
-        const float ty2 = my - std::sin(perpAngle) * triSize;
-        const float tx3 = mx - std::cos(pkAngle) * 3.0f;
-        const float ty3 = my - std::sin(pkAngle) * 3.0f;
-
-        juce::Path pkTri;
-        pkTri.addTriangle(tx1, ty1, tx2, ty2, tx3, ty3);
-        g.setColour(juce::Colours::white.withAlpha(0.8f));
-        g.fillPath(pkTri);
-    }
-
-    const float currentDb = currentVu + kDbFsRef;
-    if (valArea.getHeight() <= 2.0f)
-        return;
-
-    juce::String valStr;
-    if (currentDb < -50.0f)
-        valStr = "--.-";
-    else
-        valStr = juce::String(currentDb, 1);
-
-    juce::Colour valColour;
-    if (currentVu > 0.0f)
-        valColour = juce::Colour(kRedZone).withAlpha(0.9f);
-    else if (currentVu > -6.0f)
-        valColour = MixCoachTheme::meterOrange().withAlpha(0.8f);
-    else if (currentVu > -12.0f)
-        valColour = MixCoachTheme::meterYellow().withAlpha(0.7f);
-    else
-        valColour = MixCoachTheme::textDim();
-
-    g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-    g.setColour(valColour);
-    g.drawText(valStr, valArea, juce::Justification::centred);
+    drawChannelLabel(g, faceBounds);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -220,47 +148,51 @@ void AnalogVUMeter::drawBezel(juce::Graphics& g, juce::Rectangle<float> faceBoun
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  drawWoodBackground — Fondo madera/beige envejecido
-//  Simula madera clara vintage con gradientes y vetas sutiles
+//  drawPaperBackground — Papel vintage de VU meter
+//  Fondo crema amarillento cálido con gradiente radial:
+//  centro más brillante, bordes más oscuros y ligeramente sombreados
 // ═══════════════════════════════════════════════════════════════════════════
-void AnalogVUMeter::drawWoodBackground(juce::Graphics& g, juce::Rectangle<float> faceBounds) const
+void AnalogVUMeter::drawPaperBackground(juce::Graphics& g, juce::Rectangle<float> faceBounds) const
 {
     auto innerFace = faceBounds.reduced(3.0f, 3.0f);
     juce::Point<float> centre = innerFace.getCentre();
 
-    // ─── Base color madera ──────────────────────────────────────────
-    g.setColour(juce::Colour(kWoodBase));
+    // ─── Base cream/yellowish ────────────────────────────────────────
+    g.setColour(juce::Colour(kPaperBase));
     g.fillRoundedRectangle(innerFace, 3.0f);
 
-    // ─── Vignette radial (oscurece bordes) ──────────────────────────
-    juce::ColourGradient vignette(
-        juce::Colours::transparentBlack,
+    // ─── Radial gradient: centro brillante → bordes oscuros y cálidos ─
+    juce::ColourGradient radialGrad(
+        juce::Colour(kPaperBright),           // Centro: brillante y cálido
         centre,
-        juce::Colour(kWoodEdge).withAlpha(0.35f),
+        juce::Colour(kPaperShadow),           // Borde exterior: sombra profunda
         juce::Point<float>(innerFace.getX(), innerFace.getY()),
         true);
-    g.setGradientFill(vignette);
+    radialGrad.addColour(0.40f, juce::Colour(kPaperBase));            // Zona media: base cream
+    radialGrad.addColour(0.75f, juce::Colour(kPaperEdge));            // Cerca del borde: más oscuro
+    g.setGradientFill(radialGrad);
     g.fillRoundedRectangle(innerFace, 3.0f);
 
-    // ─── Vetas de madera sutiles (líneas horizontales) ──────────────
-    g.setColour(juce::Colour(kWoodDark).withAlpha(0.08f));
-    float grainY = innerFace.getY() + 8.0f;
-    while (grainY < innerFace.getBottom()) {
-        float alpha = 0.04f + 0.04f * std::sin(grainY * 0.3f);
-        g.setColour(juce::Colour(kWoodDark).withAlpha(alpha));
-        g.drawHorizontalLine((int)grainY, innerFace.getX() + 4.0f, innerFace.getRight() - 4.0f);
-        grainY += 4.0f + 2.0f * std::abs(std::sin(grainY * 0.17f));
-    }
-
-    // ─── Brillo superior sutil ──────────────────────────────────────
+    // ─── Brillito superior muy sutil (luz ambiental desde arriba) ────
     juce::ColourGradient topGlow(
-        juce::Colours::white.withAlpha(0.06f),
+        juce::Colours::white.withAlpha(0.08f),
         juce::Point<float>(0.0f, innerFace.getY()),
         juce::Colours::transparentBlack,
-        juce::Point<float>(0.0f, innerFace.getY() + innerFace.getHeight() * 0.3f),
+        juce::Point<float>(0.0f, innerFace.getY() + innerFace.getHeight() * 0.25f),
         false);
     g.setGradientFill(topGlow);
     g.fillRoundedRectangle(innerFace, 3.0f);
+
+    // ─── Sombra interior en el borde superior (profundidad del bisel) ─
+    auto topShadow = innerFace.withHeight(juce::jmin(8.0f, innerFace.getHeight() * 0.12f));
+    juce::ColourGradient innerShadow(
+        juce::Colours::black.withAlpha(0.12f),
+        juce::Point<float>(0.0f, topShadow.getY()),
+        juce::Colours::transparentBlack,
+        juce::Point<float>(0.0f, topShadow.getBottom()),
+        false);
+    g.setGradientFill(innerShadow);
+    g.fillRoundedRectangle(topShadow, 3.0f);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -270,98 +202,96 @@ void AnalogVUMeter::drawWoodBackground(juce::Graphics& g, juce::Rectangle<float>
 // ═══════════════════════════════════════════════════════════════════════════
 void AnalogVUMeter::drawScale(juce::Graphics& g, juce::Rectangle<float> faceBounds) const
 {
-    auto innerFace = faceBounds.reduced(3.0f, 3.0f);
-    float cx = innerFace.getCentreX();
-    float pivotY = innerFace.getBottom() - 8.0f;  // moved up from -4 for better centering
+    auto innerFace  = faceBounds.reduced(3.0f, 3.0f);
+    const float cx      = innerFace.getCentreX();
+    const float pivotY  = innerFace.getBottom() - kPivotOffsetY;
+    const float scaleR  = (innerFace.getHeight() - kPivotOffsetY) * kScaleRadiusFactor;
 
-    // ─── Radio del arco de escala (reducido de 0.88 a 0.78 para proporción) ──
-    float scaleRadius = (innerFace.getHeight() - 8.0f) * 0.78f;
+    // ─── Arco base completo (gris sutil) ──────────────────────────
+    {
+        juce::Path arcPath;
+        arcPath.addArc(cx - scaleR, pivotY - scaleR, scaleR * 2.0f, scaleR * 2.0f,
+                       kArcStartAngle, kArcEndAngle, true);
+        g.setColour(juce::Colour(kScaleTick).withAlpha(0.18f));
+        g.strokePath(arcPath, juce::PathStrokeType(1.0f));
+    }
+
+    // ─── Arco rojo zona +1..+3 ─────────────────────────────────────
+    {
+        const float redStartAngle = valueToAngle(1.0f);
+        const float redEndAngle   = valueToAngle(3.0f);
+        juce::Path redArc;
+        redArc.addArc(cx - scaleR, pivotY - scaleR, scaleR * 2.0f, scaleR * 2.0f,
+                      redStartAngle, redEndAngle, true);
+        g.setColour(juce::Colour(kRedZone).withAlpha(0.85f));
+        g.strokePath(redArc, juce::PathStrokeType(2.5f));
+    }
 
     // ─── Marcas de la escala ───────────────────────────────────────
     struct ScaleMark {
-        float vu;
+        float       vu;
         const char* label;
-        bool isMajor;
-        bool isRed;
+        bool        isMajor;
+        bool        isRed;
     };
 
-    ScaleMark marks[] = {
+    static const ScaleMark marks[] = {
         { -20.0f, "-20", true,  false },
         { -10.0f, "-10", true,  false },
-        { -7.0f,  "-7",  false, false },
-        { -5.0f,  "-5",  true,  false },
-        { -3.0f,  "-3",  false, false },
-        { -2.0f,  "-2",  false, false },
-        { -1.0f,  "-1",  false, false },
-        {  0.0f,   "0",  true,  false },
-        {  1.0f,   "1",  false, true  },
-        {  2.0f,   "2",  false, true  },
-        {  3.0f,   "3",  true,  true  },
+        {  -7.0f,  "-7", false, false },
+        {  -5.0f,  "-5", true,  false },
+        {  -3.0f,  "-3", false, false },
+        {  -2.0f,  "-2", false, false },
+        {  -1.0f,  "-1", false, false },
+        {   0.0f,   "0", true,  false },
+        {   1.0f,   "1", false, true  },
+        {   2.0f,   "2", false, true  },
+        {   3.0f,   "3", true,  true  },
     };
 
-    for (auto& mark : marks) {
-        float angle = valueToAngle(mark.vu);
+    for (const auto& mark : marks)
+    {
+        const float angle = valueToAngle(mark.vu);
 
-        // ─── Tick line (proporciones ajustadas) ────────────────────
-        float tickInnerR = scaleRadius * 0.78f;
-        float tickOuterR = scaleRadius * 0.95f;
-        float tickWidth  = mark.isMajor ? 1.2f : 0.7f;
+        // Tick: major = largo, minor = corto
+        const float tickOuterR = scaleR * 0.97f;
+        const float tickInnerR = mark.isMajor ? scaleR * 0.80f : scaleR * 0.87f;
+        const float tickW      = mark.isMajor ? 1.3f : 0.8f;
 
-        float x1 = cx + std::cos(angle) * tickInnerR;
-        float y1 = pivotY + std::sin(angle) * tickInnerR;
-        float x2 = cx + std::cos(angle) * tickOuterR;
-        float y2 = pivotY + std::sin(angle) * tickOuterR;
+        const float x1 = cx + std::cos(angle) * tickInnerR;
+        const float y1 = pivotY + std::sin(angle) * tickInnerR;
+        const float x2 = cx + std::cos(angle) * tickOuterR;
+        const float y2 = pivotY + std::sin(angle) * tickOuterR;
 
         if (mark.isRed)
             g.setColour(juce::Colour(kRedZone));
         else
-            g.setColour(juce::Colour(kScaleTick).withAlpha(mark.isMajor ? 0.9f : 0.55f));
+            g.setColour(juce::Colour(kScaleTick).withAlpha(mark.isMajor ? 0.85f : 0.55f));
 
-        g.drawLine(x1, y1, x2, y2, tickWidth);
+        g.drawLine(x1, y1, x2, y2, tickW);
 
-        // ─── Label numérico (más cerca de la escala) ─────────────
-        float labelR = scaleRadius * 1.02f;
+        // Label numérico — todos los marks
+        const float labelR = scaleR * 1.06f;
         float lx = cx + std::cos(angle) * labelR;
         float ly = pivotY + std::sin(angle) * labelR;
 
-        float labelW = 14.0f;
-        float labelH = 8.0f;
+        const float labelW = 16.0f;
+        const float labelH =  9.0f;
 
-        // Ajustar posición horizontal para marcas extremas
-        if (mark.vu < -15.0f)  lx -= 4.0f;
-        if (mark.vu >  2.0f)   lx += 4.0f;
+        // Empujar marcas extremas hacia afuera para no solaparse
+        if (mark.vu <= -15.0f) lx -= 3.0f;
+        if (mark.vu >=  2.0f)  lx += 3.0f;
 
-        g.setFont(juce::Font(juce::FontOptions(6.5f)).boldened());
+        g.setFont(juce::Font(juce::FontOptions(mark.isMajor ? MixCoachTheme::fontSizeMicro : MixCoachTheme::fontSizePico)));
         if (mark.isRed)
             g.setColour(juce::Colour(kRedZone));
         else
-            g.setColour(juce::Colour(kScaleTick));
+            g.setColour(juce::Colour(kScaleText).withAlpha(mark.isMajor ? 0.9f : 0.65f));
 
-        if (mark.isMajor) {
-            g.drawText(juce::String(mark.label),
-                       juce::Rectangle<float>(lx - labelW * 0.5f, ly - labelH * 0.5f, labelW, labelH),
-                       juce::Justification::centred);
-        }
-    }
-
-    // ─── Arco decorativo exterior (sutil) ──────────────────────────
-    {
-        juce::Path arcPath;
-        arcPath.addArc(cx - scaleRadius, pivotY - scaleRadius,
-                       scaleRadius * 2, scaleRadius * 2,
-                       kArcStartAngle, kArcEndAngle, true);
-        g.setColour(juce::Colour(kScaleTick).withAlpha(0.12f));
-        g.strokePath(arcPath, juce::PathStrokeType(0.5f));
-    }
-
-    // ─── Línea guía central (decorativa) ──────────────────────────
-    {
-        float zeroAngle = valueToAngle(0.0f);
-        float zeroR = scaleRadius * 0.88f;
-        float zx = cx + std::cos(zeroAngle) * zeroR;
-        float zy = pivotY + std::sin(zeroAngle) * zeroR;
-        g.setColour(juce::Colour(kScaleTick).withAlpha(0.08f));
-        g.drawLine(cx, pivotY, zx, zy, 0.4f);
+        // Mostrar TODOS los labels (no solo major)
+        g.drawText(juce::String(mark.label),
+                   juce::Rectangle<float>(lx - labelW * 0.5f, ly - labelH * 0.5f, labelW, labelH),
+                   juce::Justification::centred);
     }
 }
 
@@ -371,19 +301,18 @@ void AnalogVUMeter::drawScale(juce::Graphics& g, juce::Rectangle<float> faceBoun
 void AnalogVUMeter::drawNeedle(juce::Graphics& g, juce::Rectangle<float> faceBounds,
                                 float angle) const
 {
-    auto innerFace = faceBounds.reduced(3.0f, 3.0f);
-    float cx = innerFace.getCentreX();
-    float pivotY = innerFace.getBottom() - 8.0f;  // moved up
-
-    float scaleRadius = (innerFace.getHeight() - 8.0f) * 0.78f;
-    float needleLength = scaleRadius * 0.78f;
+    auto   innerFace = faceBounds.reduced(3.0f, 3.0f);
+    float  cx        = innerFace.getCentreX();
+    float  pivotY    = innerFace.getBottom() - kPivotOffsetY;
+    float  scaleR    = (innerFace.getHeight() - kPivotOffsetY) * kScaleRadiusFactor;
+    float  needleLen = scaleR * 0.80f;
 
     // ─── Puntas de la aguja ──────────────────────────────────────────
-    float tipX = cx + std::cos(angle) * needleLength;
-    float tipY = pivotY + std::sin(angle) * needleLength;
+    float tipX = cx + std::cos(angle) * needleLen;
+    float tipY = pivotY + std::sin(angle) * needleLen;
 
     // Cola de la aguja (detrás del pivote, más corta)
-    float tailLen = scaleRadius * 0.12f;
+    float tailLen = scaleR * 0.12f;
     float tailAngle = angle + juce::MathConstants<float>::pi;
     float tailX = cx + std::cos(tailAngle) * tailLen;
     float tailY = pivotY + std::sin(tailAngle) * tailLen;
@@ -474,18 +403,42 @@ void AnalogVUMeter::drawNeedle(juce::Graphics& g, juce::Rectangle<float> faceBou
 // ═══════════════════════════════════════════════════════════════════════════
 void AnalogVUMeter::drawVuLabel(juce::Graphics& g, juce::Rectangle<float> faceBounds) const
 {
-    auto innerFace = faceBounds.reduced(3.0f, 3.0f);
-    float cx = innerFace.getCentreX();
-    float pivotY = innerFace.getBottom() - 8.0f;
-    float scaleRadius = (innerFace.getHeight() - 8.0f) * 0.78f;
+    auto  innerFace  = faceBounds.reduced(3.0f, 3.0f);
+    float cx         = innerFace.getCentreX();
+    float pivotY     = innerFace.getBottom() - kPivotOffsetY;
+    float scaleR     = (innerFace.getHeight() - kPivotOffsetY) * kScaleRadiusFactor;
 
-    // Label "VU" justo debajo del centro del arco
-    float labelY = pivotY - scaleRadius * 0.35f;
+    // "VU" justo debajo del centro del arco
+    float labelY = pivotY - scaleR * 0.32f;
 
     g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-    g.setColour(juce::Colour(kLabelVu).withAlpha(0.7f));
+    g.setColour(juce::Colour(kLabelVu).withAlpha(0.55f));
     g.drawText("VU",
-               juce::Rectangle<float>(cx - 10.0f, labelY - 5.0f, 20.0f, 10.0f),
+               juce::Rectangle<float>(cx - 12.0f, labelY - 5.0f, 24.0f, 10.0f),
+               juce::Justification::centred);
+}
+
+void AnalogVUMeter::drawChannelLabel(juce::Graphics& g, juce::Rectangle<float> faceBounds) const
+{
+    if (labelText_.isEmpty()) return;
+
+    auto  innerFace = faceBounds.reduced(3.0f, 3.0f);
+    float cx        = innerFace.getCentreX();
+    float pivotY    = innerFace.getBottom() - kPivotOffsetY;
+    float scaleR    = (innerFace.getHeight() - kPivotOffsetY) * kScaleRadiusFactor;
+
+    // El canal (L/R/M/S) aparece a la derecha del centro, como en los VU analógicos clásicos
+    float lx = cx + scaleR * 0.30f;
+    float ly = pivotY - scaleR * 0.38f;
+
+    g.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
+    if (labelColourOverride_ != juce::Colour(0x00000000))
+        g.setColour(labelColourOverride_.withAlpha(0.75f));
+    else
+        g.setColour(juce::Colour(kLabelVu).withAlpha(0.75f));
+
+    g.drawText(labelText_,
+               juce::Rectangle<float>(lx - 14.0f, ly - 8.0f, 28.0f, 16.0f),
                juce::Justification::centred);
 }
 
@@ -494,17 +447,44 @@ void AnalogVUMeter::drawVuLabel(juce::Graphics& g, juce::Rectangle<float> faceBo
 // ═══════════════════════════════════════════════════════════════════════════
 void AnalogVUMeter::paint(juce::Graphics& g)
 {
-    if (! faceCacheValid_)
+    if (!faceCacheValid_)
         rebuildFaceCache();
 
     if (faceCacheValid_)
         g.drawImageAt(faceCache_, 0, 0);
 
+    // Dibujar aguja en tiempo real (no se cachea porque cambia con el audio)
     auto bounds = getLocalBounds().toFloat();
-    const float h = bounds.getHeight();
-    bounds.removeFromTop(juce::jmin(14.0f, h * 0.13f));
-    auto valArea = bounds.removeFromBottom(juce::jmin(14.0f, h * 0.13f)).reduced(2, 0);
-    paintNeedleAndReadout(g, bounds, valArea);
+    auto faceBounds = bounds;
+
+    const float currentVu = smoothedVu_.getCurrent();
+    const float needleAngle = valueToAngle(currentVu);
+    drawNeedle(g, faceBounds, needleAngle);
+
+    // Peak hold triangle (dinámico)
+    const float peakVu = peakHoldVu_.getCurrent();
+    if (peakVu > kVuMin + 1.0f)
+    {
+        const float pkAngle = valueToAngle(peakVu);
+        auto   innerFace     = faceBounds.reduced(3.0f, 3.0f);
+        const float cx       = innerFace.getCentreX();
+        const float pivotY   = innerFace.getBottom() - kPivotOffsetY;
+        const float scaleR   = (innerFace.getHeight() - kPivotOffsetY) * kScaleRadiusFactor;
+        const float markerR  = scaleR * 0.88f;
+
+        const float mx = cx + std::cos(pkAngle) * markerR;
+        const float my = pivotY + std::sin(pkAngle) * markerR;
+
+        const float perpAngle = pkAngle + juce::MathConstants<float>::halfPi;
+        const float triSize   = 3.5f;
+        juce::Path pkTri;
+        pkTri.addTriangle(
+            mx + std::cos(perpAngle) * triSize, my + std::sin(perpAngle) * triSize,
+            mx - std::cos(perpAngle) * triSize, my - std::sin(perpAngle) * triSize,
+            mx - std::cos(pkAngle)  * 3.0f,     my - std::sin(pkAngle)  * 3.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.8f));
+        g.fillPath(pkTri);
+    }
 }
 
 } // namespace mixcoach

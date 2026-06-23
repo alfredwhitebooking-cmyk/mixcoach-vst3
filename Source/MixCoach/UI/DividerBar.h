@@ -8,7 +8,7 @@ namespace mixcoach {
 class DividerBar : public juce::Component {
 public:
     void paint(juce::Graphics& g) override {
-        g.fillAll(MixCoachTheme::border());
+        g.fillAll(MixCoachTheme::divider().withAlpha(0.25f));
     }
 };
 

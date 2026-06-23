@@ -1,256 +1,230 @@
-#include "PluginEditor.h"
-#include "StereoMeter.h"
-#include "WaveformView.h"
-#include "ColourPresetStrip.h"
-#include "ColourSwatch.h"
 #include "../core/PluginProcessor.h"
-#include "../../Common/memory/SharedData.h"
+#include "PluginEditor.h"
 #include "../../Common/types/LogHelper.h"
 
 namespace mixcoach {
 
+// ─── Colores predefinidos para el color picker ───────────────────────────
+static const juce::Colour kPresetColours[8] = {
+    juce::Colour(0xFFEF4444),  // Rojo    - Bateria
+    juce::Colour(0xFFF97316),  // Naranja - Percusion
+    juce::Colour(0xFFEAB308),  // Amarillo - Voz
+    juce::Colour(0xFF22C55E),  // Verde   - Melodia
+    juce::Colour(0xFF3B82F6),  // Azul    - Bajo
+    juce::Colour(0xFFA78BFA),  // Morado  - FX
+    juce::Colour(0xFFEC4899),  // Rosa    - Vocals
+    juce::Colour(0xFF14B8A6),  // Teal    - Ambientes
+};
+
+static const char* kColourNames[8] = {
+    "Bateria", "Percusion", "Voz", "Melodia",
+    "Bajo", "FX", "Vocals", "Ambientes"
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
-//  MessengerAudioProcessorEditor Implementation
+//  ICON DRAWING HELPERS — Line icons minimalistas
 // ═══════════════════════════════════════════════════════════════════════════
 
-MessengerAudioProcessorEditor::MessengerAudioProcessorEditor(MessengerAudioProcessor& processor)
+void MessengerAudioProcessorEditor::drawIconCircle(juce::Graphics& g, juce::Rectangle<float> bounds)
+{
+    // Círculo translúcido con borde tenue
+    g.setColour(juce::Colours::white.withAlpha(0.06f));
+    g.fillEllipse(bounds);
+    g.setColour(juce::Colours::white.withAlpha(0.12f));
+    g.drawEllipse(bounds, 0.8f);
+
+    // Inner glow sutil
+    auto innerGlow = bounds.reduced(1.0f);
+    juce::ColourGradient ig(
+        juce::Colours::white.withAlpha(0.04f), innerGlow.getCentreX(), innerGlow.getCentreY(),
+        juce::Colours::transparentWhite, bounds.getX(), bounds.getY(), true);
+    g.setGradientFill(ig);
+    g.fillEllipse(innerGlow);
+}
+
+void MessengerAudioProcessorEditor::drawPencilIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
+{
+    auto b = bounds.reduced(3.0f);
+    float cx = b.getCentreX();
+    float cy = b.getCentreY();
+    float s = juce::jmin(b.getWidth(), b.getHeight()) * 0.35f;
+
+    g.setColour(colour.withAlpha(0.8f));
+    juce::Path p;
+    // Diagonal line (body of pencil)
+    p.startNewSubPath(cx - s * 0.6f, cy + s * 0.7f);
+    p.lineTo(cx + s * 0.6f, cy - s * 0.7f);
+    p.lineTo(cx + s * 0.8f,  cy - s * 0.5f);
+    p.lineTo(cx - s * 0.4f,  cy + s * 0.9f);
+    p.closeSubPath();
+    g.fillPath(p);
+
+    // Line through the middle
+    g.setColour(colour.withAlpha(0.5f));
+    g.drawLine(cx - s * 0.4f, cy + s * 0.6f, cx + s * 0.4f, cy - s * 0.6f, 0.8f);
+}
+
+void MessengerAudioProcessorEditor::drawPaletteIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
+{
+    auto b = bounds.reduced(3.5f);
+    float cx = b.getCentreX();
+    float cy = b.getCentreY();
+    float r = juce::jmin(b.getWidth(), b.getHeight()) * 0.4f;
+
+    // Circle body
+    g.setColour(colour.withAlpha(0.8f));
+    juce::Path p;
+    p.addEllipse(cx - r, cy - r, r * 2.0f, r * 2.0f);
+    g.strokePath(p, juce::PathStrokeType(1.2f));
+
+    // Three small dots inside (paint blobs)
+    float dotR = r * 0.18f;
+    float dotPositions[][2] = {
+        { cx - r * 0.25f, cy - r * 0.3f },
+        { cx + r * 0.3f,  cy - r * 0.15f },
+        { cx - r * 0.1f,  cy + r * 0.35f }
+    };
+    for (auto& dp : dotPositions) {
+        g.setColour(colour.withAlpha(0.6f));
+        g.fillEllipse(dp[0] - dotR, dp[1] - dotR, dotR * 2.0f, dotR * 2.0f);
+    }
+}
+
+void MessengerAudioProcessorEditor::drawBoxIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
+{
+    auto b = bounds.reduced(3.5f);
+    float cx = b.getCentreX();
+    float cy = b.getCentreY();
+    float s = juce::jmin(b.getWidth(), b.getHeight()) * 0.35f;
+
+    g.setColour(colour.withAlpha(0.8f));
+    // Rounded rect
+    juce::Path p;
+    p.addRoundedRectangle(cx - s, cy - s * 0.6f, s * 2.0f, s * 1.2f, 1.5f);
+    g.strokePath(p, juce::PathStrokeType(1.2f));
+
+    // Horizontal divider line
+    g.drawLine(cx - s, cy, cx + s, cy, 0.8f);
+    // Vertical divider line
+    g.drawLine(cx, cy - s * 0.6f, cx, cy + s * 0.6f, 0.8f);
+}
+
+void MessengerAudioProcessorEditor::drawArrowIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
+{
+    auto b = bounds.reduced(3.5f);
+    float cx = b.getCentreX();
+    float cy = b.getCentreY();
+    float s = juce::jmin(b.getWidth(), b.getHeight()) * 0.35f;
+
+    g.setColour(colour.withAlpha(0.8f));
+    // Horizontal line
+    g.drawLine(cx - s, cy, cx + s * 0.5f, cy, 1.0f);
+    // Arrowhead
+    juce::Path arrow;
+    arrow.addTriangle(cx + s * 0.8f, cy,
+                      cx + s * 0.2f, cy - s * 0.5f,
+                      cx + s * 0.2f, cy + s * 0.5f);
+    g.fillPath(arrow);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONSTRUCTOR — Diseño premium con glass panel, título y dropdowns
+// ═══════════════════════════════════════════════════════════════════════════
+MessengerAudioProcessorEditor::MessengerAudioProcessorEditor(
+        MessengerAudioProcessor& processor)
     : AudioProcessorEditor(&processor)
     , processorRef_(processor)
 {
-    setResizable(false, false);
+    // Copiar colores predefinidos
+    for (int i = 0; i < kNumColours; ++i)
+        presetColours_[i] = kPresetColours[i];
 
-    // ─── Componentes personalizados ─────────────────────────────────────
+    // ─── TÍTULO: "INFORMACIÓN TRACK" (purple neon) ────────────────
+    titleLabel_.setText("INFORMACIÓN TRACK",
+                        juce::dontSendNotification);
+    titleLabel_.setFont(juce::Font(juce::FontOptions(10.0f)).boldened());
+    titleLabel_.setJustificationType(juce::Justification::centredLeft);
+    titleLabel_.setColour(juce::Label::textColourId, MixCoachTheme::accent()); // #D100FF
+    addAndMakeVisible(titleLabel_);
 
-    colourSwatch_   = std::make_unique<ColourSwatch>();
-
-    // 2 StereoMeters: Input (L+R) + Output (L+R)
-    stereoInput_  = std::make_unique<StereoMeter>();
-    stereoOutput_ = std::make_unique<StereoMeter>();
-
-    // Colores de canal: L=azul, R=verde (estilo profesional)
-    stereoInput_->setBarColours(
-        juce::Colour(0xFF60A5FA),  // L = azul
-        juce::Colour(0xFF34D399)); // R = verde
-    stereoOutput_->setBarColours(
-        juce::Colour(0xFF60A5FA),  // L = azul
-        juce::Colour(0xFF34D399)); // R = verde
-
-    // Circular GR Gauge
-    grGauge_ = std::make_unique<CircularGauge>();
-    grGauge_->setTitle("REDUCCION DE GANANCIA");
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  INFO PANEL — Form-style rows
-    // ═══════════════════════════════════════════════════════════════════════
-
-    // ─── Row 1: NOMBRE ─────────────────────────────────────────────────
-    // Icono dibujado en paint() via drawRowIcon()
-
+    // ─── NOMBRE ──────────────────────────────────────────────────────
     nameEditor_.setText(processorRef_.getTrackName());
-    nameEditor_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
-    nameEditor_.setJustification(juce::Justification::centredLeft);
-    nameEditor_.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF0A0A14));
-    nameEditor_.setColour(juce::TextEditor::textColourId, juce::Colour(0xFFF1F1F6));
-    nameEditor_.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xFF2C2C3E));
-    nameEditor_.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(0xFF8B5CF6));
-    nameEditor_.setIndents(6, 2);
+    nameEditor_.setFont(juce::Font(juce::FontOptions(12.0f)).boldened());
+    nameEditor_.setJustification(juce::Justification::centred);
+    nameEditor_.setColour(juce::TextEditor::backgroundColourId, MixCoachTheme::bgInput());
+    nameEditor_.setColour(juce::TextEditor::textColourId, MixCoachTheme::textPrimary());
+    nameEditor_.setColour(juce::TextEditor::outlineColourId, MixCoachTheme::borderCard().withAlpha(0.6f));
+    nameEditor_.setColour(juce::TextEditor::focusedOutlineColourId, MixCoachTheme::accent());
+    nameEditor_.setIndents(8, 2);
     nameEditor_.setBorder(juce::BorderSize<int>(1));
-    nameEditor_.setInputRestrictions(32);
+    nameEditor_.setInputRestrictions(24);
     nameEditor_.addListener(this);
     addAndMakeVisible(nameEditor_);
 
-    currentColour_ = processorRef_.getTrackColour();
-    colourSwatch_->setColour(currentColour_);
-    colourSwatch_->onClick = [this]() { openColourSelector(); };
-    addAndMakeVisible(colourSwatch_.get());
+    // ─── TIPO (ComboBox) ─────────────────────────────────────────────
+    typeComboBox_.setEditableText(false);
+    typeComboBox_.setJustificationType(juce::Justification::centredLeft);
+    typeComboBox_.addItem("Sin tipo", 1);
+    for (int i = 0; i < kNumTrackTypes; ++i) {
+        typeComboBox_.addItem(
+            juce::String(kTrackTypeTable[i].name),
+            i + 2);
+    }
+    typeComboBox_.setSelectedId(trackTypeToComboIndex(processorRef_.getTrackType()) + 1);
+    typeComboBox_.setColour(juce::ComboBox::backgroundColourId, MixCoachTheme::bgInput());
+    typeComboBox_.setColour(juce::ComboBox::textColourId, MixCoachTheme::textSecondary());
+    typeComboBox_.setColour(juce::ComboBox::outlineColourId, MixCoachTheme::borderCard().withAlpha(0.6f));
+    typeComboBox_.setColour(juce::ComboBox::arrowColourId, MixCoachTheme::accent());
+    typeComboBox_.onChange = [this]() {
+        auto selected = typeComboBox_.getSelectedId();
+        auto type = comboIndexToTrackType(selected - 1);
+        applyType(type);
+    };
+    addAndMakeVisible(typeComboBox_);
 
-    // ─── Row 2: GRUPO ──────────────────────────────────────────────────
+    // ─── RUTEO (ComboBox) ───────────────────────────────────────────
     busComboBox_.setEditableText(false);
     busComboBox_.setJustificationType(juce::Justification::centredLeft);
     busComboBox_.addItem("Sin ruteo", 1);
     for (int i = 0; i < kNumBuses; ++i)
-        busComboBox_.addItem(busNames[i], i + 2);
+        busComboBox_.addItem(juce::String(busNames[i]), i + 2);
     busComboBox_.setSelectedId(static_cast<int>(processorRef_.getBusAssignment()) + 2);
-    busComboBox_.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xFF0A0A14));
-    busComboBox_.setColour(juce::ComboBox::textColourId, juce::Colour(0xFFE0E0E0));
-    busComboBox_.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xFF2C2C3E));
-    busComboBox_.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xFF8B5CF6));
+    busComboBox_.setColour(juce::ComboBox::backgroundColourId, MixCoachTheme::bgInput());
+    busComboBox_.setColour(juce::ComboBox::textColourId, MixCoachTheme::accent()); // purple for routing value
+    busComboBox_.setColour(juce::ComboBox::outlineColourId, MixCoachTheme::borderCard().withAlpha(0.6f));
+    busComboBox_.setColour(juce::ComboBox::arrowColourId, MixCoachTheme::accent());
     busComboBox_.onChange = [this]() {
         auto selected = busComboBox_.getSelectedId();
         auto bus = (selected <= 1) ? BusType::None : static_cast<BusType>(selected - 2);
-        processorRef_.setBusAssignment(bus);
-
-        // Actualizar TIPO y PRIORIDAD segun el bus
-        tipoValueLabel_.setText(getTipoForBus(bus), juce::dontSendNotification);
-        prioridadValueLabel_.setText(getPrioridadForBus(bus), juce::dontSendNotification);
-
-        // Actualizar bus value display
-        auto busName = (bus != BusType::None)
-            ? juce::String(busNames[static_cast<int>(bus)])
-            : "Sin ruteo";
-        auto busCol = (bus != BusType::None)
-            ? getBusColour(static_cast<int>(bus))
-            : juce::Colour(0xFF888888);
-        busValueLabel_.setText(busName, juce::dontSendNotification);
-        busValueLabel_.setColour(juce::Label::textColourId, busCol);
+        applyBus(bus);
     };
     addAndMakeVisible(busComboBox_);
 
-    busValueLabel_.setText("Sin ruteo", juce::dontSendNotification);
-    busValueLabel_.setFont(juce::Font(juce::FontOptions(11.0f)).boldened());
-    busValueLabel_.setJustificationType(juce::Justification::centredLeft);
-    busValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-    addAndMakeVisible(busValueLabel_);
+    // ─── Tamaño de ventana premium ──────────────────────────────────
+    setSize(310, 195);
 
-    // ─── Row 3: COLOR (preset strip) ────────────────────────────────────
-    colourPresetStrip_ = std::make_unique<ColourPresetStrip>();
-    colourPresetStripRaw_ = static_cast<ColourPresetStrip*>(colourPresetStrip_.get());
-    colourPresetStripRaw_->setActiveColour(currentColour_);
-    colourPresetStripRaw_->onColourChosen = [this](juce::Colour col) { applyPresetColour(col); };
-    addAndMakeVisible(colourPresetStrip_.get());
+    // ─── SmoothValues para animaciones ──────────────────────────────
+    for (auto& sv : iconHoverAlpha_) {
+        sv.setBallistics(100.0f, 400.0f);
+        sv.reset(0.0f);
+    }
+    colourHoverGlow_.setBallistics(80.0f, 250.0f);
+    colourHoverGlow_.reset(0.0f);
+    typeHoverGlow_.setBallistics(80.0f, 200.0f);
+    typeHoverGlow_.reset(0.0f);
+    busHoverGlow_.setBallistics(80.0f, 200.0f);
+    busHoverGlow_.reset(0.0f);
+    nameFocusGlow_.setBallistics(200.0f, 300.0f);
+    nameFocusGlow_.reset(0.0f);
+    ledGlow_.setBallistics(60.0f, 120.0f);
+    ledGlow_.reset(0.15f);
 
-    colourListener_.onColourChanged = [this](juce::Colour newColour) {
-        currentColour_ = newColour;
-        colourSwatch_->setColour(newColour);
-        if (colourPresetStripRaw_)
-            colourPresetStripRaw_->setActiveColour(newColour);
-        processorRef_.setTrackColour(newColour);
-        repaint();
-    };
+    // ─── Timer 60 fps para animaciones suaves ────────────────────────
+    lastTimerMs_ = juce::Time::getMillisecondCounter();
+    startTimerHz(60);
 
-    // ─── Row 4: TIPO ────────────────────────────────────────────────────
-    auto initialBus = processorRef_.getBusAssignment();
-    tipoValueLabel_.setText(getTipoForBus(initialBus), juce::dontSendNotification);
-    tipoValueLabel_.setFont(juce::Font(juce::FontOptions(11.0f)));
-    tipoValueLabel_.setJustificationType(juce::Justification::centredLeft);
-    tipoValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFB0B0C0));
-    addAndMakeVisible(tipoValueLabel_);
-
-    // ─── Row 5: PRIORIDAD ───────────────────────────────────────────────
-    prioridadValueLabel_.setText(getPrioridadForBus(initialBus), juce::dontSendNotification);
-    prioridadValueLabel_.setFont(juce::Font(juce::FontOptions(11.0f)).boldened());
-    prioridadValueLabel_.setJustificationType(juce::Justification::centredLeft);
-    prioridadValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFF1F1F6));
-    addAndMakeVisible(prioridadValueLabel_);
-
-    // ─── Row 6: NOTAS ───────────────────────────────────────────────────
-    notasEditor_.setText("\u2014", juce::dontSendNotification);
-    notasEditor_.setFont(juce::Font(juce::FontOptions(11.0f)));
-    notasEditor_.setJustification(juce::Justification::centredLeft);
-    notasEditor_.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF0A0A14));
-    notasEditor_.setColour(juce::TextEditor::textColourId, juce::Colour(0xFF888888));
-    notasEditor_.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xFF1A1A2E));
-    notasEditor_.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(0xFF8B5CF6));
-    notasEditor_.setIndents(6, 2);
-    notasEditor_.setBorder(juce::BorderSize<int>(1));
-    notasEditor_.setInputRestrictions(64);
-    notasEditor_.addListener(this);
-    addAndMakeVisible(notasEditor_);
-
-    // ─── Row 7: MUTE ──────────────────────────────────────────────────
-    muteButton_.setButtonText("MUTE");
-    muteButton_.setClickingTogglesState(true);
-    muteButton_.setToggleState(processorRef_.isMuted(), juce::dontSendNotification);
-    muteButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2D1B1B));
-    muteButton_.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFFEF4444));
-    muteButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFF6B7280));
-    muteButton_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-    muteButton_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    muteButton_.onClick = [this]() {
-        processorRef_.setMuted(muteButton_.getToggleState());
-        updateMuteDisplay();
-    };
-    addAndMakeVisible(muteButton_);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  STATUS (compacto, integrado en info rows via paint)
-    // ═══════════════════════════════════════════════════════════════════════
-    statusLabel_.setText("\u25CF Conectando...", juce::dontSendNotification);
-    statusLabel_.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-    statusLabel_.setJustificationType(juce::Justification::centredRight);
-    statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFAAAAAA));
-    addAndMakeVisible(statusLabel_);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  NIVELES PANEL — 3-column meters
-    // ═══════════════════════════════════════════════════════════════════════
-
-    // Column headers
-    inputLabel_.setText("INPUT", juce::dontSendNotification);
-    inputLabel_.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
-    inputLabel_.setJustificationType(juce::Justification::centred);
-    inputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
-    addAndMakeVisible(inputLabel_);
-
-    grLabel_.setText("REDUCCION DE GANANCIA", juce::dontSendNotification);
-    grLabel_.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
-    grLabel_.setJustificationType(juce::Justification::centred);
-    grLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8B5CF6));
-    addAndMakeVisible(grLabel_);
-
-    outputLabel_.setText("OUTPUT", juce::dontSendNotification);
-    outputLabel_.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
-    outputLabel_.setJustificationType(juce::Justification::centred);
-    outputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
-    addAndMakeVisible(outputLabel_);
-
-    // Value labels (grandes, blancos)
-    inputValueLabel_.setText("--.- dB", juce::dontSendNotification);
-    inputValueLabel_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
-    inputValueLabel_.setJustificationType(juce::Justification::centred);
-    inputValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFF1F1F6));
-    addAndMakeVisible(inputValueLabel_);
-
-    grValueLabel_.setText("0.0 dB", juce::dontSendNotification);
-    grValueLabel_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
-    grValueLabel_.setJustificationType(juce::Justification::centred);
-    grValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8B5CF6));
-    addAndMakeVisible(grValueLabel_);
-
-    outputValueLabel_.setText("--.- dB", juce::dontSendNotification);
-    outputValueLabel_.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
-    outputValueLabel_.setJustificationType(juce::Justification::centred);
-    outputValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFF1F1F6));
-    addAndMakeVisible(outputValueLabel_);
-
-    // StereoMeters (Input + Output)
-    addAndMakeVisible(stereoInput_.get());
-    addAndMakeVisible(stereoOutput_.get());
-
-    // Circular GR Gauge
-    addAndMakeVisible(grGauge_.get());
-
-    // Stereo labels below each meter
-    stereoInputLabel_.setText("L: --.-   R: --.-", juce::dontSendNotification);
-    stereoInputLabel_.setFont(juce::Font(juce::FontOptions(7.0f)));
-    stereoInputLabel_.setJustificationType(juce::Justification::centred);
-    stereoInputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
-    addAndMakeVisible(stereoInputLabel_);
-
-    stereoOutputLabel_.setText("L: --.-   R: --.-", juce::dontSendNotification);
-    stereoOutputLabel_.setFont(juce::Font(juce::FontOptions(7.0f)));
-    stereoOutputLabel_.setJustificationType(juce::Justification::centred);
-    stereoOutputLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
-    addAndMakeVisible(stereoOutputLabel_);
-
-    // Bottom info: RMS y correlacion
-    rmsLabel_.setText("RMS --.- dB", juce::dontSendNotification);
-    rmsLabel_.setFont(juce::Font(juce::FontOptions(7.5f)));
-    rmsLabel_.setJustificationType(juce::Justification::centred);
-    rmsLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6B7280));
-    addAndMakeVisible(rmsLabel_);
-
-    correlationLabel_.setText("\u03C6 --.--", juce::dontSendNotification);
-    correlationLabel_.setFont(juce::Font(juce::FontOptions(7.5f)));
-    correlationLabel_.setJustificationType(juce::Justification::centred);
-    correlationLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E));
-    addAndMakeVisible(correlationLabel_);
-
-    // Window size: 400x640 (proporcion que cabe en FL Studio)
-    setSize(400, 640);
-
-    // Timer ~30 fps
-    startTimer(33);
+    // ─── Capturar mouse events de hijos para hover tracking ─────────
+    addMouseListener(this, true);
 }
 
 MessengerAudioProcessorEditor::~MessengerAudioProcessorEditor()
@@ -258,600 +232,506 @@ MessengerAudioProcessorEditor::~MessengerAudioProcessorEditor()
     stopTimer();
 }
 
-// ─── Apply Preset Colour ──────────────────────────────────────────────────
-
-void MessengerAudioProcessorEditor::applyPresetColour(juce::Colour colour)
-{
-    currentColour_ = colour;
-    colourSwatch_->setColour(colour);
-    if (colourPresetStripRaw_)
-        colourPresetStripRaw_->setActiveColour(colour);
-    processorRef_.setTrackColour(colour);
-    repaint();
-}
-
-// ─── Iconos vectoriales profesionales para las filas INFO ────────────────────
-
-void MessengerAudioProcessorEditor::drawRowIcon(juce::Graphics& g, int rowIndex, juce::Rectangle<float> bounds)
-{
-    auto cx = bounds.getCentreX();
-    auto cy = bounds.getCentreY();
-    auto s = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.45f;  // half-size
-
-    juce::Path p;
-    g.setColour(juce::Colour(0xFF6B7280));
-
-    switch (rowIndex)
-    {
-        case 0:  // NOMBRE - Shield/Badge
-        {
-            p.startNewSubPath(cx - s * 0.45f, cy - s * 0.2f);
-            p.lineTo(cx - s * 0.45f, cy + s * 0.2f);
-            p.lineTo(cx, cy + s * 0.55f);
-            p.lineTo(cx + s * 0.45f, cy + s * 0.2f);
-            p.lineTo(cx + s * 0.45f, cy - s * 0.2f);
-            p.lineTo(cx + s * 0.3f, cy - s * 0.45f);
-            p.lineTo(cx - s * 0.3f, cy - s * 0.45f);
-            p.closeSubPath();
-            // Small circle inside (identifier dot)
-            p.addEllipse(cx - s * 0.07f, cy - s * 0.2f, s * 0.14f, s * 0.14f);
-            break;
-        }
-        case 1:  // GRUPO - Three stacked bars (hierarchy)
-        {
-            float bh = s * 0.14f;
-            float gap = s * 0.09f;
-            float widths[] = { s * 0.55f, s * 0.75f, s };
-            float totalH = bh * 3.0f + gap * 2.0f;
-            float top = cy - totalH * 0.5f;
-            for (int i = 0; i < 3; ++i) {
-                float x = cx - widths[i] * 0.5f;
-                p.addRoundedRectangle(x, top + i * (bh + gap), widths[i], bh, bh * 0.4f);
-            }
-            break;
-        }
-        case 2:  // COLOR - Droplet
-        {
-            p.startNewSubPath(cx, cy - s * 0.55f);
-            p.quadraticTo(cx + s * 0.5f, cy + s * 0.05f, cx + s * 0.5f, cy + s * 0.25f);
-            p.quadraticTo(cx + s * 0.5f, cy + s * 0.55f, cx, cy + s * 0.55f);
-            p.quadraticTo(cx - s * 0.5f, cy + s * 0.55f, cx - s * 0.5f, cy + s * 0.25f);
-            p.quadraticTo(cx - s * 0.5f, cy + s * 0.05f, cx, cy - s * 0.55f);
-            p.closeSubPath();
-            // Inner dot
-            p.addEllipse(cx - s * 0.07f, cy + s * 0.12f, s * 0.14f, s * 0.14f);
-            break;
-        }
-        case 3:  // TIPO - Sine wave
-        {
-            // Draw waveform as stroked path
-            juce::Path wave;
-            wave.startNewSubPath(cx - s * 0.45f, cy);
-            wave.quadraticTo(cx - s * 0.22f, cy - s * 0.4f, cx, cy);
-            wave.quadraticTo(cx + s * 0.22f, cy + s * 0.4f, cx + s * 0.45f, cy);
-            juce::PathStrokeType stroke(1.5f, juce::PathStrokeType::curved);
-            g.strokePath(wave, stroke);
-            return;  // Already drawn, skip fillPath
-        }
-        case 4:  // PRIORIDAD - Flag on pole
-        {
-            float px = cx - s * 0.25f;
-            // Pole
-            p.addRoundedRectangle(px - s * 0.04f, cy - s * 0.55f, s * 0.08f, s * 1.1f, s * 0.04f);
-            // Flag
-            juce::Path flag;
-            flag.startNewSubPath(px + s * 0.04f, cy - s * 0.5f);
-            flag.lineTo(px + s * 0.55f, cy - s * 0.3f);
-            flag.lineTo(px + s * 0.04f, cy - s * 0.1f);
-            flag.closeSubPath();
-            p.addPath(flag);
-            break;
-        }
-        case 5:  // NOTAS - Speech bubble
-        {
-            float bw = s * 1.0f;
-            float bh = s * 0.75f;
-            // Bubble body
-            p.addRoundedRectangle(cx - bw * 0.5f, cy - bh * 0.45f, bw, bh, s * 0.12f);
-            // Triangle pointer at bottom
-            p.addTriangle(cx - s * 0.08f, cy + bh * 0.3f,
-                          cx + s * 0.08f, cy + bh * 0.3f,
-                          cx, cy + s * 0.6f);
-            // Text cursor line inside
-            p.addRoundedRectangle(cx - s * 0.2f, cy - s * 0.08f, s * 0.3f, s * 0.04f, s * 0.02f);
-            break;
-        }
-        case 6:  // MUTE - Microphone (tachado si muteado)
-        {
-            // Mic body (capsule)
-            float micW = s * 0.35f;
-            float micH = s * 0.5f;
-            p.addRoundedRectangle(cx - micW * 0.5f, cy - micH * 0.6f, micW, micH, s * 0.1f);
-            // Mic stand
-            p.addRoundedRectangle(cx - s * 0.04f, cy + micH * 0.3f, s * 0.08f, s * 0.35f, s * 0.04f);
-            // Mic base
-            p.addRoundedRectangle(cx - s * 0.2f, cy + s * 0.5f, s * 0.4f, s * 0.08f, s * 0.04f);
-
-            if (processorRef_.isMuted()) {
-                // Línea diagonal roja (tachado)
-                g.setColour(juce::Colour(0xFFEF4444));
-                juce::Path xLine;
-                xLine.startNewSubPath(cx - s * 0.6f, cy - s * 0.65f);
-                xLine.lineTo(cx + s * 0.6f, cy + s * 0.65f);
-                g.strokePath(xLine, juce::PathStrokeType(2.5f));
-            }
-            break;
-        }
-    }
-
-    g.fillPath(p);
-}
-
-// ─── Layout — Form-style info rows + 3-column meters ─────────────────────────
-
+// ═══════════════════════════════════════════════════════════════════════════
+//  LAYOUT — Premium con espaciado amplio y alineación perfecta
+// ═══════════════════════════════════════════════════════════════════════════
 void MessengerAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced(8);
+    auto area = getLocalBounds().reduced(6, 5);
 
-    // ====================================================================
-    //  INFO PANEL ROWS (form-style, 6 rows with separators)
-    // ====================================================================
-    // Each row: icon(24) + label(60) + value(rest) | rowHeight = 26
-    // Header takes 16px, each row takes 26px, separator 1px
+    // ─── TITLE ROW: "INFORMACION TRACK" (20px, consistente con MixCoach) ────
+    auto titleArea = area.removeFromTop(20);
+    titleLabel_.setBounds(titleArea.reduced(2, 0));
+    titleDividerBounds_ = area.removeFromTop(1);
 
-    const int infoHeaderH = 14;      // "INFORMACION DE PISTA"
-    const int rowH = 28;              // altura por fila (+2px mas espacioso)
-    const int sepH = 1;               // separador entre filas
-    const int iconW = 22;             // ancho del icono
-    const int labelW = 58;            // ancho del label
-    const int statusW = 100;          // ancho del status label (right-aligned)
+    // ─── ROW 1: NOMBRE (32px) ───────────────────────────────────────
+    area.removeFromTop(3); // spacing (consistente con MixCoach: 3px)
+    auto nameRow = area.removeFromTop(28);
+    iconRowY_[0] = nameRow.getY();
+    // Icon circle (left 22px), label (next 50px), control (rest)
+    auto nameIcon = nameRow.removeFromLeft(22).reduced(2, 2);
+    juce::ignoreUnused(nameIcon);
+    nameRow.removeFromLeft(4);
+    auto nameLabel = nameRow.removeFromLeft(48);
+    juce::ignoreUnused(nameLabel);
+    nameRow.removeFromLeft(4);
+    nameEditor_.setBounds(nameRow.reduced(0, 2));
+    nameDividerBounds_ = area.removeFromTop(1);
 
-    area.removeFromTop(infoHeaderH + 4);  // header + mas spacer
+    // ─── ROW 2: COLOR (32px) ────────────────────────────────────────
+    area.removeFromTop(3); // spacing
+    auto colourRow = area.removeFromTop(28);
+    iconRowY_[1] = colourRow.getY();
+    auto colourIcon = colourRow.removeFromLeft(22).reduced(2, 2);
+    juce::ignoreUnused(colourIcon);
+    colourRow.removeFromLeft(4);
+    auto colourLabel = colourRow.removeFromLeft(48);
+    juce::ignoreUnused(colourLabel);
+    colourRow.removeFromLeft(4);
+    // Color dropdown: circle + arrow
+    colourDropdownBounds_ = colourRow.reduced(0, 2).toFloat();
+    colourCircleBounds_ = juce::Rectangle<float>(
+        colourDropdownBounds_.getX() + 3.0f,
+        colourDropdownBounds_.getY() + 2.0f,
+        colourDropdownBounds_.getHeight() - 4.0f,
+        colourDropdownBounds_.getHeight() - 4.0f);
+    colourDividerBounds_ = area.removeFromTop(1);
 
-    // ─── Row 1: NOMBRE ────────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);  // icon drawn in paint()
+    // ─── ROW 3: TIPO (32px) ─────────────────────────────────────────
+    area.removeFromTop(3); // spacing
+    auto tipoRow = area.removeFromTop(28);
+    iconRowY_[2] = tipoRow.getY();
+    auto tipoIcon = tipoRow.removeFromLeft(22).reduced(2, 2);
+    juce::ignoreUnused(tipoIcon);
+    tipoRow.removeFromLeft(4);
+    auto tipoLabel = tipoRow.removeFromLeft(48);
+    juce::ignoreUnused(tipoLabel);
+    tipoRow.removeFromLeft(4);
+    typeComboBox_.setBounds(tipoRow.reduced(0, 2));
+    typeDividerBounds_ = area.removeFromTop(1);
 
-        auto valueArea = row.removeFromLeft(row.getWidth() - 50);
-        nameEditor_.setBounds(valueArea.reduced(0, 2));
-
-        auto swatchArea = row.removeFromLeft(50);
-        colourSwatch_->setBounds(swatchArea.reduced(8, 3));
-    }
-    area.removeFromTop(sepH);
-
-    // ─── Row 2: GRUPO ─────────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);  // skip icon (painted)
-
-        auto labelArea = row.removeFromLeft(labelW);
-        juce::ignoreUnused(labelArea);  // label painted in paint()
-
-        auto valueArea = row.removeFromLeft(row.getWidth() - 80);
-        busValueLabel_.setBounds(valueArea.reduced(2, 2));
-        auto comboArea = row.removeFromLeft(80);
-        busComboBox_.setBounds(comboArea.reduced(1, 2));
-    }
-    area.removeFromTop(sepH);
-
-    // ─── Row 3: COLOR ─────────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);
-
-        auto labelArea = row.removeFromLeft(labelW);
-        juce::ignoreUnused(labelArea);
-
-        colourPresetStrip_->setBounds(row.reduced(2, 2));
-    }
-    area.removeFromTop(sepH);
-
-    // ─── Row 4: TIPO ──────────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);
-
-        auto labelArea = row.removeFromLeft(labelW);
-        juce::ignoreUnused(labelArea);
-
-        tipoValueLabel_.setBounds(row.reduced(2, 2));
-    }
-    area.removeFromTop(sepH);
-
-    // ─── Row 5: PRIORIDAD ─────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);
-
-        auto labelArea = row.removeFromLeft(labelW);
-        juce::ignoreUnused(labelArea);
-
-        prioridadValueLabel_.setBounds(row.reduced(2, 2));
-    }
-    area.removeFromTop(sepH);
-
-    // ─── Row 6: NOTAS ─────────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);
-
-        auto labelArea = row.removeFromLeft(labelW);
-        juce::ignoreUnused(labelArea);
-
-        notasEditor_.setBounds(row.reduced(2, 2));
-    }
-
-    // ─── Row 7: MUTE ──────────────────────────────────────────────────
-    {
-        auto row = area.removeFromTop(rowH);
-        row.removeFromLeft(iconW + 4);
-
-        auto labelArea = row.removeFromLeft(labelW);
-        juce::ignoreUnused(labelArea);
-
-        muteButton_.setBounds(row.reduced(2, 3));
-    }
-
-    // ─── Status label (esquina superior derecha) ───────────────────────
-    statusLabel_.setBounds(getWidth() - statusW - 10, 4, statusW, 14);
-
-    area.removeFromTop(12);  // spacer entre INFO y NIVELES
-
-    // ====================================================================
-    //  NIVELES PANEL — 3-column meters
-    // ====================================================================
-
-    auto nivelesArea = area.reduced(0, 2);
-
-    // ─── Proporciones de columnas: INPUT 35% | GR 30% | OUTPUT 35% ────
-    auto totalW = nivelesArea.getWidth();
-    int colInW  = static_cast<int>(totalW * 0.35f);
-    int colGrW  = static_cast<int>(totalW * 0.30f);
-    int colOutW = totalW - colInW - colGrW;
-
-    // ─── Column headers (16px, mas espaciado) ────────────────────────────
-    auto colHeaderRow = nivelesArea.removeFromTop(16);
-    inputLabel_.setBounds(colHeaderRow.removeFromLeft(colInW));
-    grLabel_.setBounds(colHeaderRow.removeFromLeft(colGrW));
-    outputLabel_.setBounds(colHeaderRow);
-
-    // ─── Value dB labels (22px, mas espacio) ────────────────────────────
-    auto valueRow = nivelesArea.removeFromTop(22);
-    inputValueLabel_.setBounds(valueRow.removeFromLeft(colInW));
-    grValueLabel_.setBounds(valueRow.removeFromLeft(colGrW));
-    outputValueLabel_.setBounds(valueRow);
-
-    nivelesArea.removeFromTop(4);
-
-    // ─── Meters: 3 columnas con padding consistente ─────────────────────
-    auto metersRow = nivelesArea.removeFromTop(320);
-
-    // INPUT column: StereoMeter (L+R, escala compartida)
-    auto inputCol = metersRow.removeFromLeft(colInW).reduced(3, 2);
-    stereoInput_->setBounds(inputCol);
-
-    // GR column: CircularGauge centered
-    auto grCol = metersRow.removeFromLeft(colGrW).reduced(3, 2);
-    grGauge_->setBounds(grCol);
-
-    // OUTPUT column: StereoMeter (L+R, escala compartida)
-    auto outputCol = metersRow.reduced(3, 2);
-    stereoOutput_->setBounds(outputCol);
-
-    nivelesArea.removeFromTop(6);
-
-    // ─── Bottom info row: L/R labels + RMS + correlation ────────────────
-    auto chRow = nivelesArea.removeFromTop(16);
-    stereoInputLabel_.setBounds(chRow.removeFromLeft(colInW));
-    chRow.removeFromLeft(colGrW);  // skip GR column
-    stereoOutputLabel_.setBounds(chRow);
-
-    // RMS + φ correlation below the channel labels
-    auto infoRow = nivelesArea.removeFromTop(16);
-    infoRow.removeFromLeft(colInW);  // skip input
-    rmsLabel_.setBounds(infoRow.removeFromLeft(colGrW));
-    correlationLabel_.setBounds(infoRow);
-
-    // ─── Calcular bounds del panel NIVELES (alineado con contenido) ────
-    nivelesPanelBounds_ = getLocalBounds().withTop(inputLabel_.getY() - 6)
-                                          .withBottom(correlationLabel_.getBottom() + 8)
-                                          .withLeft(6)
-                                          .withRight(getWidth() - 6);
+    // ─── ROW 4: RUTEO (32px) ────────────────────────────────────────
+    area.removeFromTop(3); // spacing
+    auto ruteoRow = area.removeFromTop(28);
+    iconRowY_[3] = ruteoRow.getY();
+    auto ruteoIcon = ruteoRow.removeFromLeft(22).reduced(2, 2);
+    juce::ignoreUnused(ruteoIcon);
+    ruteoRow.removeFromLeft(4);
+    ruteoRow.removeFromLeft(48); // "RUTEO" label space
+    ruteoRow.removeFromLeft(4);
+    busComboBox_.setBounds(ruteoRow.reduced(0, 2));
 }
 
-// ─── Paint ───────────────────────────────────────────────────────────────────
-
+// ═══════════════════════════════════════════════════════════════════════════
+//  PAINT — Glass panel + título neon + iconos + divisores + color dropdown
+// ═══════════════════════════════════════════════════════════════════════════
 void MessengerAudioProcessorEditor::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
+    auto area = bounds.reduced(6, 5);
 
-    // ─── Fondo profundo (#08080F como la referencia) ───────────────────
-    juce::ColourGradient bgGrad(
-        juce::Colour(0xFF12121E),
-        juce::Point<float>(0.0f, 0.0f),
-        juce::Colour(0xFF08080F),
-        juce::Point<float>(0.0f, (float)bounds.getHeight()),
-        false);
-    g.setGradientFill(bgGrad);
-    g.fillRect(bounds);
+    // ─── Fondo: glass panel premium (consistente con MixCoachTheme) ──
+    g.fillAll(MixCoachTheme::bgCanvas());
 
-    // ─── Borde exterior sutil ──────────────────────────────────────────
-    g.setColour(juce::Colour(0xFF1A1A2E));
-    g.drawRect(bounds, 1);
+    // Glass panel using theme
+    auto glassBounds = bounds.toFloat().reduced(1.0f);
+    MixCoachTheme::fillGlassPanel(g, glassBounds, 6.0f);
 
-    // ─── Barra de color lateral (3px, color del track) ─────────────────
-    g.setColour(currentColour_.withAlpha(0.2f));
-    g.fillRect(0, 0, 3, bounds.getHeight());
+    // Accent cyan outer glow (Messenger identity)
+    g.setColour(MixCoachTheme::accentCyan().withAlpha(0.04f));
+    g.drawRoundedRectangle(glassBounds.expanded(2.0f), 8.0f, 1.5f);
 
-    // ─── SECTION HEADERS ────────────────────────────────────────────────
+    // ─── Borde lateral de color (3px, color de pista) ───────────────
+    auto trackCol = processorRef_.getTrackColour();
+    g.setColour(trackCol.withAlpha(0.5f));
+    g.fillRoundedRectangle(0.0f, 4.0f, 3.0f, (float)bounds.getHeight() - 8, 1.5f);
 
-    // "INFORMACION DE PISTA"
-    g.setFont(juce::Font(juce::FontOptions(9.5f)).boldened());
-    g.setColour(juce::Colour(0xFFA78BFA));
-    g.drawText("INFORMACION DE PISTA",
-               juce::Rectangle<int>(12, 4, 160, 14),
-               juce::Justification::centredLeft);
+    // ─── LED de heartbeat (smooth pulse via SmoothValue) ────────────
+    auto titleArea = area.removeFromTop(20);
+    auto ledArea = titleArea.removeFromRight(14).reduced(4, 6);
+    float ledA = ledGlow_.getCurrent();
+    g.setColour(MixCoachTheme::success().withAlpha(ledA));
+    g.fillEllipse(ledArea.toFloat());
+    g.setColour(juce::Colours::white.withAlpha(0.06f + 0.12f * ledA));
+    g.drawEllipse(ledArea.toFloat(), 0.5f);
 
-    // ─── INFO ROW LABELS + ICONS ───────────────────────────────────────
-    const int infoHeaderH = 14;
-    const int rowH = 28;  // sincronizado con resized()
-    const int sepH = 1;
-    const int iconW = 22;
-    const int labelW = 58;
+    // ─── TÍTULO ya lo dibuja el Label, solo añadimos glow ────────────
+    // El título "INFORMACION TRACK" es manejado por titleLabel_
 
-    const char* rowLabels[] = {
-        "NOMBRE", "GRUPO", "COLOR", "TIPO", "PRIORIDAD", "NOTAS", "MUTE"
+    // ─── DIVISORES entre filas ───────────────────────────────────────
+    auto drawDivider = [&](juce::Rectangle<int> divBounds) {
+        g.setColour(MixCoachTheme::divider().withAlpha(0.25f));
+        g.drawHorizontalLine(divBounds.getY(), (float)divBounds.getX() + 4,
+                             (float)divBounds.getRight() - 4);
     };
-    juce::Colour labelColour = juce::Colour(0xFF6B7280);
-    juce::Colour sepColour = juce::Colour(0xFF1A1A2E);
+    drawDivider(titleDividerBounds_);
+    drawDivider(nameDividerBounds_);
+    drawDivider(colourDividerBounds_);
+    drawDivider(typeDividerBounds_);
 
-    int y = 8 + infoHeaderH + 4;
-
-    for (int i = 0; i < 7; ++i)
+    // ─── ICONOS + LABELS para cada fila ─────────────────────────────
+    // NOMBRE (row 1)
     {
-        // ─── Icono vectorial ────────────────────────────────────────────
-        drawRowIcon(g, i, juce::Rectangle<float>(12.0f, (float)y, (float)iconW, (float)rowH));
+        int y = titleDividerBounds_.getBottom() + 4;
+        auto iconBounds = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
+        float hA = iconHoverAlpha_[0].getCurrent();
+        juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+        drawIconCircle(g, iconBounds);
+        drawPencilIcon(g, iconBounds, iconCol.withAlpha(0.65f + 0.35f * hA));
 
-        // ─── Label ────────────────────────────────────────────────────
-        g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-        g.setColour(labelColour);
-        g.drawText(rowLabels[i],
-                   juce::Rectangle<int>(12 + iconW + 4, y, labelW, rowH),
+        g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+        g.setColour(MixCoachTheme::textMuted().interpolatedWith(MixCoachTheme::accent(), hA * 0.5f));
+        g.drawText("NOMBRE", juce::Rectangle<float>(34.0f, (float)y + 2.0f, 46.0f, 24.0f),
+                   juce::Justification::centredLeft);
+    }
+
+    // COLOR (row 2)
+    {
+        int y = nameDividerBounds_.getBottom() + 4;
+        auto iconBounds = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
+        float hA = iconHoverAlpha_[1].getCurrent();
+        juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+        drawIconCircle(g, iconBounds);
+        drawPaletteIcon(g, iconBounds, iconCol.withAlpha(0.65f + 0.35f * hA));
+
+        g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+        g.setColour(MixCoachTheme::textMuted().interpolatedWith(MixCoachTheme::accent(), hA * 0.5f));
+        g.drawText("COLOR", juce::Rectangle<float>(34.0f, (float)y + 2.0f, 46.0f, 24.0f),
                    juce::Justification::centredLeft);
 
-        y += rowH;
+        // Color dropdown: preview circle + arrow ▾ with hover animation
+        auto trackColour = processorRef_.getTrackColour();
+        float cHover = colourHoverGlow_.getCurrent();
 
-        // ─── Separator ────────────────────────────────────────────────
-        if (i < 6) {
-            g.setColour(sepColour);
-            g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
-            y += sepH;
+        // Animated glow behind circle (expands and brightens on hover)
+        auto glowBounds = colourCircleBounds_.expanded(3.0f + 6.0f * cHover);
+        g.setColour(trackColour.withAlpha(0.06f + 0.18f * cHover));
+        g.fillEllipse(glowBounds);
+
+        // Preview circle
+        g.setColour(trackColour);
+        g.fillEllipse(colourCircleBounds_);
+        g.setColour(juce::Colours::white.withAlpha(0.2f + 0.3f * cHover));
+        g.drawEllipse(colourCircleBounds_, 1.0f);
+
+        // Dropdown arrow ▾
+        auto arrowArea = juce::Rectangle<float>(
+            colourDropdownBounds_.getRight() - 20.0f,
+            colourDropdownBounds_.getY(),
+            20.0f, colourDropdownBounds_.getHeight());
+        g.setColour(juce::Colours::white.withAlpha(0.25f + 0.25f * cHover));
+        g.setFont(juce::Font(juce::FontOptions(10.0f)));
+        g.drawText(juce::CharPointer_UTF8("\xE2\x96\xBE"), arrowArea, juce::Justification::centred);
+
+        // Border around dropdown area (animated on hover)
+        g.setColour(juce::Colour(0xFF25263A).interpolatedWith(MixCoachTheme::accentCyan(), cHover * 0.4f).withAlpha(0.5f + 0.3f * cHover));
+        g.drawRoundedRectangle(colourDropdownBounds_, 4.0f, 1.0f);
+    }
+
+    // TIPO (row 3)
+    {
+        int y = colourDividerBounds_.getBottom() + 4;
+        auto iconBounds = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
+        float hA = iconHoverAlpha_[2].getCurrent();
+        juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+        drawIconCircle(g, iconBounds);
+        drawBoxIcon(g, iconBounds, iconCol.withAlpha(0.65f + 0.35f * hA));
+
+        g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+        g.setColour(MixCoachTheme::textMuted().interpolatedWith(MixCoachTheme::accent(), hA * 0.5f));
+        g.drawText("TIPO", juce::Rectangle<float>(34.0f, (float)y + 2.0f, 46.0f, 24.0f),
+                   juce::Justification::centredLeft);
+
+        // ═══ Auto-inferred badge: "AI" badge when type was set by MixCoach ═══
+        // Visible solo cuando el TrackType fue inferido automaticamente
+        // (NO seleccionado manualmente por el usuario via ComboBox).
+        // isTrackTypePinned() = true -> manual, false -> auto-inferido.
+        bool isTypeAuto = !processorRef_.isTrackTypePinned()
+                          && processorRef_.getTrackType() != TrackType::None;
+        if (isTypeAuto) {
+            auto badgeBounds = juce::Rectangle<float>(62.0f, (float)y + 4.0f, 18.0f, 16.0f);
+            g.setColour(MixCoachTheme::accentCyan().withAlpha(0.15f));
+            g.fillRoundedRectangle(badgeBounds, 3.0f);
+            g.setColour(MixCoachTheme::accentCyan().withAlpha(0.85f));
+            g.setFont(juce::Font(juce::FontOptions(6.5f)).boldened());
+            g.drawText("AI", badgeBounds, juce::Justification::centred);
+        }
+
+        // Combo hover glow
+        float tGlow = typeHoverGlow_.getCurrent();
+        if (tGlow > 0.01f) {
+            auto comboGlow = typeComboBox_.getBounds().toFloat().expanded(3.0f * tGlow);
+            g.setColour(MixCoachTheme::accent().withAlpha(0.05f * tGlow));
+            g.fillRoundedRectangle(comboGlow, 5.0f);
         }
     }
 
-    // ─── Separador sutil entre INFO y NIVELES ───────────────────────────
-    y += 5;
-    g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
-    g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
-    y += 7;
+    // RUTEO (row 4)
+    {
+        int y = typeDividerBounds_.getBottom() + 4;
+        auto iconBounds = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
+        float hA = iconHoverAlpha_[3].getCurrent();
+        juce::Colour iconCol = MixCoachTheme::accent().brighter(hA * 0.3f);
+        drawIconCircle(g, iconBounds);
+        drawArrowIcon(g, iconBounds, iconCol.withAlpha(0.75f + 0.25f * hA));
 
-    // ─── Fondo del panel NIVELES con esquinas redondeadas ─────────────
-    if (!nivelesPanelBounds_.isEmpty()) {
-        auto panel = nivelesPanelBounds_.toFloat();
-        g.setColour(juce::Colour(0xFF0C0C18));
-        g.fillRoundedRectangle(panel, 12.0f);
-        g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.35f));
-        g.drawRoundedRectangle(panel, 12.0f, 1.0f);
-    }
+        g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+        g.setColour(MixCoachTheme::textMuted().interpolatedWith(MixCoachTheme::accent(), hA * 0.6f));
+        g.drawText("RUTEO", juce::Rectangle<float>(34.0f, (float)y + 2.0f, 46.0f, 24.0f),
+                   juce::Justification::centredLeft);
 
-    // ─── "NIVELES" header ──────────────────────────────────────────────
-    g.setFont(juce::Font(juce::FontOptions(9.5f)).boldened());
-    g.setColour(juce::Colour(0xFFA78BFA));
-    g.drawText("NIVELES",
-               juce::Rectangle<int>(12, y, 80, 14),
-               juce::Justification::centredLeft);
-
-    y += 14;
-
-    // ─── Separador sutil antes de columnas ─────────────────────────────
-    g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
-    g.drawHorizontalLine(y, 12.0f, (float)(getWidth() - 12));
-    y += 4;
-
-    // ─── Separadores verticales entre las 3 columnas (35% | 30% | 35%) ──
-    const int nivelesTop = y;
-    const int nivelesBottom = stereoOutput_->getBounds().getBottom() + 2;
-
-    if (nivelesBottom > nivelesTop) {
-        int totalNetW = getWidth() - 16;
-        int sep1 = 8 + static_cast<int>(totalNetW * 0.35f);
-        int sep2 = 8 + static_cast<int>(totalNetW * 0.65f);
-        g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.6f));
-        g.drawVerticalLine(sep1, (float)nivelesTop, (float)nivelesBottom);
-        g.drawVerticalLine(sep2, (float)nivelesTop, (float)nivelesBottom);
-
-        // ─── Separador horizontal despues de los meters ──────────────
-        g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.5f));
-        g.drawHorizontalLine(nivelesBottom, 12.0f, (float)(getWidth() - 12));
+        // Combo hover glow
+        float bGlow = busHoverGlow_.getCurrent();
+        if (bGlow > 0.01f) {
+            auto comboGlow = busComboBox_.getBounds().toFloat().expanded(3.0f * bGlow);
+            g.setColour(MixCoachTheme::accent().withAlpha(0.05f * bGlow));
+            g.fillRoundedRectangle(comboGlow, 5.0f);
+        }
     }
 }
 
-// ─── TextEditor callback ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  COLOR DROPDOWN — PopupMenu con opciones de color
+// ═══════════════════════════════════════════════════════════════════════════
+void MessengerAudioProcessorEditor::showColourPopup()
+{
+    juce::PopupMenu menu;
 
+    for (int i = 0; i < kNumColours; ++i) {
+        juce::Colour c = presetColours_[i];
+        juce::String name = juce::String(kColourNames[i]);
+
+        // Añadir indicador visual para el color seleccionado
+        bool isSelected = (i == selectedColourIndex_);
+        juce::String prefix = isSelected ? juce::CharPointer_UTF8("\xE2\x97\x89 ") // ◉
+                                         : juce::CharPointer_UTF8("\xE2\x97\x8B "); // ○
+        menu.addColouredItem(i + 1, prefix + name, c, true, isSelected);
+    }
+
+    auto options = juce::PopupMenu::Options()
+        .withTargetComponent(this)
+        .withMinimumWidth((int)colourDropdownBounds_.getWidth())
+        .withMaximumNumColumns(1);
+
+    menu.showMenuAsync(options, [this](int result) {
+        if (result > 0)
+            applyColour(result - 1);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TIMER — 60 fps: animaciones suaves + LED heartbeat pulsing
+// ═══════════════════════════════════════════════════════════════════════════
+void MessengerAudioProcessorEditor::timerCallback()
+{
+    auto nowMs = juce::Time::getMillisecondCounter();
+    float dt = (float)(nowMs - lastTimerMs_);
+    if (dt > 100.0f) dt = 16.0f; // clamp after pause/resume
+    lastTimerMs_ = nowMs;
+
+    bool needsRepaint = false;
+
+    // ─── Icon hover animations ───────────────────────────────────────
+    for (int i = 0; i < 4; ++i) {
+        if (iconHoverAlpha_[i].advance())
+            needsRepaint = true;
+    }
+
+    // ─── Colour dropdown hover glow ──────────────────────────────────
+    if (colourHoverGlow_.advance())
+        needsRepaint = true;
+
+    // ─── TIPO ComboBox hover glow ────────────────────────────────────
+    if (typeHoverGlow_.advance()) {
+        float glow = typeHoverGlow_.getCurrent();
+        auto outlineCol = MixCoachTheme::borderCard().interpolatedWith(MixCoachTheme::accent(), glow * 0.5f);
+        typeComboBox_.setColour(juce::ComboBox::outlineColourId, outlineCol.withAlpha(0.6f + 0.4f * glow));
+        typeComboBox_.setColour(juce::ComboBox::backgroundColourId, MixCoachTheme::bgInput().brighter(glow * 0.05f));
+        needsRepaint = true;
+    }
+
+    // ─── RUTEO ComboBox hover glow ───────────────────────────────────
+    if (busHoverGlow_.advance()) {
+        float glow = busHoverGlow_.getCurrent();
+        auto outlineCol = MixCoachTheme::borderCard().interpolatedWith(MixCoachTheme::accent(), glow * 0.5f);
+        busComboBox_.setColour(juce::ComboBox::outlineColourId, outlineCol.withAlpha(0.6f + 0.4f * glow));
+        busComboBox_.setColour(juce::ComboBox::backgroundColourId, MixCoachTheme::bgInput().brighter(glow * 0.05f));
+        needsRepaint = true;
+    }
+
+    // ─── Name editor focus glow (check keyboard focus) ───────────────
+    float targetFocus = nameEditor_.hasKeyboardFocus(true) ? 1.0f : 0.0f;
+    nameFocusGlow_.setTargetValue(targetFocus);
+    if (nameFocusGlow_.advance()) {
+        // Apply smooth focus color to the editor
+        float focusAmt = nameFocusGlow_.getCurrent();
+        auto focusCol = MixCoachTheme::accent().withAlpha(0.8f * focusAmt + 0.2f);
+        nameEditor_.setColour(juce::TextEditor::focusedOutlineColourId, focusCol);
+        needsRepaint = true;
+    }
+
+    // ─── LED smooth pulse (~2Hz sine wave) ───────────────────────────
+    auto lastHb = processorRef_.getLastHeartbeatMs();
+    bool connected = (lastHb > 0 && (nowMs - lastHb < 2000));
+    if (connected) {
+        ledPhase_ += dt * 0.002f; // ~2Hz
+        if (ledPhase_ > 1.0f) ledPhase_ -= 1.0f;
+        float sine = std::sin(ledPhase_ * juce::MathConstants<float>::twoPi);
+        float targetAlpha = 0.25f + 0.55f * (sine * 0.5f + 0.5f); // 0.25 ~ 0.80
+        ledGlow_.setTargetValue(targetAlpha);
+    } else {
+        ledGlow_.setTargetValue(0.08f); // dim gray when disconnected
+    }
+    if (ledGlow_.advance())
+        needsRepaint = true;
+
+    // ═══ Feedback Loop V9 + Name Auto-Fill V11 ─────────────────────
+    // Throttle: ~1s para no saturar shared memory.
+    // MixCoach escribe TrackType inferido -> Messenger lee y:
+    //   1. Actualiza TrackType + ComboBox (V9)
+    //   2. Auto-llena nombre si es "Pista X" (V11)
+    if (nowMs - lastTrackTypeSyncMs_ > 1000) {
+        lastTrackTypeSyncMs_ = nowMs;
+        if (processorRef_.syncTrackTypeFromSharedMemory()) {
+            // Actualizar ComboBox al nuevo tipo inferido por MixCoach
+            auto savedOnChange = typeComboBox_.onChange;
+            typeComboBox_.onChange = nullptr;
+            typeComboBox_.setSelectedId(
+                trackTypeToComboIndex(processorRef_.getTrackType()) + 1);
+            typeComboBox_.onChange = savedOnChange;
+
+            // ═══ V11: Actualizar TextEditor si el nombre fue auto-llenado ─
+            // syncTrackTypeFromSharedMemory() llama a autoFillNameFromTrackType()
+            // que actualiza trackName_ internamente.
+            // Aqui sincronizamos el TextEditor para que refleje el cambio.
+            auto currentName = processorRef_.getTrackName();
+            if (nameEditor_.getText() != currentName) {
+                nameEditor_.setText(currentName, juce::dontSendNotification);
+            }
+
+            needsRepaint = true;
+        }
+    }
+
+    if (needsRepaint)
+        repaint();
+}
+
+// ─── TextEditor callback (nombre) ─────────────────────────────────────────
 void MessengerAudioProcessorEditor::textEditorTextChanged(juce::TextEditor& editor)
 {
     if (&editor == &nameEditor_) {
         auto newName = editor.getText().trim();
         if (newName.isNotEmpty()) {
             processorRef_.setTrackName(newName);
+
+            // ═══ Name Auto-Suggestion V10: sugerir tipo segun el nombre ───
+            // Solo si el usuario NO ha seleccionado manualmente un tipo.
+            // Usa palabras clave en el nombre (Kick, Snare, Voz, etc.)
+            // para auto-seleccionar el TrackType en el ComboBox.
+            if (!processorRef_.isTrackTypePinned()) {
+                TrackType suggested = processorRef_.suggestTrackTypeFromName(newName);
+                if (suggested != TrackType::None) {
+                    processorRef_.setTrackTypeAutoSuggested(suggested);
+                    // Suprimir onChange para evitar que setSelectedId() dispare
+                    // applyType() -> setTrackType() -> trackTypePinned_=true
+                    auto savedOnChange = typeComboBox_.onChange;
+                    typeComboBox_.onChange = nullptr;
+                    typeComboBox_.setSelectedId(
+                        trackTypeToComboIndex(suggested) + 1);
+                    typeComboBox_.onChange = savedOnChange;
+                }
+            }
         }
     }
 }
 
-// ─── Timer callback (30fps) ───────────────────────────────────────────────────
+// ─── Acciones ──────────────────────────────────────────────────────────────
 
-void MessengerAudioProcessorEditor::timerCallback()
+void MessengerAudioProcessorEditor::applyType(TrackType type)
 {
-    auto slotIndex = processorRef_.getSlotIndex();
+    processorRef_.setTrackType(type);
 
-    if (slotIndex < 0) {
-        processorRef_.ensureSlotRegistered();
-        slotIndex = processorRef_.getSlotIndex();
-
-        if (slotIndex >= 0) {
-            statusLabel_.setText("\u25CF Conectado a Brain",
-                juce::dontSendNotification);
-            statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E));
-        } else {
-            statusLabel_.setText("\u25CB Conectando...",
-                juce::dontSendNotification);
-            statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-            return;
+    if (type != TrackType::None) {
+        auto suggestedBus = getTrackTypeBus(type);
+        if (suggestedBus != BusType::None) {
+            busComboBox_.setSelectedId(static_cast<int>(suggestedBus) + 2);
         }
     }
+    repaint();
+}
 
-    auto* sharedData = processorRef_.getSharedData();
-    if (!sharedData) return;
-    auto& registry = sharedData->getSlotRegistry();
-    auto info = registry.getSlotInfo(slotIndex);
+void MessengerAudioProcessorEditor::applyColour(int colourIndex)
+{
+    if (colourIndex >= 0 && colourIndex < kNumColours) {
+        processorRef_.setTrackColour(presetColours_[colourIndex]);
+        selectedColourIndex_ = colourIndex;
+        repaint();
+    }
+}
 
-    if (!info.active) {
-        statusLabel_.setText("\u25CB Sin conexion",
-            juce::dontSendNotification);
-        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-        busValueLabel_.setText("Sin ruteo", juce::dontSendNotification);
-        busValueLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
-        grGauge_->setValue(0.0f);
+void MessengerAudioProcessorEditor::applyBus(BusType bus)
+{
+    processorRef_.setBusAssignment(bus);
+
+    if (processorRef_.getTrackType() == TrackType::None) {
+        for (int i = 0; i < kNumTrackTypes; ++i) {
+            if (kTrackTypeTable[i].suggestedBus == bus) {
+                TrackType suggestedType = kTrackTypeTable[i].type;
+                typeComboBox_.setSelectedId(trackTypeToComboIndex(suggestedType) + 1);
+                processorRef_.setTrackType(suggestedType);
+                break;
+            }
+        }
+    }
+    repaint();
+}
+
+// ─── Mouse down: detectar clicks en color dropdown y botones ────────────────
+void MessengerAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
+{
+    auto pos = e.getPosition();
+
+    // ─── Color dropdown hit test ─────────────────────────────────────
+    if (colourDropdownBounds_.contains(pos.toFloat())) {
+        showColourPopup();
         return;
     }
+}
 
-    auto latest = registry.getTelemetry(slotIndex).latest();
+// ═══════════════════════════════════════════════════════════════════════════
+//  MOUSE TRACKING — Hover detection para animaciones
+// ═══════════════════════════════════════════════════════════════════════════
+void MessengerAudioProcessorEditor::mouseMove(const juce::MouseEvent& e)
+{
+    // Transform coordinates to be relative to THIS component (not child)
+    auto pos = e.getEventRelativeTo(this).getPosition();
+    int newHover = -1;
+    int my = pos.getY();
 
-    bool hasSignal = (latest.peakLeft > -60.0f || latest.peakRight > -60.0f);
-    auto bus = processorRef_.getBusAssignment();
+    // ─── Detectar qué fila está hovereada (icon area: left ~74px) ────
+    for (int i = 0; i < 4; ++i) {
+        if (iconRowY_[i] > 0 && my >= iconRowY_[i] - 2 && my < iconRowY_[i] + 28) {
+            newHover = i;
+            break;
+        }
+    }
 
-    // ─── Status ────────────────────────────────────────────────────────
-    if (hasSignal) {
-        statusLabel_.setText("\u25CF Transmitiendo",
-                             juce::dontSendNotification);
-        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E));
+    // ─── Detectar hover sobre colour dropdown area ───────────────────
+    if (colourDropdownBounds_.contains(pos.toFloat())) {
+        newHover = 1; // Colour dropdown is part of row 1
+        colourHoverGlow_.setTargetValue(1.0f);
     } else {
-        statusLabel_.setText("\u25CF Conectado",
-                             juce::dontSendNotification);
-        statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF22C55E).withAlpha(0.6f));
+        colourHoverGlow_.setTargetValue(0.0f);
     }
 
-    // ─── Bus value display ─────────────────────────────────────────────
-    {
-        auto busName = (bus != BusType::None)
-            ? juce::String(busNames[static_cast<int>(bus)])
-            : "Sin ruteo";
-        auto busCol = (bus != BusType::None)
-            ? getBusColour(static_cast<int>(bus))
-            : juce::Colour(0xFF888888);
-        busValueLabel_.setText(busName, juce::dontSendNotification);
-        busValueLabel_.setColour(juce::Label::textColourId, busCol);
+    if (newHover != hoveredRow_) {
+        hoveredRow_ = newHover;
+        for (int i = 0; i < 4; ++i)
+            iconHoverAlpha_[i].setTargetValue(i == hoveredRow_ ? 1.0f : 0.0f);
     }
 
-    // ─── Telemetry data ────────────────────────────────────────────────
-    lastPeakLeft_    = latest.peakLeft;
-    lastPeakRight_   = latest.peakRight;
-    lastCorrelation_ = latest.correlation;
-    lastRMS_ = (latest.rmsLeft + latest.rmsRight) * 0.5f;
-
-    // ─── Gain Reduction (simulada desde peak) ───────────────────────
-    //  Mapeo: -20 dB peak -> 0.0 dB GR, +6 dB peak -> 6.0 dB GR
-    //  Cuando la senal es mas fuerte, hay mas compresion
-    {
-        float avgPeak = (lastPeakLeft_ + lastPeakRight_) * 0.5f;
-        float gr = 0.0f;
-        if (avgPeak > -20.0f)
-            gr = (avgPeak + 20.0f) / 26.0f * 6.0f;
-        lastGR_ = juce::jlimit(0.0f, 8.0f, gr);
+    // ─── Detectar hover sobre ComboBoxes (TIPO y RUTEO) ────────────
+    bool overType = typeComboBox_.getBounds().contains(pos);
+    bool overBus  = busComboBox_.getBounds().contains(pos);
+    int newComboHover = overType ? 0 : (overBus ? 1 : -1);
+    if (newComboHover != hoveredCombo_) {
+        hoveredCombo_ = newComboHover;
+        typeHoverGlow_.setTargetValue(overType ? 1.0f : 0.0f);
+        busHoverGlow_.setTargetValue(overBus ? 1.0f : 0.0f);
     }
-
-    // ─── Column value labels ──────────────────────────────────────────
-    float avgInput = (lastPeakLeft_ + lastPeakRight_) * 0.5f;
-    float avgOutput = avgInput - lastGR_;  // output = input - GR
-
-    inputValueLabel_.setText(juce::String(avgInput, 1) + " dB", juce::dontSendNotification);
-    outputValueLabel_.setText(juce::String(avgOutput, 1) + " dB", juce::dontSendNotification);
-    grValueLabel_.setText(juce::String(lastGR_, 1) + " dB", juce::dontSendNotification);
-    grGauge_->setValue(lastGR_);
-
-    // ─── StereoMeters: input con peaks reales, output con GR aplicada ─
-    stereoInput_->setLevels(lastPeakLeft_, lastPeakRight_);
-    {
-        float outL = lastPeakLeft_ - lastGR_;
-        float outR = lastPeakRight_ - lastGR_;
-        stereoOutput_->setLevels(outL, outR);
-    }
-
-    // ─── Channel labels ───────────────────────────────────────────────
-    stereoInputLabel_.setText(
-        "L: " + juce::String(lastPeakLeft_, 1) +
-        "   R: " + juce::String(lastPeakRight_, 1),
-        juce::dontSendNotification);
-    stereoOutputLabel_.setText(
-        "L: " + juce::String(lastPeakLeft_ - lastGR_, 1) +
-        "   R: " + juce::String(lastPeakRight_ - lastGR_, 1),
-        juce::dontSendNotification);
-
-    // ─── RMS ──────────────────────────────────────────────────────────
-    rmsLabel_.setText(
-        "RMS " + juce::String(lastRMS_, 1) + " dB",
-        juce::dontSendNotification);
-
-    // ─── Correlacion (phi) ────────────────────────────────────────────
-    {
-        auto corrCol = (lastCorrelation_ > 0.3f)
-            ? juce::Colour(0xFF22C55E)
-            : (lastCorrelation_ > -0.3f)
-                ? juce::Colour(0xFFEAB308)
-                : juce::Colour(0xFFEF4444);
-        correlationLabel_.setColour(juce::Label::textColourId, corrCol);
-        correlationLabel_.setText(
-            "\u03C6 " + juce::String(lastCorrelation_, 2),
-            juce::dontSendNotification);
-    }
-
-    // ─── Sincronizar estado del botón MUTE ───────────────────────────
-    // El estado puede cambiar externamente (e.g. al cargar preset)
-    if (muteButton_.getToggleState() != processorRef_.isMuted()) {
-        muteButton_.setToggleState(processorRef_.isMuted(), juce::dontSendNotification);
-        updateMuteDisplay();
-    }
-
-    // ─── TIPO y PRIORIDAD (actualizados al cambiar bus) ───────────────
-    // Ya se actualizan en busComboBox_.onChange
 }
 
-void MessengerAudioProcessorEditor::updateMuteDisplay()
+void MessengerAudioProcessorEditor::mouseExit(const juce::MouseEvent& e)
 {
-    bool muted = processorRef_.isMuted();
-    muteButton_.setButtonText(muted ? "MUTED" : "MUTE");
-    repaint();  // Repaint icon overlay
-}
-
-// ─── Selector de color ────────────────────────────────────────────────────────
-
-void MessengerAudioProcessorEditor::openColourSelector()
-{
-    auto* selector = new juce::ColourSelector(
-        juce::ColourSelector::showColourAtTop |
-        juce::ColourSelector::showSliders |
-        juce::ColourSelector::showColourspace);
-
-    selector->setName("Color de Pista");
-    selector->setCurrentColour(currentColour_);
-    selector->addChangeListener(&colourListener_);
-
-    juce::CallOutBox::launchAsynchronously(
-        std::unique_ptr<juce::Component>(selector),
-        colourSwatch_->getScreenBounds(),
-        nullptr);
+    juce::ignoreUnused(e);
+    hoveredRow_ = -1;
+    for (int i = 0; i < 4; ++i)
+        iconHoverAlpha_[i].setTargetValue(0.0f);
+    colourHoverGlow_.setTargetValue(0.0f);
+    hoveredCombo_ = -1;
+    typeHoverGlow_.setTargetValue(0.0f);
+    busHoverGlow_.setTargetValue(0.0f);
 }
 
 } // namespace mixcoach

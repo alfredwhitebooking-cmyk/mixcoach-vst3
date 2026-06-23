@@ -1,4 +1,5 @@
 #include "WaveformView.h"
+#include "../../MixCoach/UI/MixCoachTheme.h"
 
 namespace mixcoach {
 
@@ -41,7 +42,7 @@ void WaveformView::paint(juce::Graphics& g)
     float centerY = bounds.getCentreY();
 
     // Fondo
-    g.setColour(juce::Colour(0xFF0A0A15));
+    g.setColour(MixCoachTheme::bgInput());
     g.fillRoundedRectangle(bounds, 3.0f);
 
     // Dibujar waveform
@@ -85,7 +86,7 @@ void WaveformView::paint(juce::Graphics& g)
     }
 
     // Borde
-    g.setColour(juce::Colour(0xFF2C2C3E));
+    g.setColour(MixCoachTheme::borderCard().withAlpha(0.5f));
     g.drawRoundedRectangle(bounds, 3.0f, 1.0f);
 }
 

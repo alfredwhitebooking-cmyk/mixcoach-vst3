@@ -1,487 +1,596 @@
 #include "AnalyzersPanelComponent.h"
+#include "AnalyzersPanelDrawing.h"
 #include "../../Common/types/Constants.h"
 #include "../../Common/memory/SharedData.h"
+#include "../../Common/memory/SlotRegistry.h"
+#include "../audio/AudioAnalyzer.h"
 #include <juce_graphics/juce_graphics.h>
+#include <juce_audio_basics/juce_audio_basics.h>
+#include <array>
 
 namespace mixcoach {
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  AnalyzersPanelComponent — Panel de metering profesional
-//  Layout perfecto 25/25/50:
-//
-//  ┌──────────────┬───────────────────┬────────────────────────────────┐
-//  │              │    METER          │                                │
-//  │  PLAYLIST    │   (25% center     │   SPECTROGRAPH (50% W)        │
-//  │  (25% W)     │    top 50%)       │   (50% H top)                  │
-//  │  FULL HEIGHT ├───────────────────┤                                │
-//  │  scroll      │   PHASE SCOPE     ├────────────────────────────────┤
-//  │              │   (25% center     │   VU METERS (50% W)            │
-//  │              │    bottom 50%)    │   (50% H bottom)               │
-//  │              │   Vec+Phase+Crest │   L ██  R ██  M ░░  S ░░      │
-//  └──────────────┴───────────────────┴────────────────────────────────┘
-// ═══════════════════════════════════════════════════════════════════════════
-
-AnalyzersPanelComponent::AnalyzersPanelComponent(SharedData& sharedData)
-    : sharedData_(sharedData)
-{
-    try
-    {
-        // ─── Playlist (izquierda, scrollable) ──────────────────────────
-        playlist_.onSlotSelected = [this](int slotIndex) {
-            telemetryProvider_.selectSlot(slotIndex);
-            selectedSlot_ = slotIndex;
-            auto& registry = sharedData_.getSlotRegistry();
-            auto info = registry.getSlotInfo(slotIndex);
-            selectedColour_ = info.colour;
-            playlist_.setSelectedSlot(slotIndex);
-            telemetryProvider_.setRegistry(&registry);
-            refreshSpectrographFromProvider();
-            updateAllButtonAppearance();
-            if (onTrackSelected)
-                onTrackSelected(slotIndex);
-        };
-        playlist_.setViewport(&playlistViewport_);
-        playlistViewport_.setViewedComponent(&playlist_, false);
-        playlistViewport_.setScrollBarsShown(true, false);
-        playlistViewport_.setScrollBarThickness(6);
-        playlistViewport_.getVerticalScrollBar().setColour(
-            juce::ScrollBar::thumbColourId, MixCoachTheme::accent().withAlpha(0.3f));
-        playlistViewport_.getVerticalScrollBar().setColour(
-            juce::ScrollBar::trackColourId, juce::Colours::transparentBlack);
-        addAndMakeVisible(playlistViewport_);
-
-        // ─── Meter ──────────────────────────────────────────────────────
-        addAndMakeVisible(meter_);
-
-        // ─── Spectrograph ────────────────────────────────────────────────
-        addAndMakeVisible(spectrograph_);
-
-        // ─── Phase Scope (vectorscope + phase corr + crest) ─────────────
-        addAndMakeVisible(phaseScope_);
-
-        // ─── VU Meters ──────────────────────────────────────────────────
-        addAndMakeVisible(vuMeters_);
-
-        // ─── Footer labels (siempre visibles debajo del playlist) ─────
-        footerActiveLabel_.setText("Mensajeros activos: 0", juce::dontSendNotification);
-        footerActiveLabel_.setFont(juce::Font(juce::FontOptions(7.0f)));
-        footerActiveLabel_.setJustificationType(juce::Justification::centredLeft);
-        footerActiveLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textDim());
-        addAndMakeVisible(footerActiveLabel_);
-
-        footerStatusLabel_.setText(juce::CharPointer_UTF8("\xE2\x97\x8F Conectado"), juce::dontSendNotification);
-        footerStatusLabel_.setFont(juce::Font(juce::FontOptions(7.0f)));
-        footerStatusLabel_.setJustificationType(juce::Justification::centredRight);
-        footerStatusLabel_.setColour(juce::Label::textColourId, MixCoachTheme::success().withAlpha(0.7f));
-        addAndMakeVisible(footerStatusLabel_);
-
-        // ═══ Botón modo — TextButton real (clickeable) ═══════════════════
-        // Cicla: SGL → BUS:Drums → BUS:Bass → BUS:Guit → BUS:Keys
-        //        → BUS:Vox → BUS:FX → ALL → SGL
-        allButton_.setButtonText("SGL");
-        allButton_.setClickingTogglesState(false);
-        allButton_.onClick = [this]() {
-            auto mode = telemetryProvider_.getMode();
-            if (mode == TelemetryProvider::Mode::Single) {
-                telemetryProvider_.selectBus(BusType::Drums);
-            } else if (mode == TelemetryProvider::Mode::Bus) {
-                auto currentBus = telemetryProvider_.getSelectedBus();
-                if (currentBus < BusType::FX)
-                    telemetryProvider_.selectBus(static_cast<BusType>(static_cast<int>(currentBus) + 1));
-                else
-                    telemetryProvider_.setMode(TelemetryProvider::Mode::Master);
-            } else {
-                telemetryProvider_.setMode(TelemetryProvider::Mode::Single);
-            }
-            telemetryProvider_.setRegistry(&sharedData_.getSlotRegistry());
-            refreshSpectrographFromProvider();
-            updateAllButtonAppearance();
-            repaint();
-        };
-        // ═══ CRÍTICO: Configurar colores desde el constructor ═══════════
-        // Sin esto, TextButton usa colores default de JUCE (gris sobre
-        // gris oscuro) y el botón es invisible hasta que updateAnalyzers()
-        // se ejecute (~266ms después).
-        updateAllButtonAppearance();
-        addAndMakeVisible(allButton_);
-        allButton_.setVisible(false); // oculto hasta que updateAnalyzers() detecte tracks
-    }
-    catch (const std::exception& e)
-    {
-        juce::Logger::outputDebugString("[AnalyzersPanelComponent] Exception: "
-                                         + juce::String(e.what()));
-    }
+namespace {
+constexpr int kPanelGap = MixCoachTheme::spacingSM + 1;  // 7
+constexpr int kOuterPad = MixCoachTheme::spacingXS;        // 4
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Layout perfecto: 25% | 25% | 50%
+//  PHASESCOPEPANEL
 // ═══════════════════════════════════════════════════════════════════════════
+PhaseScopePanel::PhaseScopePanel()
+{
+    addAndMakeVisible(vectorscope_);
+}
+
+PhaseScopePanel::~PhaseScopePanel()
+{
+    if (diagnosticBridge_ != nullptr)
+        diagnosticBridge_->removeChangeListener(this);
+}
+
+void PhaseScopePanel::resized()
+{
+    auto area = getLocalBounds().reduced(MixCoachTheme::spacingSM / 2, MixCoachTheme::spacingXXS);
+    auto headerArea = area.removeFromTop(14);
+    juce::ignoreUnused(headerArea);
+    area.removeFromTop(22); // correlation area
+    area.removeFromBottom(36); // metrics area
+    vectorscope_.setBounds(area.reduced(MixCoachTheme::spacingXXS, MixCoachTheme::spacingXXS));
+}
+
+void PhaseScopePanel::paint(juce::Graphics& g)
+{
+    auto bounds = getLocalBounds();
+    MixCoachTheme::fillGlassPanel(g, bounds.toFloat(), 5.0f);
+
+    auto area = bounds.reduced(3, 2);
+    auto headerArea = area.removeFromTop(14);
+    drawAnalyzerHeader(g, headerArea, "PHASE SCOPE");
+
+    auto corrArea = area.removeFromTop(22).reduced(0, 2);
+    float corr = juce::jlimit(-1.0f, 1.0f, correlation_.getCurrent());
+
+    auto corrBg = corrArea.toFloat();
+    g.setColour(MixCoachTheme::bgInput());
+    g.fillRoundedRectangle(corrBg, 2.0f);
+
+    juce::ColourGradient corrGrad(
+        MixCoachTheme::error().withAlpha(0.12f), corrBg.getX(), corrBg.getCentreY(),
+        MixCoachTheme::success().withAlpha(0.12f), corrBg.getRight(), corrBg.getCentreY(), false);
+    corrGrad.addColour(0.35f, MixCoachTheme::warning().withAlpha(0.08f));
+    corrGrad.addColour(0.65f, MixCoachTheme::success().withAlpha(0.12f));
+    g.setGradientFill(corrGrad);
+    g.fillRoundedRectangle(corrBg, 2.0f);
+
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)).boldened());
+    g.setColour(MixCoachTheme::textDim().withAlpha(0.6f));
+    auto labelArea = corrArea.toFloat();
+    g.drawText("-1", labelArea.removeFromLeft(16), juce::Justification::centredLeft);
+    g.drawText("0",  labelArea.removeFromLeft(12), juce::Justification::centred);
+    g.drawText("+1", labelArea.removeFromRight(16), juce::Justification::centredRight);
+
+    g.setColour(juce::Colours::white.withAlpha(0.1f));
+    g.drawVerticalLine(corrBg.getCentreX(), corrBg.getY() + 2, corrBg.getBottom() - 2);
+
+    float cNorm = (corr + 1.0f) * 0.5f;
+    float mx = corrBg.getX() + cNorm * corrBg.getWidth();
+    float my = corrBg.getCentreY();
+    juce::Colour corrCol = (corr < -0.3f) ? MixCoachTheme::error()
+                         : (corr < 0.3f) ? MixCoachTheme::warning()
+                         : MixCoachTheme::success();
+
+    g.setColour(corrCol.withAlpha(0.15f));
+    g.fillEllipse(mx - 7, my - 7, 14, 14);
+
+    juce::Path diamond;
+    diamond.addTriangle(mx, my - 6, mx - 4, my, mx, my + 6);
+    diamond.addTriangle(mx, my - 6, mx + 4, my, mx, my + 6);
+    g.setColour(corrCol);
+    g.fillPath(diamond);
+    g.setColour(juce::Colours::white.withAlpha(0.4f));
+    g.strokePath(diamond, juce::PathStrokeType(0.5f));
+
+    auto vArea = corrArea.removeFromRight(65);
+    g.setFont(juce::Font(juce::FontOptions(13.0f)).boldened());
+    g.setColour(corrCol);
+    juce::String corrStr = (corr >= 0.0f ? "+" : "") + juce::String(corr, 2);
+    g.drawText(corrStr, vArea, juce::Justification::centredRight);
+
+    auto metricsArea = area.removeFromBottom(36).reduced(2, 0);
+    struct Metric { const char* label; float value; juce::Colour col; };
+    Metric metrics[] = {
+        { "PEAK", currentPeak_, MixCoachTheme::meterYellow() },
+        { "RMS",  currentRms_,  MixCoachTheme::accentCyan() },
+    };
+    int mW = metricsArea.getWidth() / 2;
+    for (int i = 0; i < 2; ++i) {
+        auto mArea = metricsArea.removeFromLeft(mW).reduced(1, 0);
+        if (i > 0) {
+            g.setColour(MixCoachTheme::divider().withAlpha(0.2f));
+            g.drawVerticalLine(mArea.getX(), (float)mArea.getY(), (float)mArea.getBottom());
+        }
+        g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)).boldened());
+        g.setColour(metrics[i].col.withAlpha(0.75f));
+        g.drawText(metrics[i].label, mArea.removeFromTop(10), juce::Justification::centred);
+        g.setFont(juce::Font(juce::FontOptions(12.0f)).boldened());
+        g.setColour(MixCoachTheme::textBright());
+        juce::String vStr = metrics[i].value > -60.0f ? juce::String(metrics[i].value, 2) : "--.-";
+        g.drawText(vStr, mArea, juce::Justification::centred);
+    }
+}
+
+void PhaseScopePanel::pushCrest(float peak, float rms)
+{
+    currentPeak_ = peak;
+    currentRms_ = rms;
+}
+
+void PhaseScopePanel::setDiagnosticBridge(DiagnosticBridge* bridge)
+{
+    if (diagnosticBridge_ != nullptr)
+        diagnosticBridge_->removeChangeListener(this);
+
+    diagnosticBridge_ = bridge;
+
+    if (bridge != nullptr)
+        bridge->addChangeListener(this);
+}
+
+void PhaseScopePanel::setPhaseDiagnostics(const std::vector<PhaseDiagnostic>& diagnostics)
+{
+    if (diagnostics.empty()) {
+        vectorscope_.setPhaseDiagnostic(nullptr);
+        return;
+    }
+    const PhaseDiagnostic* worst = &diagnostics[0];
+    for (const auto& d : diagnostics) {
+        if (d.severity > worst->severity)
+            worst = &d;
+    }
+    vectorscope_.setPhaseDiagnostic(worst);
+}
+
+void PhaseScopePanel::changeListenerCallback(juce::ChangeBroadcaster* source)
+{
+    auto* bridge = dynamic_cast<DiagnosticBridge*>(source);
+    if (bridge == nullptr)
+        return;
+
+    auto phaseDiags = bridge->getPhaseDiagnostics();
+    setPhaseDiagnostics(phaseDiags);
+}
+
+bool PhaseScopePanel::advanceVisuals(double sr, bool allowRepaint)
+{
+    bool dirty = correlation_.advance(sr);
+    dirty |= vectorscope_.advanceFrame(sr, false);
+    if (dirty && allowRepaint) repaint();
+    return dirty;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ANALYZERSPANELCOMPONENT — Tab 2 main layout container
+// ═══════════════════════════════════════════════════════════════════════════
+AnalyzersPanelComponent::AnalyzersPanelComponent(AudioAnalyzer& audioAnalyzer)
+    : audioAnalyzer_(audioAnalyzer)
+{
+    addAndMakeVisible(meterPanel_);
+    addAndMakeVisible(spectrograph_);
+    addAndMakeVisible(phaseScope_);
+    addAndMakeVisible(vuMeters_);
+    addAndMakeVisible(crestPanel_);
+    addAndMakeVisible(stereoWidthMeter_);
+    addAndMakeVisible(audioDNA_);
+
+    refToggle_ = std::make_unique<RefToggle>();
+    addAndMakeVisible(refToggle_.get());
+    refToggle_->onClick = [this]() {
+        auto& spec = spectrograph_;
+        spec.setReferenceEnabled(!spec.isReferenceEnabled());
+        refToggle_->toggled = spec.isReferenceEnabled();
+        refToggle_->repaint();
+    };
+}
+
+void AnalyzersPanelComponent::setDiagnosticBridge(DiagnosticBridge* bridge)
+{
+    spectrograph_.setDiagnosticBridge(bridge);
+    phaseScope_.setDiagnosticBridge(bridge);
+    audioDNA_.setDiagnosticBridge(bridge);
+}
+
 void AnalyzersPanelComponent::resized()
 {
-    try
-    {
-        auto area = getLocalBounds().reduced(2);
+    try {
+        auto area = getLocalBounds().reduced(kOuterPad);
 
-        // ─── Columnas: Playlist 25% | Center 25% | Right 50% ────────────
-        int playlistW = (int)(area.getWidth() * 0.25f);
-        int centerW   = (int)(area.getWidth() * 0.25f);
+        int topH = area.getHeight() * 50 / 100;
+        auto topRow = area.removeFromTop(topH);
+        area.removeFromTop(kPanelGap);
 
-        auto playlistArea = area.removeFromLeft(playlistW).reduced(1);
-        auto centerCol    = area.removeFromLeft(centerW);
-        auto rightCol     = area.reduced(1, 0);
+        int meterW = topRow.getWidth() * 28 / 100;
+        meterPanel_.setBounds(topRow.removeFromLeft(meterW));
+        topRow.removeFromLeft(kPanelGap);
+        spectrograph_.setBounds(topRow);
 
-        // ─── Columna central partida a la mitad: Meter (top) + PhaseScope (bottom) ──
-        auto centerTop  = centerCol.removeFromTop(centerCol.getHeight() / 2).reduced(1);
-        auto centerBot  = centerCol.reduced(1);
+        // Reference toggle: flota sobre la esquina superior derecha del spectrograph
+        {
+            auto specBounds = spectrograph_.getBounds();
+            auto toggleArea = specBounds.removeFromRight(60).removeFromTop(18);
+            refToggle_->setBounds(toggleArea.reduced(MixCoachTheme::spacingXXS, MixCoachTheme::spacingXXS / 2));
+        }
 
-        // ─── Columna derecha con asimetría: Spectrograph ~55% + VU ~45% ──
-        auto rightTop   = rightCol.removeFromTop((int)(rightCol.getHeight() * 0.55f)).reduced(1);
-        auto rightBot   = rightCol.reduced(1);
+        // Toggle bar: paneles opcionales (DNA, WIDTH, CREST)
+        toggleBtns_.clear();
+        {
+            auto toggleBar = area.removeFromTop(18).reduced(MixCoachTheme::spacingXS, MixCoachTheme::spacingXXS);
+            int tx = toggleBar.getX();
+            int ty = toggleBar.getY();
+            int th = toggleBar.getHeight();
 
-        // ─── Footer fijo (18px) debajo del viewport del playlist ──────
-        auto playlistFooterArea = playlistArea.removeFromBottom(18).reduced(4, 2);
-        auto footerLeft  = playlistFooterArea.removeFromLeft(playlistFooterArea.getWidth() / 2);
-        auto footerRight = playlistFooterArea;
-        footerActiveLabel_.setBounds(footerLeft);
-        footerStatusLabel_.setBounds(footerRight);
+            toggleBtns_.push_back({ { tx,      ty, 36, th }, "DNA",   &showDna_ });
+            toggleBtns_.push_back({ { tx + 38, ty, 42, th }, "WIDTH",  &showWidth_ });
+            toggleBtns_.push_back({ { tx + 82, ty, 40, th }, "CREST",  &showCrest_ });
+            toggleBtns_.push_back({ { tx + 124, ty, 28, th }, "AI",    &showAi_ });
+        }
+        area.removeFromTop(kPanelGap);
 
-        // ─── Asignar bounds del viewport (la altura se calcula en updateAnalyzers tras updateList) ──
-        playlistViewport_.setBounds(playlistArea);
-        playlistViewport_.resized();
+        // Bottom row: layout condicional
+        auto botRow = area;
+        const int gap = kPanelGap;
 
-        // ═══ Botón ALL: posicionar (la visibilidad la maneja updateAnalyzers) ═══
-        // NO hacer setVisible(true) aquí — updateAnalyzers() decide según
-        // activeCount. Si hay tracks, él mismo hace visible.
-        auto btnArea = playlistArea.removeFromRight(40).reduced(2, 2)
-                           .withHeight(14).withY(playlistArea.getY() + 8);
-        allButton_.setBounds(btnArea);
-        // Refrescar colores por si el modo cambió
-        updateAllButtonAppearance();
+        // Phase Scope (siempre visible)
+        int phasePct = (showDna_ || showWidth_ || showCrest_) ? 18 : 28;
+        int phaseW = botRow.getWidth() * phasePct / 100;
+        phaseScope_.setBounds(botRow.removeFromLeft(phaseW));
+        botRow.removeFromLeft(gap);
 
-        meter_.setBounds(centerTop);
-        phaseScope_.setBounds(centerBot);
-        spectrograph_.setBounds(rightTop);
-        vuMeters_.setBounds(rightBot);
+        // Stereo Width (opcional)
+        if (showWidth_) {
+            int w = botRow.getWidth() * 15 / 100;
+            stereoWidthMeter_.setBounds(botRow.removeFromLeft(w));
+            botRow.removeFromLeft(gap);
+            stereoWidthMeter_.setVisible(true);
+        } else {
+            stereoWidthMeter_.setVisible(false);
+        }
+
+        // Audio DNA (opcional)
+        if (showDna_) {
+            int w = botRow.getWidth() * 30 / 100;
+            audioDNA_.setBounds(botRow.removeFromLeft(w));
+            botRow.removeFromLeft(gap);
+            audioDNA_.setVisible(true);
+        } else {
+            audioDNA_.setVisible(false);
+        }
+
+        // Crest (opcional)
+        if (showCrest_) {
+            int w = botRow.getWidth() * 15 / 100;
+            crestPanel_.setBounds(botRow.removeFromLeft(w));
+            botRow.removeFromLeft(gap);
+            crestPanel_.setVisible(true);
+        } else {
+            crestPanel_.setVisible(false);
+        }
+
+        // VU Meters (siempre visible, toma el resto del espacio)
+        vuMeters_.setBounds(botRow);
+
+        bgCacheValid_ = false;
+    } catch (const std::exception& e) {
+        juce::Logger::outputDebugString("[AnalyzersPanel] Exception in resized: "
+                                        + juce::String(e.what()));
     }
-    catch (const std::exception& e)
+}
+
+void AnalyzersPanelComponent::mouseDown(const juce::MouseEvent& e)
+{
+    for (auto& btn : toggleBtns_)
     {
-        juce::Logger::outputDebugString("[AnalyzersPanelComponent::resized] Exception: "
-                                         + juce::String(e.what()));
+        if (btn.bounds.contains(e.getPosition()))
+        {
+            *btn.active = !(*btn.active);
+
+            if (btn.label == "AI" && coachEngine_)
+                coachEngine_->setProactiveAnalysisEnabled(*btn.active);
+
+            resized();
+            repaint();
+            return;
+        }
     }
+}
+
+void AnalyzersPanelComponent::rebuildBgCache()
+{
+    const int w = getWidth();
+    const int h = getHeight();
+    if (w < 8 || h < 8)
+        return;
+
+    bgCache_ = juce::Image(juce::Image::ARGB, w, h, true);
+    bgCache_.clear(bgCache_.getBounds());
+
+    juce::Graphics cg(bgCache_);
+
+    {
+        juce::ColourGradient bgGrad(
+            MixCoachTheme::gradientDark(),  (float) w * 0.5f, 0.0f,
+            MixCoachTheme::gradientMid(),   (float) w * 0.5f, (float) h, false);
+        cg.setGradientFill(bgGrad);
+        cg.fillAll(MixCoachTheme::bgCanvas());
+        cg.fillRect(bgCache_.getBounds().toFloat());
+    }
+
+    cg.setColour(juce::Colour(0x03FFFFFF));
+    for (int gy = 0; gy < h; gy += 32)
+        for (int gx = 0; gx < w; gx += 32)
+            cg.fillRect(gx, gy, 1, 1);
+
+    int topH = h * 50 / 100;
+    cg.setColour(MixCoachTheme::accent().withAlpha(0.035f));
+    cg.drawHorizontalLine(topH, (float) kOuterPad, (float) w - kOuterPad);
+
+    bgCacheValid_ = true;
 }
 
 void AnalyzersPanelComponent::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds();
+    if (!bgCacheValid_)
+        rebuildBgCache();
 
-    // ─── Fondo ─────────────────────────────────────────────────────────
-    g.fillAll(MixCoachTheme::bgDark());
+    if (bgCacheValid_)
+        g.drawImageAt(bgCache_, 0, 0);
 
-    // ─── Grid sutil ──────────────────────────────────────────────────
-    g.setColour(MixCoachTheme::border().withAlpha(0.03f));
-    for (int x = 0; x < bounds.getWidth(); x += 48)
-        g.drawVerticalLine(x, 0.0f, (float)bounds.getHeight());
-    for (int y = 0; y < bounds.getHeight(); y += 48)
-        g.drawHorizontalLine(y, 0.0f, (float)bounds.getWidth());
-
-    // ─── Panel backgrounds ────────────────────────────────────────────
-    auto area = getLocalBounds().reduced(2);
-
-    int plW = (int)(area.getWidth() * 0.25f);
-    int ctW = (int)(area.getWidth() * 0.25f);
-
-    // Playlist panel
-    auto plPanel = area.removeFromLeft(plW).reduced(1);
-    auto ctPanel = area.removeFromLeft(ctW);
-    auto rtPanel = area.reduced(1, 0);
-
-    auto ctTop = ctPanel.removeFromTop(ctPanel.getHeight() / 2).reduced(1);
-    auto ctBot = ctPanel.reduced(1);
-    auto rtTop = rtPanel.removeFromTop((int)(rtPanel.getHeight() * 0.55f)).reduced(1);
-    auto rtBot = rtPanel.reduced(1);
-
-    auto drawPanel = [&](juce::Rectangle<int> r) {
-        auto rf = r.toFloat();
-        g.setColour(MixCoachTheme::bgPanel().withAlpha(0.35f));
-        g.fillRoundedRectangle(rf, 5.0f);
-        g.setColour(MixCoachTheme::border().withAlpha(0.12f));
-        g.drawRoundedRectangle(rf, 5.0f, 0.5f);
-    };
-
-    drawPanel(plPanel);
-    drawPanel(ctTop);
-    drawPanel(ctBot);
-    drawPanel(rtTop);
-    drawPanel(rtBot);
-
-    // ─── Section labels ─────────────────────────────────────────────
-    g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-    g.setColour(MixCoachTheme::accentGlow());
-    g.drawText(playlistTitle_, plPanel.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
-    g.drawText("SESIÓN 2 – METER", ctTop.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
-    g.drawText("SESIÓN 5 – PHASE SCOPE", ctBot.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
-    g.drawText("SESIÓN 3 – SPECTRUM ANALYZER", rtTop.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
-    g.drawText("SESIÓN 4 – VU METERS", rtBot.reduced(4, 0).withHeight(12), juce::Justification::centredLeft);
-
-    // ─── Separadores verticales sutiles ──────────────────────────────
-    g.setColour(MixCoachTheme::divider().withAlpha(0.08f));
-    int col1X = plPanel.getRight() + 1;
-    int col2X = ctPanel.getX() - 1;
-    g.drawVerticalLine(col1X, 2.0f, (float)(bounds.getHeight() - 2));
-    g.drawVerticalLine(col2X, 2.0f, (float)(bounds.getHeight() - 2));
-}
-
-void AnalyzersPanelComponent::updateAnalyzers(SlotRegistry& registry, double sampleRate)
-{        spectrograph_.setSampleRate(sampleRate);
-    try
-    {
-        playlist_.updateList(registry);
-
-        // ═══ Actualizar tamaño del playlist + Viewport después de updateList ═══
-        // La altura se recalcula siempre con datos frescos (no de resized()).
-        {
-            auto viewBounds = playlistViewport_.getBounds();
-            int prefH = playlist_.getPreferredHeight();
-            int newH = juce::jmax(prefH, viewBounds.getHeight());
-            if (playlist_.getHeight() != newH)
-            {
-                playlist_.setSize(viewBounds.getWidth(), newH);
-                playlistViewport_.resized();
-            }
-        }
-
-        // ─── Auto-select first active slot (solo en Single mode) ───────
-        if (telemetryProvider_.isSingle() && telemetryProvider_.getSelectedSlot() < 0) {
-            registry.forEachActive([&](const SlotInfo& info) {
-                if (telemetryProvider_.getSelectedSlot() < 0) {
-                    telemetryProvider_.selectSlot(info.slotIndex);
-                    selectedSlot_ = info.slotIndex;
-                    selectedColour_ = info.colour;
-                    playlist_.setSelectedSlot(info.slotIndex);
-                }
-            });
-        }
-
-        if (registry.activeCount() == 0) {
-            telemetryProvider_.selectSlot(-1);
-            selectedSlot_ = -1;
-            allButton_.setVisible(false);
-            return;
-        }
-
-        // ─── Update footer ─────────────────────────────────────────────
-        int activeCount = registry.activeCount();
-        if (activeCount != lastActiveCount_) {
-            lastActiveCount_ = activeCount;
-            footerActiveLabel_.setText("Mensajeros activos: " + juce::String(activeCount),
-                                        juce::dontSendNotification);
-        }
-
-        // ─── Botón ALL: visible SOLO cuando hay tracks activos ─────────
-        allButton_.setVisible(true);
-        updateAllButtonAppearance();
-
-        // ─── Update all analyzers ─────────────────────────────────────
-        {
-            telemetryProvider_.setRegistry(&registry);
-            auto latest = telemetryProvider_.getLatest();
-
-            if (latest.active || telemetryProvider_.isMaster())
-            {
-                meter_.updateData(latest);
-                refreshSpectrographFromProvider();
-
-                phaseScope_.setCorrelation(latest.correlation);
-                phaseScope_.getVectorscope().setDisplayCorrelation(latest.correlation);
-                if (latest.sampleL != 0.0f || latest.sampleR != 0.0f) {
-                    float vL = juce::jlimit(-1.0f, 1.0f, latest.sampleL * 2.0f);
-                    float vR = juce::jlimit(-1.0f, 1.0f, latest.sampleR * 2.0f);
-                    phaseScope_.pushSample(vL, vR);
-                }
-                if (latest.crestFactor > 0.0f && latest.peakLeft > -60.0f) {
-                    // En ALL mode, crestFactor = maxPeak - loudestTrackRms.
-                    // Reconstruimos loudestTrackRms = peakLeft - crestFactor
-                    // para evitar el problema de promediar RMS en dB.
-                    float correctRms = latest.peakLeft - latest.crestFactor;
-                    phaseScope_.pushCrest(latest.peakLeft, correctRms);
-                }
-
-                float mid = (latest.sampleL + latest.sampleR) * 0.5f;
-                float side = (latest.sampleL - latest.sampleR) * 0.5f;
-                auto toDb = [](float s) -> float {
-                    return (std::abs(s) < 0.00001f) ? -80.0f : 20.0f * std::log10(std::abs(s));
-                };
-                vuMeters_.setLevel(0, toDb(latest.sampleL));
-                vuMeters_.setLevel(1, toDb(latest.sampleR));
-                vuMeters_.setLevel(2, toDb(mid));
-                vuMeters_.setLevel(3, toDb(side));
-            }
-        }
-    }
-    catch (const std::exception& e)
-    {
-        juce::Logger::outputDebugString("[AnalyzersPanelComponent] Exception: "
-                                         + juce::String(e.what()));
+    // Draw toggle pills
+    for (const auto& btn : toggleBtns_) {
+        bool active = *btn.active;
+        auto b = btn.bounds.toFloat();
+        auto bgCol = active ? juce::Colour(0x44A855F7) : juce::Colour(0x1A888888);
+        auto fgCol = active ? juce::Colour(0xCCA855F7) : juce::Colour(0x55999999);
+        g.setColour(bgCol);
+        g.fillRoundedRectangle(b, 4.0f);
+        g.setColour(fgCol);
+        g.drawRoundedRectangle(b, 4.0f, 0.8f);
+        g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+        g.drawText(btn.label, b, juce::Justification::centred);
     }
 }
 
-void AnalyzersPanelComponent::fastUpdateMeters(SlotRegistry& registry)
+void AnalyzersPanelComponent::feedFromAudioAnalyzer(bool includeSpectrograph)
 {
-    try
-    {
-        telemetryProvider_.setRegistry(&registry);
-        auto latest = telemetryProvider_.getLatest();
+    if (includeSpectrograph)
+        refreshSpectrograph();
 
-        if (!latest.active && !telemetryProvider_.isMaster())
-            return;
+    const auto& master = audioAnalyzer_.getMasterAnalysis();
+    const auto& loudness = audioAnalyzer_.getLoudness();
+    juce::ignoreUnused(loudness);
 
-        meter_.updateData(latest);
-        phaseScope_.setCorrelation(latest.correlation);
-        phaseScope_.getVectorscope().setDisplayCorrelation(latest.correlation);
+    meterPanel_.updateData(audioAnalyzer_);
 
-        if (latest.sampleL != 0.0f || latest.sampleR != 0.0f) {
-            float vL = juce::jlimit(-1.0f, 1.0f, latest.sampleL * 2.0f);
-            float vR = juce::jlimit(-1.0f, 1.0f, latest.sampleR * 2.0f);
-            phaseScope_.pushSample(vL, vR);
-        }
-        if (latest.crestFactor > 0.0f && latest.peakLeft > -60.0f) {
-            float correctRms = latest.peakLeft - latest.crestFactor;
-            phaseScope_.pushCrest(latest.peakLeft, correctRms);
-        }
+    float correlation = master.getCorrelation();
+    phaseScope_.setCorrelation(correlation);
+    phaseScope_.getVectorscope().setDisplayCorrelation(correlation);
+    audioAnalyzer_.flushSampleBufferToVectorscope(phaseScope_.getVectorscope());
+    phaseScope_.pushCrest(master.getPeak(), master.getRMS());
 
-        float mid = (latest.sampleL + latest.sampleR) * 0.5f;
-        float side = (latest.sampleL - latest.sampleR) * 0.5f;
-        auto toDb = [](float s) -> float {
-            return (std::abs(s) < 0.00001f) ? -80.0f : 20.0f * std::log10(std::abs(s));
-        };
-        vuMeters_.setLevel(0, toDb(latest.sampleL));
-        vuMeters_.setLevel(1, toDb(latest.sampleR));
-        vuMeters_.setLevel(2, toDb(mid));
-        vuMeters_.setLevel(3, toDb(side));
+    float leftRms  = audioAnalyzer_.getLeftAnalysis().getRMS();
+    float rightRms = audioAnalyzer_.getRightAnalysis().getRMS();
+    float leftLin  = juce::Decibels::decibelsToGain(leftRms);
+    float rightLin = juce::Decibels::decibelsToGain(rightRms);
+    float midLin   = (leftLin + rightLin) * 0.5f;
+    float sideLin  = (leftLin - rightLin) * 0.5f;
+    float midRms   = juce::Decibels::gainToDecibels(midLin);
+    float sideRms  = juce::Decibels::gainToDecibels(sideLin);
+    vuMeters_.setLevels(leftRms, rightRms, midRms, sideRms);
 
-        refreshSpectrographFromProvider();
-    }
-    catch (const std::exception& e)
-    {
-        juce::Logger::outputDebugString("[AnalyzersPanelComponent::fastUpdateMeters] Exception: "
-                                         + juce::String(e.what()));
+    crestPanel_.setValues(master.getPeak(), master.getRMS());
+
+    // Stereo Width Meter (solo si visible)
+    float avgWidth = audioAnalyzer_.getAvgStereoWidth();
+    if (showWidth_ || showDna_) {
+        stereoWidthMeter_.setAvgWidth(avgWidth);
+        phaseScope_.getVectorscope().setStereoWidth(avgWidth);
     }
 }
 
-void AnalyzersPanelComponent::smoothVisuals(double sampleRateHz)
+void AnalyzersPanelComponent::refreshSpectrograph()
 {
-    if (! isShowing())
+    uint32_t now = juce::Time::getMillisecondCounter();
+    if (now - lastSpectrumUpdateMs_ < 15)
         return;
+    lastSpectrumUpdateMs_ = now;
 
-    meter_.advanceVisuals(sampleRateHz);
-    spectrograph_.smoothSpectrum(sampleRateHz);
-    vuMeters_.advanceMeters(sampleRateHz);
-    phaseScope_.advanceVisuals(sampleRateHz);
-}
+    const auto& master = audioAnalyzer_.getMasterAnalysis();
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  setSelectedSlot — Selección desde fuera (Tab 1 -> Tab 2 sync)
-// ═══════════════════════════════════════════════════════════════════════════
-void AnalyzersPanelComponent::setSelectedSlot(int slotIndex)
-{
-    try
-    {
-        if (slotIndex == telemetryProvider_.getSelectedSlot() && telemetryProvider_.isSingle())
-            return;
-
-        telemetryProvider_.selectSlot(slotIndex);
-        selectedSlot_ = slotIndex;
-        auto& registry = sharedData_.getSlotRegistry();
-
-        if (slotIndex >= 0)
-        {
-            auto info = registry.getSlotInfo(slotIndex);
-            selectedColour_ = info.colour;
-        }
-
-        playlist_.setSelectedSlot(slotIndex);
-        updateAllButtonAppearance();
-
-        telemetryProvider_.setRegistry(&registry);
-        refreshSpectrographFromProvider();
-
-        if (slotIndex >= 0 && slotIndex < SlotRegistry::kMaxSlots)
-            meter_.updateData(registry.getTelemetry(slotIndex).latest());
-    }
-    catch (const std::exception& e)
-    {
-        juce::Logger::outputDebugString("[AnalyzersPanelComponent::setSelectedSlot] Exception: "
-                                         + juce::String(e.what()));
-    }
-}
-
-void AnalyzersPanelComponent::refreshSpectrographFromProvider()
-{
-    auto latest = telemetryProvider_.getLatest();
-
-    if (telemetryProvider_.isMaster())
-    {
-        spectrograph_.updateSpectrum(latest.spectrum, 256);
+    float masterPeak = master.getPeak();
+    if (masterPeak <= -60.0f) {
+        spectrograph_.resetSpectrum();
         return;
     }
 
-    if (telemetryProvider_.getSelectedSlot() >= 0 || latest.active)
-        spectrograph_.updateSpectrum(latest.spectrum, 256);
-}
-
-TrackTelemetry AnalyzersPanelComponent::getLatestTelemetry()
-{
-    auto& registry = sharedData_.getSlotRegistry();
-    telemetryProvider_.setRegistry(&registry);
-    return telemetryProvider_.getLatest();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  updateAllButtonAppearance — Colores y visibilidad del botón modo
-// ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
-//  selectBus — Cambia a Bus mode y selecciona un bus
-// ═══════════════════════════════════════════════════════════════════════════
-void AnalyzersPanelComponent::selectBus(BusType bus)
-{
-    telemetryProvider_.selectBus(bus);
-    auto& registry = sharedData_.getSlotRegistry();
-    telemetryProvider_.setRegistry(&registry);
-    refreshSpectrographFromProvider();
-    updateAllButtonAppearance();
-    repaint();
-}
-
-void AnalyzersPanelComponent::updateAllButtonAppearance()
-{
-    auto mode = telemetryProvider_.getMode();
-
-    juce::String text;
-    juce::Colour bg, fg;
-
-    switch (mode) {
-        case TelemetryProvider::Mode::Single:
-            text = "SGL";
-            bg = MixCoachTheme::textMuted().withAlpha(0.12f);
-            fg = MixCoachTheme::textMuted().withAlpha(0.5f);
-            break;
-        case TelemetryProvider::Mode::Bus:
-            text = telemetryProvider_.getSelectedBusName().substring(0, 3).toUpperCase();
-            bg = telemetryProvider_.getSelectedBusColour().withAlpha(0.3f);
-            fg = telemetryProvider_.getSelectedBusColour();
-            break;
-        case TelemetryProvider::Mode::Master:
-            text = "ALL";
-            bg = MixCoachTheme::accent();
-            fg = juce::Colours::white;
-            break;
+    int64_t lastUpdateUs = master.getLastUpdateTime();
+    if (lastUpdateUs > 0) {
+        uint32_t lastUpdateMs = static_cast<uint32_t>(lastUpdateUs / 1000);
+        if (now - lastUpdateMs > 500) {
+            spectrograph_.resetSpectrum();
+            return;
+        }
     }
 
-    allButton_.setButtonText(text);
-    allButton_.setColour(juce::TextButton::buttonColourId, bg);
-    allButton_.setColour(juce::TextButton::buttonOnColourId, bg.brighter(0.2f));
-    allButton_.setColour(juce::TextButton::textColourOffId, fg);
-    allButton_.setColour(juce::TextButton::textColourOnId, fg);
+    std::array<float, 8192> hiResSnapshot{};
+    const int copiedBins = master.copyHiResSpectrum(hiResSnapshot.data(),
+                                                    static_cast<int>(hiResSnapshot.size()));
+    if (copiedBins > 0)
+    {
+        spectrograph_.updateSpectrum(hiResSnapshot.data(), copiedBins);
+    }
+    else
+    {
+        const float* spectrum = master.getSpectrum();
+        if (spectrum != nullptr)
+            spectrograph_.updateSpectrum(spectrum, kNumSpectrumBins);
+    }
+}
+
+void AnalyzersPanelComponent::updateAnalyzers(double sampleRate)
+{
+    try {
+        spectrograph_.setSampleRate(sampleRate);
+        feedFromAudioAnalyzer(true);
+
+        if (coachEngine_ != nullptr && coachEngine_->hasReferenceAudio())
+        {
+            updateReferenceCurve(coachEngine_->getReferenceAnalyzer());
+        }
+    } catch (const std::exception& e) {
+        juce::Logger::outputDebugString("[AnalyzersPanel] updateAnalyzers exception: "
+                                        + juce::String(e.what()));
+    }
+}
+
+void AnalyzersPanelComponent::fastUpdateMeters()
+{
+    try {
+        feedFromAudioAnalyzer(true);
+    } catch (const std::exception& e) {
+        juce::Logger::outputDebugString("[AnalyzersPanel] fastUpdateMeters exception: "
+                                        + juce::String(e.what()));
+    }
+}
+
+void AnalyzersPanelComponent::updateAudioDNA(SlotRegistry& registry, SharedData& sharedData)
+{
+    audioDNA_.update(registry, sharedData);
+
+    // Computar stereo width per-band desde tracks activos
+    float perBandSum[StereoWidthMeter::kNumBands] = { 0.0f };
+    int perBandCount[StereoWidthMeter::kNumBands] = { 0 };
+
+    registry.forEachActive([&](const SlotInfo& info) {
+        auto result = sharedData.getTrackAudioResult(info.slotIndex);
+        for (int b = 0; b < StereoWidthMeter::kNumBands; ++b) {
+            if (result.stereoWidthPerBand[b] > 0.01f) {
+                perBandSum[b] += result.stereoWidthPerBand[b];
+                perBandCount[b]++;
+            }
+        }
+    });
+
+    float perBandAvg[StereoWidthMeter::kNumBands] = { 0.0f };
+    bool hasPerBand = false;
+    for (int b = 0; b < StereoWidthMeter::kNumBands; ++b) {
+        if (perBandCount[b] > 0) {
+            perBandAvg[b] = perBandSum[b] / (float)perBandCount[b];
+            hasPerBand = true;
+        }
+    }
+
+    if (hasPerBand)
+        stereoWidthMeter_.setPerBandWidth(perBandAvg);
+}
+
+void AnalyzersPanelComponent::updateReferenceCurve(const ReferenceAnalyzer& refAnalyzer)
+{
+    if (!refAnalyzer.hasReference())
+    {
+        spectrograph_.computeDefaultReferenceCurve();
+        return;
+    }
+
+    const auto& analysis = refAnalyzer.getAnalysis();
+    const float* spectrum = analysis.getSpectrum();
+    if (spectrum == nullptr)
+    {
+        spectrograph_.computeDefaultReferenceCurve();
+        return;
+    }
+
+    constexpr int kNumRtaBands = 60;
+    constexpr float kRefMinFreq = 20.0f;
+    constexpr float kRefMaxFreq = 20000.0f;
+    constexpr int kNumSpecBins = kNumSpectrumBins;
+
+    float rtaCurve[kNumRtaBands] = { 0.0f };
+    const double sampleRate = (double)refAnalyzer.getSampleRate();
+    const double binFreqStep = (sampleRate > 0.0) ? sampleRate / (2.0 * kNumSpecBins) : 44100.0 / 1024.0;
+
+    for (int b = 0; b < kNumRtaBands; ++b)
+    {
+        const float t = (kNumRtaBands <= 1) ? 0.0f
+                        : (float)b / (float)(kNumRtaBands - 1);
+        const float centerHz = kRefMinFreq * std::pow(kRefMaxFreq / kRefMinFreq, t);
+
+        const float lowHz = (b == 0) ? kRefMinFreq
+                          : centerHz * 0.89f;
+        const float highHz = (b == kNumRtaBands - 1) ? kRefMaxFreq
+                            : centerHz * 1.12f;
+
+        int lowBin = juce::jmax(1, (int)(lowHz / binFreqStep));
+        int highBin = juce::jmin(kNumSpecBins - 1, (int)(highHz / binFreqStep));
+
+        double sumMag = 0.0;
+        int count = 0;
+        for (int bin = lowBin; bin <= highBin; ++bin)
+        {
+            float mag = spectrum[bin];
+            if (mag > 1e-12f)
+            {
+                float db = 20.0f * std::log10(mag);
+                sumMag += juce::jmax(-60.0f, db);
+                ++count;
+            }
+        }
+
+        if (count > 0)
+        {
+            float avgDb = (float)(sumMag / count);
+            rtaCurve[b] = juce::jlimit(0.0f, 1.0f, (avgDb + 40.0f) / 40.0f);
+        }
+        else
+        {
+            rtaCurve[b] = 0.0f;
+        }
+    }
+
+    float avgLevel = 0.0f;
+    for (int b = 0; b < kNumRtaBands; ++b)
+        avgLevel += rtaCurve[b];
+    avgLevel /= (float)kNumRtaBands;
+
+    if (avgLevel > 0.01f)
+    {
+        float targetCenter = 0.35f;
+        float offset = targetCenter - avgLevel;
+        for (int b = 0; b < kNumRtaBands; ++b)
+            rtaCurve[b] = juce::jlimit(0.0f, 1.0f, rtaCurve[b] + offset);
+    }
+
+    spectrograph_.setReferenceCurve(rtaCurve, kNumRtaBands);
+    spectrograph_.setReferenceEnabled(true);
+}
+
+void AnalyzersPanelComponent::smoothVisuals(double sr)
+{
+    if (!isShowing()) return;
+    meterPanel_.advanceVisuals(sr);
+    phaseScope_.advanceVisuals(sr, true);
+    vuMeters_.advanceVisuals(sr, true);
+    if (showWidth_ || showDna_)
+        stereoWidthMeter_.advanceVisuals(sr, true);
+    if (showCrest_)
+        crestPanel_.advanceVisuals(sr, true);
+
+    if (refToggle_->toggled != spectrograph_.isReferenceEnabled())
+    {
+        refToggle_->toggled = spectrograph_.isReferenceEnabled();
+        refToggle_->repaint();
+    }
+
+    spectrograph_.smoothSpectrum(sr, true);
 }
 
 } // namespace mixcoach

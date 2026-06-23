@@ -73,9 +73,11 @@ static void test_set_integrated() {
     mixcoach::LUFSMeter meter;
     meter.setSize(200, 300);
 
-    // Set target and converge by calling repeatedly (SmoothValue tick-based)
-    for (int i = 0; i < 50; ++i)
+    // Start value convergence (SmoothValue needs advanceVisuals to move)
+    for (int i = 0; i < 50; ++i) {
         meter.setIntegrated(-10.0f);
+        meter.advanceVisuals(60.0);
+    }
 
     // Paint after convergence — should not crash
     auto img = renderComponent(meter, 200, 300);
@@ -93,6 +95,7 @@ static void test_set_all_values() {
         meter.setMomentary(-16.0f);
         meter.setTruePeak(-6.0f);
         meter.setRange(12.0f);
+        meter.advanceVisuals(60.0);
     }
 
     auto img = renderComponent(meter, 200, 300);
@@ -105,20 +108,25 @@ static void test_extreme_values() {
     meter.setSize(200, 300);
 
     // Extremely low values
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 10; ++i) {
         meter.setIntegrated(-100.0f);
+        meter.advanceVisuals(60.0);
+    }
     auto img1 = renderComponent(meter, 200, 300);
     TEST("paint after -100 LUFS completes", true);
 
     // Extremely high values
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 10; ++i) {
         meter.setIntegrated(30.0f);
+        meter.advanceVisuals(60.0);
+    }
     auto img2 = renderComponent(meter, 200, 300);
     TEST("paint after +30 LUFS completes", true);
 
     // Rapid changes
     for (int i = 0; i < 20; ++i) {
         meter.setIntegrated((i % 2 == 0) ? -40.0f : 0.0f);
+        meter.advanceVisuals(60.0);
     }
     auto img3 = renderComponent(meter, 200, 300);
     TEST("paint after rapid value changes completes", true);
@@ -150,8 +158,10 @@ static void test_target_markers() {
     meter.setSize(200, 300);
 
     // Set integrated to -23 (exactly at kTargetIntegrated) — marker should draw
-    for (int i = 0; i < 50; ++i)
+    for (int i = 0; i < 50; ++i) {
         meter.setIntegrated(-23.0f);
+        meter.advanceVisuals(60.0);
+    }
     auto img = renderComponent(meter, 200, 300);
     TEST("paint at target value -23 LUFS completes", true);
 }

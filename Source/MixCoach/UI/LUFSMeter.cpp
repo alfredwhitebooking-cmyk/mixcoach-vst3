@@ -12,6 +12,19 @@ LUFSMeter::LUFSMeter()
     addAndMakeVisible(titleLabel_);
 }
 
+bool LUFSMeter::advanceVisuals(double sampleRateHz, bool allowRepaint)
+{
+    bool dirty = false;
+    dirty |= integrated_.advance(sampleRateHz);
+    dirty |= shortTerm_.advance(sampleRateHz);
+    dirty |= momentary_.advance(sampleRateHz);
+    dirty |= truePeak_.advance(sampleRateHz);
+    dirty |= range_.advance(sampleRateHz);
+    if (dirty && allowRepaint)
+        repaint();
+    return dirty;
+}
+
 void LUFSMeter::resized()
 {
     titleLabel_.setBounds(getLocalBounds().removeFromTop(18));
@@ -53,8 +66,19 @@ void LUFSMeter::drawBar(juce::Graphics& g, juce::Rectangle<float> bounds,
                          const juce::String& unit, juce::Colour colour,
                          float targetLine)
 {
-    g.setColour(MixCoachTheme::bgDarker());
+    // Fondo de la barra con gradiente vertical (efecto hundido)
+    juce::ColourGradient bgGrad(
+        MixCoachTheme::bgDarker().darker(0.3f),
+        juce::Point<float>(0.0f, bounds.getY()),
+        MixCoachTheme::bgDarker().brighter(0.05f),
+        juce::Point<float>(0.0f, bounds.getBottom()),
+        false);
+    g.setGradientFill(bgGrad);
     g.fillRoundedRectangle(bounds, 4.0f);
+
+    // Borde hundido
+    g.setColour(juce::Colours::black.withAlpha(0.3f));
+    g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 
     g.setColour(MixCoachTheme::textDim());
     g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTiny)).boldened());
@@ -75,13 +99,19 @@ void LUFSMeter::drawBar(juce::Graphics& g, juce::Rectangle<float> bounds,
 
     if (barFill.getHeight() > 1.0f) {
         juce::ColourGradient barGrad(
-            colour.withAlpha(0.9f),
+            colour.withAlpha(0.95f),
             juce::Point<float>(0.0f, barFill.getY()),
-            colour.withAlpha(0.2f),
+            colour.withAlpha(0.35f),
             juce::Point<float>(0.0f, barFill.getBottom()),
             false);
         g.setGradientFill(barGrad);
         g.fillRoundedRectangle(barFill, 3.0f);
+
+        // Dibujar segmentos LED (líneas negras horizontales muy finas)
+        g.setColour(MixCoachTheme::bgDarker().withAlpha(0.85f));
+        for (float y = barFill.getY() + 3.0f; y < barFill.getBottom(); y += 4.0f) {
+            g.drawHorizontalLine(static_cast<int>(y), barFill.getX(), barFill.getRight());
+        }
 
         auto glowRect = barFill.withHeight(juce::jmax(2.0f, barFill.getHeight() * 0.2f));
         juce::ColourGradient glow(
@@ -102,7 +132,7 @@ void LUFSMeter::drawBar(juce::Graphics& g, juce::Rectangle<float> bounds,
     auto valArea = bounds.removeFromBottom(16).reduced(1, 0);
     g.drawText(valStr, valArea, juce::Justification::centred);
 
-    g.setColour(MixCoachTheme::border().withAlpha(0.2f));
+    g.setColour(MixCoachTheme::border().withAlpha(0.12f));
     float gridLines[] = { 0.0f, -6.0f, -12.0f, -18.0f, -24.0f, -36.0f };
     for (float gl : gridLines) {
         float glNorm = juce::jlimit(0.0f, 1.0f, (gl + 40.0f) / 45.0f);

@@ -1,4 +1,5 @@
 #include "StereoMeter.h"
+#include "../../MixCoach/UI/MixCoachTheme.h"
 
 namespace mixcoach {
 
@@ -8,11 +9,6 @@ constexpr uint32_t kLime    = 0xFF84CC16;
 constexpr uint32_t kYellow  = 0xFFEAB308;
 constexpr uint32_t kOrange  = 0xFFF97316;
 constexpr uint32_t kRed     = 0xFFEF4444;
-
-constexpr uint32_t kBgBar   = 0xFF0A0A0F;
-constexpr uint32_t kBorder  = 0xFF2C2C3E;
-constexpr uint32_t kGrid    = 0xFF1A1A2E;
-constexpr uint32_t kScaleText = 0xFF6B7280;
 
 // Escala exacta del visual design (top → bottom)
 static constexpr float kScaleValues[] = {
@@ -103,11 +99,11 @@ void StereoMeter::paint(juce::Graphics& g)
     const float radius = 0.8f;
 
     // ─── Fondo unificado para ambas barras ────────────────────────────
-    g.setColour(juce::Colour(kBgBar));
+    g.setColour(MixCoachTheme::bgInput());
     g.fillRoundedRectangle(barAreaBounds, radius);
 
     // ─── Grid lines (continuas a lo ancho de barArea) ────────────────
-    g.setColour(juce::Colour(kGrid).withAlpha(0.45f));
+    g.setColour(MixCoachTheme::divider().withAlpha(0.45f));
     for (float db : { -18.0f, -12.0f, -6.0f, 0.0f }) {
         float y = levelToY(db, lBarBounds);
         g.drawHorizontalLine((int)y, barAreaBounds.getX() + 1.0f, barAreaBounds.getRight() - 1.0f);
@@ -146,7 +142,7 @@ void StereoMeter::paint(juce::Graphics& g)
 
     // ─── Escala compartida a la derecha ──────────────────────────────
     g.setFont(juce::Font(juce::FontOptions(6.0f)));
-    g.setColour(juce::Colour(kScaleText).withAlpha(0.7f));
+    g.setColour(MixCoachTheme::textMuted().withAlpha(0.7f));
     for (int i = 0; i < kNumScaleMarks; ++i) {
         float y = levelToY(kScaleValues[i], lBarBounds);
         g.drawText(juce::String((int)kScaleValues[i]),
@@ -171,7 +167,7 @@ void StereoMeter::paint(juce::Graphics& g)
     }
 
     // ─── Borde unificado ─────────────────────────────────────────────
-    g.setColour(juce::Colour(kBorder).withAlpha(0.5f));
+    g.setColour(MixCoachTheme::borderCard().withAlpha(0.5f));
     g.drawRoundedRectangle(barAreaBounds, radius, 1.0f);
 }
 

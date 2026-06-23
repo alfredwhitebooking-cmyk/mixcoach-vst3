@@ -16,33 +16,17 @@ static constexpr int kSharedMaxSlots = 128;
 static constexpr int kSharedTrackNameLen = 64;
 
 // ─── Slot data en shared memory (POD-only, sin constructores/destructores) ──
+// V3 SENSOR PURO: Solo identidad. Sin telemetría.
+// Todo el análisis de audio se hace en el MASTER (MixCoach via AudioAnalyzer).
+// El Messenger solo transmite: "Soy la pista X, mi color es Y, mi grupo es Z".
 #pragma pack(push, 8)
 struct SharedSlotEntry {
     int      slotIndex = -1;
-    char     trackName[kSharedTrackNameLen] = {0};
-    uint32_t colourARGB = 0xFF808080;
-    int      active  = 0;     // bool como int para POD
-    int      bus     = -1;    // BusType como int
-    // Última telemetría (cached para acceso rápido desde MixCoach)
-    int64_t  telemetryTimestamp = 0;
-    float    peakLeft    = -100.0f;
-    float    peakRight   = -100.0f;
-    float    rmsLeft     = -100.0f;
-    float    rmsRight    = -100.0f;
-    float    correlation = 1.0f;
-    float    crestFactor = 0.0f;
-    // Última muestra de audio para vectorscope
-    float    sampleL     = 0.0f;
-    float    sampleR     = 0.0f;
-    // FFT magnitudes para espectrograma (cada ~100ms)
-    float    fftMagnitudes[512]{};
-    int64_t  fftTimestamp = 0;
-    // LUFS (EBU R128 / ITU BS.1770) — calculado en Messenger, leído por Brain
-    float    lufsIntegrated = -100.0f;
-    float    lufsShortTerm  = -100.0f;
-    float    lufsMomentary  = -100.0f;
-    float    lufsTruePeak   = -100.0f;
-    float    loudnessRange  = 0.0f;
+    char     trackName[kSharedTrackNameLen] = {0};  // Identidad: nombre
+    uint32_t colourARGB = 0xFF808080;                // Identidad: color
+    int      active  = 0;     // bool como int para POD (señal de vida)
+    int      bus     = -1;    // BusType como int (grupo/ruteo)
+    int      trackType = -1;  // TrackType como int (V7: identidad explícita del Messenger)
 };
 
 // ─── Header del bloque compartido ───────────────────────────────────────────
@@ -56,13 +40,10 @@ struct SharedMemoryHeader {
     int initialized = 0;
     // HMODULE owner para detectar si el creador sigue vivo (simple checksum)
     uint32_t ownerCheck = 0;
-    // Version del struct (para detectar mismatches de tamaño)
-    // Incrementar cada vez que SharedSlotEntry cambie de tamaño!
-    // ═══ INCREMENTADO a 4 porque kSharedMaxSlots subió de 64→128
-    // Cambia el tamaño de sizeof(SharedMemoryBlock) ~140KB→275KB.
-    // Sin este incremento, el código abre un mapping viejo (64 slots)
-    // y accede a slots[64+] que no existen → ACCESS VIOLATION.
-    static constexpr uint32_t kCurrentStructVersion = 4;
+    // Version del struct — incrementar si SharedSlotEntry cambia de tamaño.
+    // V6: solo identidad (sin telemetría). Messenger es sensor puro.
+    // V7: +trackType (identidad explícita del Messenger via TrackType).
+    static constexpr uint32_t kCurrentStructVersion = 7;
     uint32_t structVersion = kCurrentStructVersion;
 };
 
@@ -74,10 +55,7 @@ struct SharedMemoryBlock {
 #pragma pack(pop)
 
 // ─── Version del struct para detección de mismatch ───────────────────────
-// IMPORTANTE: Incrementar cada vez que se agreguen/remuevan campos del
-// SharedSlotEntry para evitar access violations al abrir file mappings
-// viejos de sesiones anteriores con structs de diferente tamaño.
-static constexpr uint32_t kSharedMemoryStructVersion = 4;
+static constexpr uint32_t kSharedMemoryStructVersion = 7;
 
 // ─── Verificación de tamaño (no debe exceder ~1MB para mapeo eficiente) ─────
 static_assert(sizeof(SharedMemoryBlock) < 1024 * 1024,
@@ -118,23 +96,6 @@ public:
 
     // Leer un slot (thread-safe, adquiere lock internamente)
     bool readSlot(int index, SharedSlotEntry& out) noexcept;
-
-    // Escribir telemetría directamente a un slot (1 solo lock, sin read previo)
-    // ═══ OPTIMIZACIÓN CRÍTICA: updateSharedTelemetry() antes hacía readSlot
-    // (acquire+release) + writeSlot (acquire+release) = 2 locks por llamada.
-    // Con 60+ Messengers en paralelo, la contención era masiva.
-    // writeSlotTelemetry() adquiere el lock 1 SOLA VEZ, escribe SOLO los campos
-    // de telemetría (sin tocar slotIndex/trackName/colour/bus), e incrementa
-    // changeCount. El slot DEBE estar ya registrado (active=1).
-    void writeSlotTelemetry(int index,
-                            float peakLeft, float peakRight,
-                            float rmsLeft, float rmsRight,
-                            float correlation, float crestFactor,
-                            float sampleL, float sampleR,
-                            const float* fftMagnitudes,
-                            float lufsIntegrated, float lufsShortTerm,
-                            float lufsMomentary, float lufsTruePeak,
-                            float loudnessRange) noexcept;
 
     // Escribir un slot completo (requiere lock adquirido)
     void writeSlot(int index, const SharedSlotEntry& entry) noexcept;

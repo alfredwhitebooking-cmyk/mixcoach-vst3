@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-local_coder.py — AI Local Coder v2.1 (Post-Refactor)
+local_coder.py — AI Local Coder v2.2 (V3)
 
 Routes tasks to the optimal local model (Qwen 7B / DeepSeek 16B)
-and provides context from the restructured codebase.
+and provides context from the codebase.
 
 Usage:
     python scripts/local_coder.py "your task"
-    python scripts/local_coder.py --smart "task"       # Use context_selector.py
     python scripts/local_coder.py --files f1.h f2.cpp "task"
 """
 
 import sys
-import subprocess
 import ollama
 from pathlib import Path
 
@@ -22,16 +20,13 @@ from pathlib import Path
 # ─────────────────────────────────────────────────
 
 def parse_args():
-    smart = False
     files = []
     task = ""
 
     args = sys.argv[1:]
     while args:
         a = args.pop(0)
-        if a == "--smart":
-            smart = True
-        elif a == "--files":
+        if a == "--files":
             while args and not args[0].startswith("--"):
                 files.append(args.pop(0))
         elif a in ("--help", "-h"):
@@ -47,14 +42,14 @@ def parse_args():
         print(__doc__)
         sys.exit(1)
 
-    return smart, files, task
+    return files, task
 
 
 # ─────────────────────────────────────────────────
 #  CORE
 # ─────────────────────────────────────────────────
 
-def run(smart_mode, explicit_files, task_original):
+def run(explicit_files, task_original):
     task = task_original.lower()
 
     # -- paths (post-refactor) --
@@ -73,8 +68,6 @@ def run(smart_mode, explicit_files, task_original):
 
     ms_core = src / "Messenger" / "core"
     ms_ui = src / "Messenger" / "ui"
-    ms_tel = src / "Messenger" / "telemetry"
-
     if not src.exists():
         print("ERROR: Source folder not found")
         sys.exit(1)
@@ -131,8 +124,6 @@ def run(smart_mode, explicit_files, task_original):
     def sel_messenger():
         add_file(ms_core / "PluginProcessor.h")
         add_file(ms_core / "PluginProcessor.cpp")
-        add_file(ms_tel / "TelemetryCollector.h")
-        add_file(ms_tel / "TelemetryCollector.cpp")
         add_file(ms_ui / "PluginEditor.h")
         add_file(ms_ui / "PluginEditor.cpp")
 
@@ -163,7 +154,6 @@ def run(smart_mode, explicit_files, task_original):
     ]):
         sel_common()
         add_file(ms_core / "PluginProcessor.cpp")
-        add_file(ms_tel / "TelemetryCollector.cpp")
         add_file(mc / "PluginProcessor.cpp")
         add_file(me / "CoachEngine.cpp")
 
@@ -171,7 +161,6 @@ def run(smart_mode, explicit_files, task_original):
         sel_audio()
         add_file(mc / "PluginProcessor.cpp")
         add_file(ms_core / "PluginProcessor.cpp")
-        add_file(ms_tel / "TelemetryCollector.cpp")
 
     if any(w in task for w in ["ui", "interface", "panel", "dashboard", "tab", "chat", "theme"]):
         sel_ui()
@@ -181,24 +170,6 @@ def run(smart_mode, explicit_files, task_original):
 
     if not files_to_read:
         sel_fallback()
-
-    # -- smart selection via context_selector.py --
-
-    if smart_mode:
-        try:
-            result = subprocess.run(
-                [sys.executable, str(root / "context_selector.py"), task_original],
-                capture_output=True, text=True, timeout=30,
-            )
-            paths = [p.strip() for p in result.stdout.splitlines() if p.strip()]
-            if paths:
-                candidates = [root / p for p in paths]
-                files_to_read = [f for f in candidates if f.exists()]
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        if not files_to_read:
-            print("[WARN] context_selector returned no existing files; using fallback")
-            sel_fallback()
 
     # -- explicit file list --
 
@@ -235,7 +206,7 @@ def run(smart_mode, explicit_files, task_original):
 
     system_prompt = """You are a senior JUCE DSP engineer.
 
-This is a multi-plugin architecture:
+This is a multi-plugin V3 architecture:
 
 Source/
   Common/           shared foundation
@@ -243,21 +214,25 @@ Source/
     audio/            AudioAnalysis.h/.cpp (FFT, RMS, phase utilities)
     memory/           SharedData.h, SharedMemory.h, SlotRegistry.h (IPC)
 
-  MixCoach/         central AI coach plugin (VST3)
+  MixCoach/         central AI coach plugin (VST3) — MASTER bus only
     core/             PluginProcessor.h/.cpp, PluginEditor.h/.cpp
     engine/           CoachEngine.h/.cpp, PhaseManager.h/.cpp
-    audio/            AudioAnalyzer.h/.cpp
-    ui/               Dashboard, chat, analyzers, track dashboard, etc.
+    audio/            AudioAnalyzer.h/.cpp (master analysis only)
+    ui/               MasterMeterPanel, CoachChat, MainTabbed, analyzers, etc.
 
-  Messenger/        per-track telemetry plugin (VST3)
+  Messenger/        per-track identity-only sensor plugin (VST3)
     core/             PluginProcessor.h/.cpp
     ui/               PluginEditor.h/.cpp
-    telemetry/        TelemetryCollector.h/.cpp
+    NOTA: Messenger ya NO envía telemetría V2. Solo identidad via SharedMemory (slot, nombre, color).
+         El análisis de audio (peak/RMS/LUFS/FFT) es solo en MixCoach via AudioAnalyzer.
 
 KEY RULES:
-- MESSENGER is inserted on individual tracks, sends telemetry via shared memory
-- MIXCOACH is the central brain that receives telemetry and provides coaching
-- COMMON provides IPC (shared memory), slot registry, and telemetry data types
+- MESSENGER = sensor puro de identidad (no envía audio, no envía FFT/LUFS)
+- MIXCOACH = cerebro central que lee AudioAnalyzer (master) + SharedData (per-track audio cache)
+- COMMON = IPC (shared memory), slot registry, shared data types
+- NUNCA uses getTelemetry() o TelemetryBuffer (V2 eliminado)
+- Para datos per-track usa SharedData::getTrackAudioResult(idx)
+- Para datos del master usa AudioAnalyzer::getMasterAnalysis()
 - Never invent architecture — only reason from actual code
 - Respect realtime safety: never allocate in processBlock(), never block audio thread
 - Be precise and technical"""
@@ -303,5 +278,5 @@ FILES:
 # ─────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    smart_mode, explicit_files, task_original = parse_args()
-    run(smart_mode, explicit_files, task_original)
+    explicit_files, task_original = parse_args()
+    run(explicit_files, task_original)

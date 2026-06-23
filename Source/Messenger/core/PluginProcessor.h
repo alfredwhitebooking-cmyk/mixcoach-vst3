@@ -2,117 +2,150 @@
 #include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../../Common/types/Types.h"
-#include "../../Common/types/TelemetryData.h"
 #include "../../Common/types/Constants.h"
 #include "../../Common/memory/SharedData.h"
-#include "../telemetry/TelemetryCollector.h"
+#include "MessengerType.h"
 
 namespace mixcoach {
 
-// ─── Messenger Plugin Processor (Oídos) ────────────────────────────────────
-class MessengerAudioProcessor : public juce::AudioProcessor,
-                                private juce::Timer
+// ─── Messenger V3 — Sensor puro ───────────────────────────────────────────
+// Filosofía:
+//   "Soy un sensor. Solo transmito audio RAW + identidad."
+class MessengerAudioProcessor : public juce::AudioProcessor
 {
 public:
     MessengerAudioProcessor();
     ~MessengerAudioProcessor() override;
 
+    // ─── Audio processing ────────────────────────────────────────────
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
-
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
+    // ─── Editor ──────────────────────────────────────────────────────
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Messenger"; }
-
-    bool acceptsMidi() const override    { return false; }
-    bool producesMidi() const override   { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
-
-    int getNumPrograms() override                                      { return 1; }
-    int getCurrentProgram() override                                   { return 0; }
-    void setCurrentProgram(int) override                               {}
-    const juce::String getProgramName(int) override                    { return {}; }
-    void changeProgramName(int, const juce::String&) override          {}
-
+    // ─── State ───────────────────────────────────────────────────────
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
-    // ─── Nuevas APIs para rename, colorear y ruteo ──────────────────────────
+    // ─── Name ────────────────────────────────────────────────────────
+    const juce::String getName() const override { return "Messenger"; }
+
+    // ─── MIDI / Programs (boilerplate JUCE) ──────────────────────────
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0.0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int /*index*/) override {}
+    const juce::String getProgramName(int /*index*/) override { return {}; }
+    void changeProgramName(int /*index*/, const juce::String& /*newName*/) override {}
+
+    // ─── APIs de identidad (Sensor: quién soy) ────────────────────────
     void setTrackName(const juce::String& newName);
     [[nodiscard]] juce::String getTrackName() const noexcept { return trackName_; }
-
+    void setTrackType(TrackType type);
+    [[nodiscard]] TrackType getTrackType() const noexcept { return trackType_; }
     void setTrackColour(const juce::Colour& newColour);
     [[nodiscard]] juce::Colour getTrackColour() const noexcept { return trackColour_; }
-
     void setBusAssignment(BusType bus);
     [[nodiscard]] BusType getBusAssignment() const noexcept { return busAssignment_; }
+    void setMuted(bool mute) { muted_.store(mute, std::memory_order_relaxed); }
+    [[nodiscard]] bool isMuted() const noexcept { return muted_.load(std::memory_order_relaxed); }
 
-    // Acceso para el editor
+    // Para el editor (solo identidad)
     [[nodiscard]] int getSlotIndex() const noexcept { return slotIndex_; }
     [[nodiscard]] SharedData* getSharedData() noexcept { return sharedData_; }
+    [[nodiscard]] uint32_t getLastHeartbeatMs() const noexcept { return lastHeartbeatMs_.load(std::memory_order_relaxed); }
 
-    // Registrar slot lazy (llamado desde prepareToPlay/processBlock, NUNCA desde constructor)
     void ensureSlotRegistered();
 
-    // Timer callback: un solo disparo 500ms tras creación para registrar slot
-    // en DAWs que no llaman setStateInformation() para instancias nuevas.
-    void timerCallback() override;
+    // ═══ Sync trackType with SlotRegistry (V7 Identity Layer) ═══
+    void syncTrackTypeToRegistry();
 
-    [[nodiscard]] bool isMuted() const noexcept { return muted_; }
-    void setMuted(bool mute);
+    // ═══ Feedback Loop V9: Leer TrackType inferido por MixCoach desde
+    // shared memory y actualizar el estado local. Retorna true si hubo cambio.
+    // MixCoach escribe el TrackType inferido al slot via updateSlotTrackType()
+    // cuando detecta el rol de una pista (por nombre o espectro).
+    // El Messenger lee ese cambio desde shared memory y actualiza su
+    // ComboBox automaticamente, SIN que el usuario tenga que seleccionarlo.
+    bool syncTrackTypeFromSharedMemory();
+
+    // ═══ Name Auto-Suggestion V10: Sugerir TrackType desde el nombre ──────
+    // Analiza el nombre que el usuario escribe y sugiere un TrackType
+    // usando palabras clave (como inferTrackRoleFromName pero en el Messenger).
+    // Retorna TrackType::None si no puede sugerir nada con confianza.
+    static TrackType suggestTrackTypeFromName(const juce::String& name) noexcept;
+
+    /** Actualiza el TrackType desde auto-sugerencia de nombre (sin marcar como pinned).
+        El editor llama esto desde textEditorTextChanged() cuando detecta una
+        coincidencia clara en el nombre. A diferencia de setTrackType(), NO marca
+        trackTypePinned_ = true, permitiendo que futuros nombres sigan
+        auto-sugiriendo nuevos tipos. */
+    void setTrackTypeAutoSuggested(TrackType type);
+
+    /** Indica si el usuario ha seleccionado manualmente el TrackType desde el ComboBox.
+        Si es true, ni MixCoach ni la auto-sugerencia por nombre sobrescriben
+        la seleccion del usuario. */
+    [[nodiscard]] bool isTrackTypePinned() const noexcept { return trackTypePinned_; }
+
+    // ═══ Audio Signal Detection V11: Detectar cuando el audio empieza a fluir ──
+    // El Messenger detecta la transicion silencio->senal y usa esa informacion
+    // para activar la inferencia de nombre en MixCoach via feedback loop.
+    // CPU ultrabajo: solo revisa el primer sample de cada bloque cada ~100ms.
+    // No hace FFT, no procesa audio — solo detecta presencia de senal.
+    enum class SignalState : uint8_t { Waiting = 0, Detected = 1 };
+
+    /** Retorna true si se ha detectado senal de audio en algun momento. */
+    [[nodiscard]] bool hasAudioSignal() const noexcept {
+        return audioSignalDetected_.load(std::memory_order_relaxed) == SignalState::Detected;
+    }
+
+    /** Resetea el estado de deteccion de senal (cuando el slot se registra de nuevo). */
+    void resetAudioSignal() noexcept {
+        audioSignalDetected_.store(SignalState::Waiting, std::memory_order_relaxed);
+    }
+
+    // ═══ Name Auto-Fill V11: Auto-llenar nombre desde TrackType inferido ──────
+    // Cuando MixCoach infiere un TrackType (via Feedback Loop V9) y el nombre
+    // de la pista aun es el generico "Pista X", auto-llena el nombre con el
+    // nombre del instrumento detectado (ej: "Kick", "Snare", "Voz Principal").
+    // @param suggestedType El TrackType inferido por MixCoach.
+    // @return true si el nombre fue auto-llenado, false si ya tenia nombre.
+    bool autoFillNameFromTrackType(TrackType suggestedType);
+
+    /** Retorna true si el nombre aun es el generico de FL Studio. */
+    [[nodiscard]] bool hasDefaultName() const noexcept {
+        return trackName_.startsWith("Pista ") || trackName_.startsWith("Track ");
+    }
 
 private:
     SharedData* sharedData_ = nullptr;
     int slotIndex_{-1};
-    // Telemetry handled by TelemetryManager singleton (no local buffer needed)
-    TelemetryCollector collector_;
+    bool useStereo_ = true; // default to stereo
+    int rightSlotIndex_{-1}; // slot for right channel
 
-    // Buffer mono pre-asignado para evitar alloc en audio thread
-    juce::AudioBuffer<float> monoBuffer_;
-
-    // Logger de diagnóstico LOCAL (sin usar Logger global de JUCE para evitar
-    // conflictos entre plugins en el mismo proceso)
-    // Cada plugin escribe su propio archivo de log directamente
-    mutable std::unique_ptr<juce::FileOutputStream> logStream_;
-    void logMessage(const juce::String& msg) const;
-    void logCrash(const juce::String& msg) const;
-
-    // Flag: prepareToPlay fue llamado (protege contra DAWs que llaman processBlock antes)
-    bool prepared_{false};
-
-    // ═══ Flag: slot ya registrado (evita chequeo redundante en hot path) ═══
-    // ANTES: processBlock() llamaba a if (slotIndex_ < 0) ensureSlotRegistered()
-    // en CADA bloque de audio. ensureSlotRegistered() verificaba sharedData_
-    // y slotIndex_ nuevamente. Con 60+ Messengers en paralelo, el overhead
-    // de 60+ llamadas a una función con chequeos y una clausura try/catch
-    // se acumulaba en cada bloque de audio (~11ms para 512 samples).
-    // AHORA: Flag booleana simple para el hot path. El slot se registra en
-    // prepareToPlay, setStateInformation, o en el timer (fire once 500ms).
-    bool slotRegistered_{false};
-
-    // ═══ Flag: backup file pendiente de escribir (diferido al timer) ═══
-    // Cuando registerSlot() ya no escribe backup (para evitar I/O durante
-    // la inserción masiva de 100 Messengers), el backup inicial se escribe
-    // desde el timerCallback() en el message thread ~500ms después.
-    // Esto es SEGURO porque el timer corre en el message thread, NO en
-    // el audio thread. La única desventaja es que el backup tarda ~500ms
-    // en escribirse, pero cuando FL Studio se reinicie, forceFullSync()
-    // leerá los backups existentes de la sesión anterior.
-    bool pendingBackupWrite_{false};
-
-    // Contador de escrituras a shared memory (por instancia, thread-safe)
-    int shmWriteCounter_ = 0;
-
-    // ─── MUTE: detiene el envío de telemetría (el audio sigue pasando)
-    std::atomic<bool> muted_{false};
-
-    // Estado persistente de la pista
+    // ─── Estado de identidad ──────────────────────────────────────────
     juce::String trackName_;
+    TrackType trackType_{TrackType::None};
+    bool trackTypePinned_{false}; // true = usuario selecciono manualmente, no sobrescribir
     juce::Colour trackColour_{0xFF808080};
     BusType busAssignment_{BusType::None};
+
+    // ─── Atómicos para UI (LEIDOS desde editor sin lock) ──────────────
+    std::atomic<uint32_t> lastHeartbeatMs_{0};
+
+    // ─── Slot management ──────────────────────────────────────────────
+    bool prepared_{false};
+    bool slotRegistered_{false};
+
+    // ─── Audio Signal Detection V11 ──────────────────────────────────
+    std::atomic<SignalState> audioSignalDetected_{SignalState::Waiting};
+
+    // ─── MUTE ─────────────────────────────────────────────────────────
+    std::atomic<bool> muted_{false};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MessengerAudioProcessor)
 };

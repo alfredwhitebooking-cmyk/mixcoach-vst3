@@ -10,7 +10,6 @@
 //  - Types.h (definiciones de tipos)
 //  - Constants.h (constantes)
 //  - LogHelper.h (logging)
-//  - TelemetryData.h (estructuras de datos)
 //  EVITAR: headers que incluyan módulos JUCE (casi todos los demás).
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -21,7 +20,6 @@
 // ─── Headers ligeros del proyecto (no incluyen módulos JUCE) ─────────────
 #include <Constants.h>
 #include <Types.h>
-#include <TelemetryData.h>
 #include <LogHelper.h>
 
 #endif // __cplusplus

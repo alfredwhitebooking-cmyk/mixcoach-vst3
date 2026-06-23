@@ -1,104 +1,151 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_graphics/juce_graphics.h>
-#include <functional>
+#include <vector>
+#include "../audio/AudioAnalyzer.h"
 #include "MixCoachTheme.h"
 #include "SmoothValue.h"
-#include "LUFSMeter.h"
-#include "StereoVUMeter.h"
 #include "SpectrographComponent.h"
 #include "VectorscopeComponent.h"
+#include "StereoWidthMeter.h"
 #include "PhaseCorrelationMeter.h"
-#include "CrestHistogram.h"
-#include "PlaylistComponent.h"
-#include "MeterComponent.h"
-#include "AnalogVUMeter.h"
-#include "VUMetersPanel.h"
-#include "PhaseScopePanel.h"
-#include "TelemetryProvider.h"
+#include "../audio/ReferenceAnalyzer.h"
+#include "../engine/CoachEngine.h"
+#include "CrestPanel.h"
+#include "AudioDNAComponent.h"
+#include "../../Common/audio/DiagnosticBridge.h"
+
+// Sub-componentes extraídos del refactor
+#include "MeterPanel.h"
+#include "MeterCard.h"
+#include "VintageVUMeters.h"
+#include "RefToggle.h"
 
 namespace mixcoach {
 
-class SharedData;
+// ═══════════════════════════════════════════════════════════════════════════
+//  PhaseScopePanel — SESIÓN 5: Panel inferior izquierdo (~48% width)
+//  Correlation meter (top) + Vectorscope (bottom-left) + Crest gauge (bottom-right)
+//  + PEAK/RMS/CREST metrics table
+// ═══════════════════════════════════════════════════════════════════════════
+class PhaseScopePanel : public juce::Component,
+                        public juce::ChangeListener {
+public:
+    PhaseScopePanel();
+    ~PhaseScopePanel() override;
+    void resized() override;
+    void paint(juce::Graphics& g) override;
+
+    // ═══ ChangeListener ══════════════════════════════════════════════
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+
+    void setCorrelation(float v) { correlation_.setTargetValue(v); }
+    VectorscopeComponent& getVectorscope() noexcept { return vectorscope_; }
+    void pushCrest(float peak, float rms);
+    bool advanceVisuals(double sr = 60.0, bool allowRepaint = true);
+
+    // ═══ Phase Diagnostic Overlay ══════════════════════════════════════
+    /** Recibe diagnósticos de fase desde el DiagnosticBridge. */
+    void setPhaseDiagnostics(const std::vector<PhaseDiagnostic>& diagnostics);
+
+    /** Setea el DiagnosticBridge para recibir PhaseDiagnostics via ChangeListener.
+        Reemplaza cualquier conexión anterior. */
+    void setDiagnosticBridge(DiagnosticBridge* bridge);
+
+private:
+    /** Puntero al bridge (no owned), usado por changeListenerCallback. */
+    DiagnosticBridge* diagnosticBridge_ = nullptr;
+    SmoothValue correlation_{ 1.0f, 5.0f, 100.0f };
+    float currentPeak_ = -80.0f, currentRms_ = -80.0f;
+    VectorscopeComponent vectorscope_;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  AnalyzersPanelComponent — Panel de metering profesional
-//  Layout 4 secciones en perfecta proporcion:
+//  AnalyzersPanelComponent — Panel de metering profesional (TAB 2)
 //
-//  ┌──────────────┬───────────────────┬────────────────────────────────┐
-//  │              │    METER          │                                │
-//  │  PLAYLIST    │   (25% W)         │   SPECTROGRAPH (50% W)        │
-//  │  (25% W)     │   (50% H top)     │   (50% H top)                  │
-//  │  FULL HEIGHT ├───────────────────┤                                │
-//  │  scroll      │   PHASE SCOPE     ├────────────────────────────────┤
-//  │              │   (25% W)         │   VU METERS (50% W)            │
-//  │              │   (50% H bottom)  │   (50% H bottom)               │
-//  │              │   Vec+Phase+Crest │   L ██  R ██  M ░░  S ░░      │
-//  └──────────────┴───────────────────┴────────────────────────────────┘
+//  Layout (basado en referencia visual):
+//    SESIÓN 2 (28% W, 50% H): MeterPanel - VU + cards + LUFS
+//    SESIÓN 3 (72% W, 50% H): SpectrographComponent - FFT RTA
+//    SESIÓN 5 (48% W, 42% H): PhaseScopePanel - correlation + vec + crest
+//    SESIÓN 4 (52% W, 42% H): VintageVUMeters - 2x2 vintage analog
 // ═══════════════════════════════════════════════════════════════════════════
 class AnalyzersPanelComponent : public juce::Component {
 public:
-    explicit AnalyzersPanelComponent(SharedData& sharedData);
+    explicit AnalyzersPanelComponent(AudioAnalyzer& audioAnalyzer);
     ~AnalyzersPanelComponent() override = default;
 
     void resized() override;
     void paint(juce::Graphics& g) override;
 
-    void updateAnalyzers(SlotRegistry& registry, double sampleRate = 48000.0);
-    void refreshSpectrographFromProvider();
-    PlaylistComponent& getPlaylist() noexcept { return playlist_; }
-    int getSelectedSlot() const noexcept { return telemetryProvider_.getSelectedSlot(); }
-    /** Retorna la telemetría según el modo actual del TelemetryProvider (Single/Master). */
-    TrackTelemetry getLatestTelemetry();
-    /** ¿Está en modo Master (ALL)? */
-    bool isMasterMode() const noexcept { return telemetryProvider_.isMaster(); }
-    SpectrographComponent& getSpectrograph() noexcept { return spectrograph_; }
-
-    std::function<void()> onRescanRequested;
-    void fastUpdateMeters(SlotRegistry& registry);
-
-    /** 60 Hz: suavizado visual sin leer IPC (solo interpolación). */
+    void updateAnalyzers(double sampleRate = 48000.0);
+    void fastUpdateMeters();
     void smoothVisuals(double sampleRateHz = 60.0);
+    SpectrographComponent& getSpectrograph() noexcept { return spectrograph_; }
+    void setDiagnosticBridge(DiagnosticBridge* bridge);
+    void setCentroidInfo(const SpectrographComponent::CentroidInfo& info)
+    {
+        spectrograph_.setCentroidInfo(info);
+    }
+    StereoWidthMeter& getStereoWidthMeter() noexcept { return stereoWidthMeter_; }
+    /** Setea el coach engine para actualizar la curva de referencia del spectrograph. */
+    void setCoachEngine(CoachEngine* engine) noexcept { coachEngine_ = engine; }
 
-    void setSelectedSlot(int slotIndex);
-    std::function<void(int slotIndex)> onTrackSelected;
+    /** Actualiza la curva de referencia del spectrograph desde el ReferenceAnalyzer.
+        Solo tiene efecto si la referencia está cargada y tiene datos espectrales. */
+    void updateReferenceCurve(const ReferenceAnalyzer& refAnalyzer);
 
-    /** Actualiza colores y visibilidad del botón ALL según el modo actual. */
-    void updateAllButtonAppearance();
+    void updateAudioDNA(SlotRegistry& registry, SharedData& sharedData);
 
-    /** Cambia a Bus mode y selecciona un bus específico. */
-    void selectBus(BusType bus);
-
-    /** Cambia el título de la playlist (por defecto "SESIÓN 1 – PLAYLIST"). */
-    void setPlaylistTitle(const juce::String& newTitle) { playlistTitle_ = newTitle; repaint(); }
+    // ═══ Toggle extra panels ═══════════════════════════════════════════
+    void setShowDNA(bool show) noexcept { showDna_ = show; resized(); repaint(); }
+    void setShowWidth(bool show) noexcept { showWidth_ = show; resized(); repaint(); }
+    void setShowCrest(bool show) noexcept { showCrest_ = show; resized(); repaint(); }
+    void setShowAI(bool show) noexcept { showAi_ = show; resized(); repaint(); }
+    [[nodiscard]] bool isShowingDNA() const noexcept { return showDna_; }
+    [[nodiscard]] bool isShowingWidth() const noexcept { return showWidth_; }
+    [[nodiscard]] bool isShowingCrest() const noexcept { return showCrest_; }
+    [[nodiscard]] bool isShowingAI() const noexcept { return showAi_; }
 
 private:
-    // ─── Footer labels ─────────────────────────────────────────────────
-    juce::Label footerActiveLabel_;
-    juce::Label footerStatusLabel_;
-    int lastActiveCount_{0};
+    void refreshSpectrograph();
+    void feedFromAudioAnalyzer(bool includeSpectrograph = true);
+    void rebuildBgCache();
 
-    // ─── Analizadores ──────────────────────────────────────────────────
-    juce::Viewport          playlistViewport_;
-    PlaylistComponent        playlist_;
-    MeterComponent           meter_;
-    SpectrographComponent    spectrograph_;
-    PhaseScopePanel          phaseScope_;
-    VUMetersPanel            vuMeters_;
+    void mouseDown(const juce::MouseEvent& e) override;
 
-    // ─── TelemetryProvider (Single / Master) ────────────────────────────
-    TelemetryProvider telemetryProvider_;
-    int selectedSlot_ = -1;
-    juce::Colour selectedColour_{ 0xFF3498DB };
-    SharedData& sharedData_;
+    // ─── Sub-components ──────────────────────────────────────────────────
+    MeterPanel            meterPanel_;
+    SpectrographComponent spectrograph_;
+    PhaseScopePanel       phaseScope_;
+    VintageVUMeters       vuMeters_;
+    CrestPanel            crestPanel_;
+    StereoWidthMeter      stereoWidthMeter_;
+    AudioDNAComponent     audioDNA_;
+    std::unique_ptr<RefToggle> refToggle_;
 
-    // ─── Botón MASTER (ALL) ─────────────────────────────────────────────
-    juce::TextButton allButton_;
+    // ─── Toggle states for extra panels ─────────────────────────────────
+    bool showDna_ = false;
+    bool showWidth_ = false;
+    bool showCrest_ = false;
+    bool showAi_ = true;
 
-    // ─── Título de la playlist (configurable) ────────────────────────────
-    juce::String playlistTitle_{ "SESI\xC3\x93N 1 \xE2\x80\x93 PLAYLIST" };
-    // Nota: el default usa escapes UTF-8 para compatibilidad, pero en paint()
-    // se usa el literal plano del .cpp que ya está en UTF-8.
+    struct ToggleBtn {
+        juce::Rectangle<int> bounds;
+        juce::String label;
+        bool* active;
+    };
+    std::vector<ToggleBtn> toggleBtns_;
+
+    // ─── Background cache (dot grid + gradient, painted una vez) ────────
+    juce::Image bgCache_;
+    bool bgCacheValid_ = false;
+
+    // ─── Throttle para refreshSpectrograph (máx ~25 FPS) ───────────────
+    uint32_t lastSpectrumUpdateMs_ = 0;
+
+    // ─── Data sources ──────────────────────────────────────────────────
+    AudioAnalyzer& audioAnalyzer_;
+    CoachEngine* coachEngine_ = nullptr;
 };
 
 } // namespace mixcoach

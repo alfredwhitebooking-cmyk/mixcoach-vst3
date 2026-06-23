@@ -16,6 +16,25 @@ PhaseScopePanel::PhaseScopePanel()
     addAndMakeVisible(crestHistogram_);
 }
 
+void PhaseScopePanel::setPhaseDiagnostics(const std::vector<PhaseDiagnostic>& diagnostics)
+{
+    if (diagnostics.empty()) {
+        vectorscope_.setPhaseDiagnostic(nullptr);
+        phaseMeter_.setPhaseDiagnostic(nullptr);
+        return;
+    }
+    
+    // Encontrar el más severo y pasarlo a ambos sub-componentes
+    const PhaseDiagnostic* worst = &diagnostics[0];
+    for (const auto& d : diagnostics) {
+        if (d.severity > worst->severity)
+            worst = &d;
+    }
+    
+    vectorscope_.setPhaseDiagnostic(worst);
+    phaseMeter_.setPhaseDiagnostic(worst);
+}
+
 void PhaseScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(4, 2);
@@ -48,9 +67,9 @@ void PhaseScopePanel::paint(juce::Graphics& g)
     int y1 = area.getY() + vecH;
     int y2 = y1 + phaseH;
 
-    g.setColour(MixCoachTheme::divider().withAlpha(0.06f));
-    g.fillRect(area.getX() + 4, y1 - 1, area.getWidth() - 8, 2);
-    g.fillRect(area.getX() + 4, y2 - 1, area.getWidth() - 8, 2);
+    g.setColour(MixCoachTheme::divider().withAlpha(0.18f));
+    g.fillRect(area.getX() + 4, y1, area.getWidth() - 8, 1);
+    g.fillRect(area.getX() + 4, y2, area.getWidth() - 8, 1);
 }
 
 bool PhaseScopePanel::advanceVisuals(double sampleRateHz, bool allowRepaint)

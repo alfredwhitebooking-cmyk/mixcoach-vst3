@@ -31,7 +31,7 @@ private:
 
     void drawChannelMeter(juce::Graphics& g, juce::Rectangle<float> bounds,
                           float rms, float peak, float peakHold,
-                          const juce::String& channelLabel);
+                          bool isLeftChannel);
 };
 
 } // namespace mixcoach

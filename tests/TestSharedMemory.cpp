@@ -213,10 +213,6 @@ static void test_register_read_release()
     entry.active = 1;
     entry.bus = 0;
     entry.colourARGB = 0xFFE74C3C;
-    entry.peakLeft = -6.0f;
-    entry.rmsLeft = -18.0f;
-    entry.correlation = 0.95f;
-    entry.lufsIntegrated = -14.0f;
     std::strncpy(entry.trackName, "Bateria", sizeof(entry.trackName) - 1);
     entry.trackName[sizeof(entry.trackName) - 1] = '\0';
 
@@ -236,10 +232,6 @@ static void test_register_read_release()
              std::strncmp(readback.trackName, "Bateria", 64) == 0);
         TEST("readback bus==0 (Drums)", readback.bus == 0);
         TEST("readback colourARGB matches", readback.colourARGB == 0xFFE74C3C);
-        TEST_NEAR("readback peakLeft -6.0f", readback.peakLeft, -6.0f, 0.001f);
-        TEST_NEAR("readback rmsLeft -18.0f", readback.rmsLeft, -18.0f, 0.001f);
-        TEST_NEAR("readback correlation 0.95f", readback.correlation, 0.95f, 0.001f);
-        TEST_NEAR("readback lufsIntegrated -14.0f", readback.lufsIntegrated, -14.0f, 0.001f);
     }
 
     shm.releaseSlot(idx);
@@ -318,10 +310,6 @@ static void test_write_slot()
     update.active = 1;
     update.bus = 4;
     update.colourARGB = 0xFF9B59B6;
-    update.peakLeft = -12.0f;
-    update.peakRight = -14.0f;
-    update.rmsLeft = -22.0f;
-    update.lufsIntegrated = -16.0f;
     std::strncpy(update.trackName, "Vocal", sizeof(update.trackName) - 1);
 
     uint64_t ccBefore = shm.getChangeCount();
@@ -329,9 +317,7 @@ static void test_write_slot()
 
     mixcoach::SharedSlotEntry afterWrite;
     shm.readSlot(idx, afterWrite);
-    TEST_NEAR("writeSlot updates peakLeft", afterWrite.peakLeft, -12.0f, 0.001f);
-    TEST_NEAR("writeSlot updates rmsLeft", afterWrite.rmsLeft, -22.0f, 0.001f);
-    TEST_NEAR("writeSlot updates lufsIntegrated", afterWrite.lufsIntegrated, -16.0f, 0.001f);
+    TEST("writeSlot updates bus", afterWrite.bus == 4);
     TEST("writeSlot increments changeCount", shm.getChangeCount() > ccBefore);
 
     shm.close();

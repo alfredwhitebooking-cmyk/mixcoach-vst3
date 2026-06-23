@@ -44,14 +44,13 @@ void PlaylistComponent::updateList(SlotRegistry& registry)
         entry.info = info;
         entry.selected = (idx == selectedSlot_);
 
-        auto& telem = registry.getTelemetry(idx);
-        auto latest = telem.latest();
-        entry.peakLeft = latest.peakLeft;
-        entry.peakRight = latest.peakRight;
-        entry.hasSignal = (latest.peakLeft > -60.0f || latest.peakRight > -60.0f);
+        // V3: sin telemetría per-slot. Peak/RMS desde identidad.
+        entry.peakLeft = -100.0f;
+        entry.peakRight = -100.0f;
+        entry.hasSignal = false;
 
         // Track peak para LED strip
-        float entryPeak = juce::jmax(latest.peakLeft, latest.peakRight);
+        float entryPeak = -100.0f;
         if (entryPeak > maxPeak) maxPeak = entryPeak;
 
         // ─── Agrupar por bus ─────────────────────────────────────────────
@@ -237,16 +236,16 @@ void PlaylistComponent::paint(juce::Graphics& g)
 
     // ═══ Sub-header: MESSENGERS & GRUPOS + + GRUPO ─────────────────────
     auto subHeaderArea = area.removeFromTop(16).reduced(0, 1);
-    g.setFont(juce::Font(juce::FontOptions(7.0f)));
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)));
     g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
-    g.drawText("MESSENGERS & GRUPOS", subHeaderArea,
+    g.drawText("TRACKLIST", subHeaderArea,
                juce::Justification::centredLeft);
 
     // + GRUPO clickable
     auto grupoArea = subHeaderArea.removeFromRight(52);
     subHeaderGrupoBounds_ = grupoArea;
     g.setColour(MixCoachTheme::accentGlow().withAlpha(0.6f));
-    g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)).boldened());
     g.drawText("+ GRUPO", grupoArea, juce::Justification::centred);
 
     // Grid icon
@@ -314,7 +313,7 @@ void PlaylistComponent::drawBusHeader(juce::Graphics& g, const juce::Rectangle<i
     headerArea.removeFromLeft(3);
 
     // ─── Bus name ────────────────────────────────────────────────────────
-    g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)).boldened());
     g.setColour(busColour);
     g.drawText(busName, headerArea.removeFromLeft(60), juce::Justification::centredLeft);
 
@@ -428,7 +427,7 @@ void PlaylistComponent::drawTrackCard(juce::Graphics& g, juce::Rectangle<int> bo
         g.setColour(MixCoachTheme::error().withAlpha(0.6f));
         g.drawRoundedRectangle(staleBadge.toFloat(), 4.0f, 1.0f);
         g.setColour(MixCoachTheme::error().withAlpha(0.8f));
-        g.setFont(juce::Font(juce::FontOptions(6.5f)).boldened());
+        g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeNano)).boldened());
         g.drawFittedText(juce::CharPointer_UTF8("SIN SE\xC3\x91" "AL"), staleBadge.toNearestInt(),
                          juce::Justification::centred, 1);
         b.removeFromRight(2);
@@ -460,7 +459,7 @@ void PlaylistComponent::drawTrackCard(juce::Graphics& g, juce::Rectangle<int> bo
             g.setColour(busCol.withAlpha(0.75f));
             g.drawRoundedRectangle(badgeArea.toFloat(), 4.0f, 1.0f);
             g.setColour(juce::Colours::white);
-            g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+            g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)).boldened());
             g.drawFittedText(busAbbr, badgeArea.toNearestInt(),
                              juce::Justification::centred, 1);
             b.removeFromRight(2);
@@ -468,7 +467,7 @@ void PlaylistComponent::drawTrackCard(juce::Graphics& g, juce::Rectangle<int> bo
 
         // ─── Stats: PK + mini VU ─────────────────────────────────────────
         auto statsArea = b.removeFromRight(48).reduced(0, 4);
-        g.setFont(juce::Font(juce::FontOptions(6.5f)));
+        g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeNano)));
         g.setColour(MixCoachTheme::textMuted().withAlpha(0.6f));
         g.drawText("PK " + juce::String(entry.peakLeft, 1),
                    statsArea.toNearestInt(), juce::Justification::centredLeft);

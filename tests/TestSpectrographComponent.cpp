@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 #include <algorithm>
 #include <juce_core/juce_core.h>
@@ -258,6 +259,132 @@ static void test_different_fft_sizes_sequentially() {
 }
 
 // ============================================================================
+//  Reference Toggle Button Tests
+// ============================================================================
+
+static void test_reference_default_state() {
+    std::printf("\n── Reference Toggle: Default State ──\n");
+    mixcoach::SpectrographComponent spec;
+    spec.setSize(400, 200);
+
+    TEST("reference starts disabled", !spec.isReferenceEnabled());
+
+    auto img = renderComponent(spec, 400, 200);
+    TEST("paint with reference OFF completes", true);
+    TEST("paint with reference OFF has content", imageHasContent(img));
+}
+
+static void test_reference_toggle_on() {
+    std::printf("\n── Reference Toggle: Enable ──\n");
+    mixcoach::SpectrographComponent spec;
+    spec.setSize(400, 200);
+
+    // Enable reference overlay
+    spec.setReferenceEnabled(true);
+    TEST("reference is ON after setReferenceEnabled(true)", spec.isReferenceEnabled());
+
+    auto img = renderComponent(spec, 400, 200);
+    TEST("paint with reference ON completes", true);
+    TEST("paint with reference ON has content", imageHasContent(img));
+}
+
+static void test_reference_toggle_twice() {
+    std::printf("\n── Reference Toggle: On → Off ──\n");
+    mixcoach::SpectrographComponent spec;
+    spec.setSize(400, 200);
+
+    spec.setReferenceEnabled(true);
+    TEST("is ON after first call", spec.isReferenceEnabled());
+
+    spec.setReferenceEnabled(false);
+    TEST("is OFF after second call", !spec.isReferenceEnabled());
+
+    auto img = renderComponent(spec, 400, 200);
+    TEST("paint after on→off cycle completes", true);
+    TEST("paint after on→off has content", imageHasContent(img));
+}
+
+static void test_reference_curve_api() {
+    std::printf("\n── Reference Curve API ──\n");
+    mixcoach::SpectrographComponent spec;
+    spec.setSize(400, 200);
+
+    // Set a custom reference curve
+    std::vector<float> curve(60, 0.5f);
+    spec.setReferenceCurve(curve.data(), (int)curve.size());
+
+    // Enable display
+    spec.setReferenceEnabled(true);
+    TEST("reference ON after set + enable", spec.isReferenceEnabled());
+
+    auto img = renderComponent(spec, 400, 200);
+    TEST("paint with custom reference curve completes", true);
+
+    // Set null curve — should not crash
+    spec.setReferenceCurve(nullptr, 0);
+    auto imgNull = renderComponent(spec, 400, 200);
+    TEST("paint after null reference curve completes", true);
+}
+
+static void test_reference_compute_default() {
+    std::printf("\n── Reference: Compute Default ──\n");
+    mixcoach::SpectrographComponent spec;
+    spec.setSize(400, 200);
+
+    // computeDefaultReferenceCurve is called in constructor
+    // Toggle on to render it
+    spec.setReferenceEnabled(true);
+    auto img = renderComponent(spec, 400, 200);
+    TEST("paint with default reference curve completes", true);
+    TEST("paint has visible content", imageHasContent(img));
+
+    // Toggle off — reference should not appear
+    spec.setReferenceEnabled(false);
+    auto imgOff = renderComponent(spec, 400, 200);
+    TEST("paint with reference OFF completes", true);
+}
+
+static void test_reference_multiple_toggles() {
+    std::printf("\n── Reference: Multiple Toggles ──\n");
+    mixcoach::SpectrographComponent spec;
+    spec.setSize(400, 200);
+
+    // Rapid toggles should not crash
+    for (int i = 0; i < 10; ++i) {
+        spec.setReferenceEnabled(i % 2 == 0);
+        auto img = renderComponent(spec, 400, 200);
+    }
+    TEST("10 rapid reference toggles complete without crash", true);
+}
+
+static void test_reference_button_bounds() {
+    std::printf("\n── Reference Button Bounds ──\n");
+    mixcoach::SpectrographComponent spec;
+
+    // Before resize: button should have zero bounds
+    // (Can't test internal state directly, but paint doesn't crash)
+    spec.setSize(400, 200);
+    TEST("component sized", spec.getWidth() == 400);
+
+    // Paint at various sizes — ensures the button area is computed
+    int sizes[] = { 200, 300, 400, 600 };
+    for (int s : sizes) {
+        spec.setSize(s, 200);
+        spec.setReferenceEnabled(true);
+        auto img = renderComponent(spec, s, 200);
+        TEST(("paint at " + std::to_string(s) + "x200").c_str(), imageHasContent(img));
+    }
+
+    // Toggle while painting at each size
+    for (int s : sizes) {
+        spec.setSize(s, 200);
+        spec.setReferenceEnabled(false);
+        auto img = renderComponent(spec, s, 200);
+        TEST(("paint at " + std::to_string(s) + "x200 (reference OFF)").c_str(), imageHasContent(img));
+    }
+}
+
+// ============================================================================
 //  Main
 // ============================================================================
 
@@ -284,6 +411,14 @@ int main() {
     test_sample_rate_rebuild();
     test_resize_preserves_state();
     test_different_fft_sizes_sequentially();
+
+    test_reference_default_state();
+    test_reference_toggle_on();
+    test_reference_toggle_twice();
+    test_reference_curve_api();
+    test_reference_compute_default();
+    test_reference_multiple_toggles();
+    test_reference_button_bounds();
 
     std::printf("\n\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90"
                 "\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90"

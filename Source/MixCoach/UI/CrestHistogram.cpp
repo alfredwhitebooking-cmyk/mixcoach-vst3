@@ -173,7 +173,7 @@ void CrestHistogram::drawScale(juce::Graphics& g, juce::Rectangle<float> gaugeBo
             float lx = cx + std::cos(angle) * labelR;
             float ly = cy + std::sin(angle) * labelR;
 
-            g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+            g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)).boldened());
             g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
             g.drawText(juce::String((int)mark.value),
                        juce::Rectangle<float>(lx - 10.0f, ly - 5.0f, 20.0f, 10.0f),
@@ -186,7 +186,7 @@ void CrestHistogram::drawScale(juce::Graphics& g, juce::Rectangle<float> gaugeBo
     float midAngle = (kArcStartAngle + kArcEndAngle) * 0.5f;
     float ux = cx + std::cos(midAngle) * labelR;
     float uy = cy + std::sin(midAngle) * labelR;
-    g.setFont(juce::Font(juce::FontOptions(6.0f)));
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizePico)));
     g.setColour(MixCoachTheme::textMuted().withAlpha(0.35f));
     g.drawText("dB", juce::Rectangle<float>(ux - 8.0f, uy - 5.0f, 16.0f, 10.0f),
                juce::Justification::centred);
@@ -295,7 +295,7 @@ void CrestHistogram::drawSubValues(juce::Graphics& g, juce::Rectangle<float> gau
     auto drawSubLine = [&](const juce::String& label, float value,
                             juce::Colour col, juce::Rectangle<int> area)
     {
-        g.setFont(juce::Font(juce::FontOptions(6.5f)));
+        g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeNano)));
         auto labelArea = area.removeFromLeft(32);
         g.setColour(MixCoachTheme::textDim().withAlpha(0.6f));
         g.drawText(label, labelArea, juce::Justification::centredLeft);
@@ -331,7 +331,7 @@ void CrestHistogram::paint(juce::Graphics& g)
         auto msgArea = gaugeBounds;
         msgArea.removeFromBottom(40);
         g.setColour(MixCoachTheme::textMuted().withAlpha(0.4f));
-        g.setFont(juce::Font(juce::FontOptions(7.0f)));
+        g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)));
         g.drawText("Esperando datos...", msgArea.toNearestInt(),
                    juce::Justification::centred);
         return;

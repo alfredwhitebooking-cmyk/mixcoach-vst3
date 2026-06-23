@@ -4,11 +4,13 @@
 
 namespace mixcoach {
 
-// Utilidades de pintado para medidores verticales (Sesión 2 – Meter / Messenger)
+// ===========================================================================
+//  VERTICAL GRADIENT METER — UTILIDADES DE RENDERIZADO DIGITAL ULTRA-SUAVE
+// ===========================================================================
 struct VerticalGradientMeter
 {
     static constexpr float kMinDb = -60.0f;
-    static constexpr float kMaxDb = 0.0f;
+    static constexpr float kMaxDb = 6.0f; // Calibrado a +6dB para emparejar con la escala master
 
     static float dbToNorm(float db) noexcept;
     static float normToY(float norm, juce::Rectangle<float> meterBounds) noexcept;
@@ -18,23 +20,25 @@ struct VerticalGradientMeter
                             bool topIsZero = true);
 
     static void drawGradientBar(juce::Graphics& g, juce::Rectangle<float> bounds,
-                                float levelDb, float radius = 2.5f);
+                                float levelDb, float radius = 1.5f);
 
     static void drawSolidBar(juce::Graphics& g, juce::Rectangle<float> bounds,
-                             float levelDb, juce::Colour colour, float radius = 2.0f);
+                             float levelDb, juce::Colour colour, float radius = 1.5f);
 
     static void drawPeakTriangle(juce::Graphics& g, juce::Rectangle<float> scaleBounds,
-                                 float peakHoldDb, juce::Colour colour);
+                                 float peakHoldDb, juce::Colour colour, bool alignLeft = true);
 
     static void drawPeakReadout(juce::Graphics& g, juce::Rectangle<float> bounds,
                                 float peakDb, juce::Colour colour);
 };
 
-// Peak hold + suavizado por canal (UI thread)
+// ===========================================================================
+//  BALLISTICS ENGINE — RETENCIÓN LOGARÍTMICA Y CAÍDA LINEAL EN DB
+// ===========================================================================
 struct MeterChannelBallistics
 {
-    float displayDb = -100.0f;
-    float peakHoldDb = -100.0f;
+    float displayDb = -60.0f;
+    float peakHoldDb = -60.0f;
     int   peakHoldFrames = 0;
 
     void setLevelDb(float db) noexcept;

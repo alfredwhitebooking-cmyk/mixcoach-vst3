@@ -8,6 +8,7 @@
 #include "MixCoachTheme.h"
 #include "../../Common/types/Types.h"
 #include "../../Common/memory/SlotRegistry.h"
+#include "../audio/AudioAnalyzer.h"
 
 namespace mixcoach {
 
@@ -29,6 +30,9 @@ public:
 
     // Actualizar con datos del SlotRegistry (llamado desde timer del editor)
     void updateAnalyzers(SlotRegistry& registry);
+
+    /** Alimentar datos de audio reales desde el AudioAnalyzer (samples + correlación). */
+    void updateFromAnalyzer(const AudioAnalyzer& analyzer);
 
     VectorscopeSystem&       getVectorscope() noexcept { return *vectorscope_; }
     PhaseCorrelationSystem&  getPhaseMeter()   noexcept { return *phaseMeter_; }
@@ -75,6 +79,10 @@ private:
     void drawPhosphorPoints(juce::Graphics& g, juce::Rectangle<float> area);
     void drawCorrelationIndicator(juce::Graphics& g, juce::Rectangle<float> area);
 
+    void rebuildGridCache();
+    juce::Image gridCache_;
+    bool gridCacheValid_ = false;
+
     static constexpr int kTraceLen = 512;
 
     struct TracePoint {
@@ -104,7 +112,7 @@ private:
 
     // Phosphor trail
     std::deque<TracePoint> phosphorTrail_;
-    static constexpr int kMaxPhosphor = 3000;
+    static constexpr int kMaxPhosphor = 1500;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

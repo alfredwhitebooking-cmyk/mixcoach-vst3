@@ -126,7 +126,7 @@ void PhaseCorrelationMeter::paint(juce::Graphics& g)
     g.drawVerticalLine((int)centerX, barBounds.getY(), barBounds.getBottom());
 
     // ─── Scale labels ──────────────────────────────────────────────────
-    g.setFont(juce::Font(juce::FontOptions(6.5f)));
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeNano)));
     g.setColour(MixCoachTheme::textMuted().withAlpha(0.4f));
 
     auto labelY = barBounds.getBottom() + 2;
@@ -191,6 +191,65 @@ void PhaseCorrelationMeter::paint(juce::Graphics& g)
         g.drawText("\xE2\x9A\xA0 Out of phase!",
                    barBounds.withTop(barBounds.getBottom() - 18).toNearestInt(),
                    juce::Justification::centred);
+    }
+
+    // ═══ Phase diagnostic overlay (del coach) ══════════════════════════
+    if (hasPhaseDiagnostic_ && phaseDiagnostic_.description.isNotEmpty())
+    {
+        const auto colour = phaseDiagnostic_.getDisplayColour();
+        const float severity = phaseDiagnostic_.severity;
+        
+        // ─── Highlight zone en la barra según severidad ────────────────
+        {
+            // Si la correlación es negativa, resalta la zona roja izquierda
+            // Si es positiva baja, resalta la zona amarilla central
+            float highlightWidth = 0.15f + severity * 0.20f;
+            float highlightPos;
+            
+            if (corr < 0.0f) {
+                // Resaltar zona izquierda (roja)
+                highlightPos = 0.0f;
+            } else if (corr < 0.3f) {
+                // Resaltar zona central (amarilla)
+                highlightPos = 0.35f - highlightWidth * 0.5f;
+            } else {
+                // Resaltar zona derecha (verde) solo si es praise
+                if (!phaseDiagnostic_.isPraise) {
+                    highlightPos = 0.65f - highlightWidth * 0.5f;
+                } else {
+                    highlightPos = 0.80f;
+                }
+            }
+            
+            auto highlightRect = juce::Rectangle<float>(
+                barBounds.getX() + highlightPos * totalW,
+                barBounds.getY() - 2.0f,
+                highlightWidth * totalW,
+                barBounds.getHeight() + 4.0f
+            );
+            
+            g.setColour(colour.withAlpha(0.12f + severity * 0.15f));
+            g.fillRoundedRectangle(highlightRect, 6.0f);
+            
+            g.setColour(colour.withAlpha(0.25f + severity * 0.30f));
+            g.drawRoundedRectangle(highlightRect, 6.0f, 1.5f + severity * 1.0f);
+        }
+        
+        // ─── Badge de advertencia debajo de la barra ───────────────────
+        {
+            auto warnArea = juce::Rectangle<float>(
+                barBounds.getX(),
+                barBounds.getBottom() + 2.0f,
+                barBounds.getWidth(),
+                16.0f
+            );
+            
+            g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+            g.setColour(colour.withAlpha(0.4f + severity * 0.4f));
+            g.drawText(phaseDiagnostic_.description,
+                       warnArea.toNearestInt(),
+                       juce::Justification::centred);
+        }
     }
 }
 

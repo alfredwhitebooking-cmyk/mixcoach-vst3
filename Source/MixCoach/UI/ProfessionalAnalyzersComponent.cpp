@@ -12,15 +12,15 @@ ProfessionalAnalyzersComponent::ProfessionalAnalyzersComponent()
     try
     {
         // ─── Header ──────────────────────────────────────────────────────
-        headerLabel_.setText(juce::CharPointer_UTF8("\\xF0\\x9F\\x94\\x8A SYSTEM ANALYZER"),
+        headerLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x94\x8A SYSTEM ANALYZER"),
                              juce::dontSendNotification);
-        headerLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTitle)).boldened());
+        headerLabel_.setFont(interFont(MixCoachTheme::fontSizeTitle).boldened());
         headerLabel_.setJustificationType(juce::Justification::centredLeft);
         headerLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textBright());
         addAndMakeVisible(headerLabel_);
 
         // ─── Info label (selected track) ─────────────────────────────────
-        infoLabel_.setText(juce::CharPointer_UTF8("\\xF0\\x9F\\x90\\xBB Selecciona un Messenger en el panel Mix Coach"),
+        infoLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x90\xBB Selecciona un Messenger en el panel Mix Coach"),
                            juce::dontSendNotification);
         infoLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeHeader)).boldened());
         infoLabel_.setJustificationType(juce::Justification::centredLeft);
@@ -49,32 +49,31 @@ ProfessionalAnalyzersComponent::ProfessionalAnalyzersComponent()
 void ProfessionalAnalyzersComponent::resized()
 {
     auto area = getLocalBounds().reduced(6);
-
     // Header
     headerLabel_.setBounds(area.removeFromTop(24));
-
     // Info row
     infoLabel_.setBounds(area.removeFromTop(20));
 
-    // ─── Split: Vectorscope (left, ~62%) | Phase Correlation (right, ~38%) ──
-    auto leftArea  = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.62f));
-    auto rightArea = area.reduced(2, 0);
+    // Use FlexBox for analyzer panels layout
+    juce::FlexBox flex;
+    flex.flexDirection = juce::FlexBox::Direction::row;
+    flex.justifyContent = juce::FlexBox::JustifyContent::spaceBetween;
+    flex.alignItems = juce::FlexBox::AlignItems::stretch;
+    // Vectorscope (~62% width)
+    flex.items.add(juce::FlexItem(*vectorscope_).withFlex(0.62f).withMargin(1));
+    // Phase Correlation (~38% width)
+    flex.items.add(juce::FlexItem(*phaseMeter_).withFlex(0.38f).withMargin(1));
 
-    vectorscope_->setBounds(leftArea.reduced(1));
-    phaseMeter_->setBounds(rightArea.reduced(1));
+    flex.performLayout(area.toFloat());
 }
 
 void ProfessionalAnalyzersComponent::paint(juce::Graphics& g)
 {
-    // ─── Fondo oscuro con gradiente (estilo rack profesional) ───
-    juce::ColourGradient bgGrad(
-        MixCoachTheme::bgDark(),
-        juce::Point<float>(0.0f, 0.0f),
-        MixCoachTheme::bgDarker(),
-        juce::Point<float>(0.0f, static_cast<float>(getHeight())),
-        false);
-    g.setGradientFill(bgGrad);
-    g.fillRect(getLocalBounds());
+    // ─── Glass panel background with gradient ───
+        MixCoachTheme::fillGlassPanel(g, getLocalBounds().toFloat(), 6.0f);
+        auto grad = MixCoachTheme::getGradientBackground((float)getHeight());
+        g.setGradientFill(grad);
+        g.fillRect(getLocalBounds());
 
     // ─── Grid pattern sutil ───
     g.setColour(MixCoachTheme::border().withAlpha(0.03f));
@@ -102,7 +101,7 @@ void ProfessionalAnalyzersComponent::updateAnalyzers(SlotRegistry& registry)
     // ─── Buscar el primer slot activo ────────────────────────────────────
     if (registry.activeCount() == 0) {
         currentSlotIndex_ = -1;
-        infoLabel_.setText(juce::CharPointer_UTF8("\\xF0\\x9F\\x90\\xBB Conecta un Messenger para ver el analisis"),
+        infoLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x90\xBB Conecta un Messenger para ver el an\xC3\xA1" "lisis"),
                            juce::dontSendNotification);
         infoLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textMuted());
         return;
@@ -122,29 +121,38 @@ void ProfessionalAnalyzersComponent::updateAnalyzers(SlotRegistry& registry)
     if (currentSlotIndex_ < 0)
         return;
 
-    // ─── Leer telemetría del slot seleccionado ────────────────────────────
-    auto& telem = registry.getTelemetry(currentSlotIndex_);
-    auto latest = telem.latest();
-
     // ─── Actualizar info label ────────────────────────────────────────────
-    juce::String trackInfo = juce::String(juce::CharPointer_UTF8("\\xF0\\x9F\\x8E\\xB5 "))
+    juce::String trackInfo = juce::String(juce::CharPointer_UTF8("\xF0\x9F\x8E\xB5 "))
                              + currentTrackName_
-                             + juce::String(juce::CharPointer_UTF8(" \\xE2\\x80\\xA2 Slot #"))
+                             + juce::String(juce::CharPointer_UTF8(" \xE2\x80\xA2 Slot #"))
                              + juce::String(currentSlotIndex_);
     infoLabel_.setText(trackInfo, juce::dontSendNotification);
     infoLabel_.setColour(juce::Label::textColourId, currentColour_);
 
-    // ─── Vectorscope: push sample L/R ───────────────────────────────────
-    if (latest.active || latest.peakLeft > -60.0f) {
-        float vectL = juce::jlimit(-1.0f, 1.0f, latest.sampleL);
-        float vectR = juce::jlimit(-1.0f, 1.0f, latest.sampleR);
-        vectorscope_->pushSample(vectL, vectR);
-        vectorscope_->setCorrelation(latest.correlation);
-        vectorscope_->setSlotInfo(currentSlotIndex_, currentColour_, currentTrackName_);
-    }
+    // ─── Vectorscope: datos desde el AudioAnalyzer del master ────────────
+    // V3: sin telemetría per-slot. La correlación se obtiene del master.
+    // La correlación real la establece quien llama (desde el timer del editor
+    // con datos del AudioAnalyzer).
+    vectorscope_->setSlotInfo(currentSlotIndex_, currentColour_, currentTrackName_);
+}
 
-    // ─── Phase Correlation meter ─────────────────────────────────────────
-    phaseMeter_->setCorrelation(latest.correlation);
+void ProfessionalAnalyzersComponent::updateFromAnalyzer(const AudioAnalyzer& analyzer)
+{
+    // ─── Alimentar samples al VectorscopeSystem ───────────────────────────
+    // Lee samples decimados del AudioAnalyzer y los empuja al vectorscope.
+    constexpr int kMaxSamples = 256;
+    float leftBuf[kMaxSamples];
+    float rightBuf[kMaxSamples];
+
+    int numRead = analyzer.flushSamples(leftBuf, rightBuf, kMaxSamples);
+
+    for (int i = 0; i < numRead; ++i)
+        vectorscope_->pushSample(leftBuf[i], rightBuf[i]);
+
+    // ─── Correlación de fase desde el análisis master ─────────────────────
+    float corr = analyzer.getMasterAnalysis().getCorrelation();
+    vectorscope_->setCorrelation(corr);
+    phaseMeter_->setCorrelation(corr);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -154,7 +162,7 @@ void ProfessionalAnalyzersComponent::updateAnalyzers(SlotRegistry& registry)
 VectorscopeSystem::VectorscopeSystem()
 {
     // ─── Title ────────────────────────────────────────────────────────────
-    titleLabel_.setText(juce::CharPointer_UTF8("\\xE2\\x9C\\xA6 Vectorscope"),
+    titleLabel_.setText(juce::CharPointer_UTF8("\xE2\x9C\xA6 Vectorscope"),
                         juce::dontSendNotification);
     titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
     titleLabel_.setJustificationType(juce::Justification::centredLeft);
@@ -162,7 +170,7 @@ VectorscopeSystem::VectorscopeSystem()
     addAndMakeVisible(titleLabel_);
 
     // ─── Correlation value ────────────────────────────────────────────────
-    corrValueLabel_.setText("\\xCF\\x86: +1.00", juce::dontSendNotification);
+    corrValueLabel_.setText("\xCF\x86: +1.00", juce::dontSendNotification);
     corrValueLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTiny)).boldened());
     corrValueLabel_.setJustificationType(juce::Justification::centredRight);
     corrValueLabel_.setColour(juce::Label::textColourId, MixCoachTheme::success());
@@ -231,7 +239,7 @@ void VectorscopeSystem::timerCallback()
 
     // Animar pulso para advertencia de fase
     corrValueLabel_.setColour(juce::Label::textColourId, corrColour);
-    corrValueLabel_.setText("\\xCF\\x86: " + juce::String(smoothCorrelation_, 2),
+    corrValueLabel_.setText("\xCF\x86: " + juce::String(smoothCorrelation_, 2),
                             juce::dontSendNotification);
 
     repaint();
@@ -278,6 +286,7 @@ void VectorscopeSystem::resized()
     titleLabel_.setBounds(topBar.removeFromLeft(static_cast<int>(topBar.getWidth() * 0.5f)));
     corrValueLabel_.setBounds(topBar);
     trackLabel_.setBounds(area.removeFromBottom(16));
+    gridCacheValid_ = false;
 }
 
 void VectorscopeSystem::drawBackground(juce::Graphics& g, juce::Rectangle<float> area)
@@ -288,12 +297,12 @@ void VectorscopeSystem::drawBackground(juce::Graphics& g, juce::Rectangle<float>
 
     // ─── Fondo con gradiente radial (radar style) ────────────────────────
     juce::ColourGradient radialGrad(
-        MixCoachTheme::bgElevated().withAlpha(0.6f),
+        MixCoachTheme::bgCard().withAlpha(0.6f),
         cx, cy,
         MixCoachTheme::bgDarker(),
         cx + radius, cy,
         false);
-    radialGrad.addColour(0.4f, MixCoachTheme::bgElevated().withAlpha(0.3f));
+    radialGrad.addColour(0.4f, MixCoachTheme::bgCard().withAlpha(0.3f));
     radialGrad.addColour(0.7f, MixCoachTheme::bgDarker().withAlpha(0.8f));
     g.setGradientFill(radialGrad);
     g.fillEllipse(area.reduced(4.0f));
@@ -410,34 +419,73 @@ void VectorscopeSystem::drawPhosphorPoints(juce::Graphics& g, juce::Rectangle<fl
     }
 
     // ─── Draw phosphor trail (oldest = most transparent) ─────────────────
+    // Optimization: batch points by alpha range into paths instead of individual ellipses
+    juce::Path glowPath, trailPath, brightPath;
+    bool glowStarted = false, trailStarted = false, brightStarted = false;
+
     for (const auto& pt : phosphorTrail_) {
         float ageAlpha = 1.0f - static_cast<float>(pt.age) / static_cast<float>(kPhosphorSteps);
         if (ageAlpha < 0.005f) continue;
 
         float sx = cx + pt.x * radius;
-        float sy = cy - pt.y * radius; // Y inverted for display (positive up)
+        float sy = cy - pt.y * radius;
 
-        // Clamp to area
         if (sx < area.getX() || sx > area.getRight() ||
             sy < area.getY() || sy > area.getBottom())
             continue;
 
-        // Size varies with age (newer = larger)
-        float pointSize = 1.5f + ageAlpha * 2.0f;
-
-        // Alpha varies with age
-        float alpha = ageAlpha * 0.7f;
-
-        // Draw glow for newer points
-        if (ageAlpha > 0.5f) {
-            float glowSize = pointSize * 3.0f;
-            g.setColour(traceColour.withAlpha(alpha * 0.15f));
-            g.fillEllipse(sx - glowSize * 0.5f, sy - glowSize * 0.5f, glowSize, glowSize);
+        // Group by brightness: glow (bright), trail (medium), dim (faint)
+        if (ageAlpha > 0.6f) {
+            // Bright points (recent) — glow + trail
+            if (!glowStarted) {
+                glowPath.startNewSubPath(sx, sy);
+                glowStarted = true;
+            } else {
+                glowPath.lineTo(sx, sy);
+            }
+            if (!brightStarted) {
+                brightPath.startNewSubPath(sx, sy);
+                brightStarted = true;
+            } else {
+                brightPath.lineTo(sx, sy);
+            }
+        } else if (ageAlpha > 0.2f) {
+            // Medium trail
+            if (!trailStarted) {
+                trailPath.startNewSubPath(sx, sy);
+                trailStarted = true;
+            } else {
+                trailPath.lineTo(sx, sy);
+            }
+        } else {
+            // Faint trail
+            if (!trailStarted) {
+                trailPath.startNewSubPath(sx, sy);
+                trailStarted = true;
+            } else {
+                trailPath.lineTo(sx, sy);
+            }
         }
+    }
 
-        // Draw point
-        g.setColour(traceColour.withAlpha(alpha));
-        g.fillEllipse(sx - pointSize * 0.5f, sy - pointSize * 0.5f, pointSize, pointSize);
+    // Draw glow path (latest points) — thick, dim
+    if (glowStarted) {
+        g.setColour(traceColour.withAlpha(0.12f));
+        g.strokePath(glowPath, juce::PathStrokeType(4.5f));
+    }
+
+    // Draw trail path (medium + faint)
+    if (trailStarted) {
+        g.setColour(traceColour.withAlpha(0.20f));
+        g.strokePath(trailPath, juce::PathStrokeType(2.0f));
+    }
+
+    // Draw bright path (newest points) — vivid
+    if (brightStarted) {
+        g.setColour(traceColour.withAlpha(0.50f));
+        g.strokePath(brightPath, juce::PathStrokeType(1.5f));
+        g.setColour(traceColour.withAlpha(0.08f));
+        g.strokePath(brightPath, juce::PathStrokeType(4.0f));
     }
 
     // ─── Draw Lissajous path (connecting recent points) ──────────────────
@@ -520,12 +568,19 @@ void VectorscopeSystem::drawCorrelationIndicator(juce::Graphics& g, juce::Rectan
     g.drawRoundedRectangle(barBounds, 2.0f, 0.5f);
 }
 
-void VectorscopeSystem::paint(juce::Graphics& g)
+void VectorscopeSystem::rebuildGridCache()
 {
-    auto bounds = getLocalBounds().toFloat();
+    const auto bounds = getLocalBounds();
+    if (bounds.isEmpty())
+        return;
+
+    gridCache_ = juce::Image(juce::Image::ARGB, bounds.getWidth(), bounds.getHeight(), true);
+    gridCache_.clear(gridCache_.getBounds());
+
+    juce::Graphics cg(gridCache_);
 
     // ─── Glass panel background ──────────────────────────────────────────
-    MixCoachTheme::fillGlassPanel(g, bounds, 6.0f);
+    MixCoachTheme::fillGlassPanel(cg, bounds.toFloat(), 6.0f);
 
     // ─── Content area (below title, above track label) ───────────────────
     auto area = getLocalBounds().reduced(4);
@@ -534,9 +589,30 @@ void VectorscopeSystem::paint(juce::Graphics& g)
 
     auto gfxArea = area.toFloat();
 
-    // ─── Draw layers ─────────────────────────────────────────────────────
-    drawBackground(g, gfxArea);
-    drawGrid(g, gfxArea);
+    // ─── Static layers (cached) ──────────────────────────────────────────
+    drawBackground(cg, gfxArea);
+    drawGrid(cg, gfxArea);
+
+    gridCacheValid_ = true;
+}
+
+void VectorscopeSystem::paint(juce::Graphics& g)
+{
+    // ─── Cached background + grid ────────────────────────────────────────
+    if (!gridCacheValid_)
+        rebuildGridCache();
+
+    if (gridCacheValid_)
+        g.drawImageAt(gridCache_, 0, 0);
+
+    // ─── Content area (below title, above track label) ───────────────────
+    auto area = getLocalBounds().reduced(4);
+    area.removeFromTop(18);  // title
+    area.removeFromBottom(18); // track label
+
+    auto gfxArea = area.toFloat();
+
+    // ─── Dynamic layers (redrawn each frame) ─────────────────────────────
     drawPhosphorPoints(g, gfxArea);
     drawCorrelationIndicator(g, gfxArea);
 }
@@ -548,7 +624,7 @@ void VectorscopeSystem::paint(juce::Graphics& g)
 PhaseCorrelationSystem::PhaseCorrelationSystem()
 {
     // ─── Title ────────────────────────────────────────────────────────────
-    titleLabel_.setText(juce::CharPointer_UTF8("\\xCF\\x86 Phase Correlation"),
+    titleLabel_.setText(juce::CharPointer_UTF8("\xCF\x86 Phase Correlation"),
                         juce::dontSendNotification);
     titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeHeader)).boldened());
     titleLabel_.setJustificationType(juce::Justification::centred);
@@ -563,7 +639,7 @@ PhaseCorrelationSystem::PhaseCorrelationSystem()
     addAndMakeVisible(valueLabel_);
 
     // ─── Warning labels (added in constructor, toggled via setVisible) ───
-    lWarning_.setText(juce::CharPointer_UTF8("\\xE2\\x9A\\xA0 OUT OF PHASE"),
+    lWarning_.setText(juce::CharPointer_UTF8("\xE2\x9A\xA0 OUT OF PHASE"),
                       juce::dontSendNotification);
     lWarning_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeBody)).boldened());
     lWarning_.setJustificationType(juce::Justification::centred);
@@ -571,7 +647,7 @@ PhaseCorrelationSystem::PhaseCorrelationSystem()
     addAndMakeVisible(lWarning_);
     lWarning_.setVisible(false);
 
-    rWarning_.setText(juce::CharPointer_UTF8("\\xE2\\x9A\\xA0 WIDE / UNUSUAL"),
+    rWarning_.setText(juce::CharPointer_UTF8("\xE2\x9A\xA0 WIDE / UNUSUAL"),
                       juce::dontSendNotification);
     rWarning_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeBody)).boldened());
     rWarning_.setJustificationType(juce::Justification::centred);
@@ -581,6 +657,7 @@ PhaseCorrelationSystem::PhaseCorrelationSystem()
 
     // ═══ Timer visual a 30fps ════════════════════════════════════════════
     // startTimerHz aquí + en visibilityChanged() como safety restart
+    startTimerHz(30);
 }
 
 PhaseCorrelationSystem::~PhaseCorrelationSystem()
@@ -702,7 +779,7 @@ void PhaseCorrelationSystem::drawCorrelationBar(juce::Graphics& g, juce::Rectang
     }
 
     // ─── Zone labels ─────────────────────────────────────────────────────
-    g.setFont(juce::Font(juce::FontOptions(7.0f)));
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)));
     g.setColour(MixCoachTheme::error().withAlpha(0.4f));
     g.drawText("OUT OF PHASE",
                juce::Rectangle<float>(bounds.getX() + 4, bounds.getY() + 4,

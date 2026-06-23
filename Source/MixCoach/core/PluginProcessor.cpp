@@ -8,6 +8,8 @@
 #include <windows.h>
 #endif
 
+#include <cstdlib>
+
 // ─── EarlyCrashLog — C puro, sin JUCE, para diagnosticar crashes tempranos ─
 // (FUERA del namespace mixcoach para que createPluginFilter() pueda llamarla)
 // NO es static para que PluginEditor.cpp también pueda usarla via extern declaration.
@@ -109,10 +111,23 @@ MixCoachAudioProcessor::MixCoachAudioProcessor()
 MixCoachAudioProcessor::~MixCoachAudioProcessor()
 {
     try {
-        if (logStream_)
-            logStream_->flush();
+        // ═══ Guardar estado de sesión antes de destruir módulos ═══════════
+        // Esto asegura que el historial del chat, género, modo, fase,
+        // nivel de experiencia y configuración se persistan en
+        // %LOCALAPPDATA%/MixCoach/ al cerrar FL Studio.
+        // Los unique_ptrs aún están vivos aquí (se destruyen después del body).
+        if (aiCoachAdapter_.get() != nullptr)
+            aiCoachAdapter_.get()->autoSave();
+
+        if (logStream_.get())
+            logStream_.get()->flush();
+
+        LogHelper::writeToLog("[MixCoach] Plugin destruido — sesión guardada");
     }
-    catch (...) {}
+    catch (...)
+    {
+        // No lanzar excepciones desde destructor
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,7 +215,7 @@ void MixCoachAudioProcessor::ensureSharedData()
             + juce::String(ensureSharedDataAttempts_)
             + " | sharedData_=" + (sharedData_ == nullptr ? "NULL" : "OK")
             + " | isAvailable=" + (sharedData_ && sharedData_->isAvailable() ? "SI" : "NO")
-            + " | phaseManager_=" + (phaseManager_ ? "OK" : "NULL");
+            + " | phaseManager_=" + (phaseManager_.get() ? "OK" : "NULL");
         if (errorDetail.isNotEmpty()) {
             logMsg += " | Fallo de mapeo de memoria: [" + errorDetail + "]";
         }
@@ -245,7 +260,7 @@ void MixCoachAudioProcessor::ensureSharedData()
             // Esto ocurre cuando la shared memory se pierde temporalmente (ej: el DAW
             // reinicia el sandbox de un Messenger) y luego se recupera.
             // Necesitamos forzar un resync completo y notificar al editor.
-            if (phaseManager_ != nullptr) {
+            if (phaseManager_.get() != nullptr) {
                 logMessage("[MixCoach] Intento de conexion #"
                     + juce::String(ensureSharedDataAttempts_)
                     + " | Shared memory RECONECTADA — forzando resync completo...");
@@ -280,7 +295,7 @@ void MixCoachAudioProcessor::ensureSharedData()
             // retornó early porque phaseManager_ ya existía). Necesitamos
             // forzar full sync para detectar slots que se registraron mientras
             // shared memory no estaba disponible.
-            if (phaseManager_ != nullptr) {
+            if (phaseManager_.get() != nullptr) {
                 logMessage("[MixCoach] CASO 4 con phaseManager_ existente: forzando resync post-reconexion...");
                 
                 auto& registry = sharedData_->getSlotRegistry();
@@ -304,8 +319,8 @@ void MixCoachAudioProcessor::ensureSharedData()
             // ═══ Sub-caso 4B: Primera inicialización completa ═════════════
             auto& registry = sharedData_->getSlotRegistry();
 
-            phaseManager_ = std::make_unique<PhaseManager>(registry);
-            coachEngine_  = std::make_unique<CoachEngine>(*phaseManager_, *sharedData_);
+        phaseManager_ = std::make_unique<PhaseManager>(registry);
+        coachEngine_  = std::make_unique<CoachEngine>(*phaseManager_.get(), *sharedData_, audioAnalyzer_);
 
             // Inicializar LogHelper (usamos un archivo distinto para evitar file locking con logStream_)
             LogHelper::setLogFile(
@@ -381,19 +396,237 @@ bool MixCoachAudioProcessor::initBrainModules()
         return false;
     }
     
-    if (phaseManager_ != nullptr) {
-        earlyCrashLog("BRAIN", "initBrainModules: already initialized");
-        return true; // Ya inicializado
+    // ═══ Si AiCoachAdapter ya existe, ya estamos completamente inicializados ═══
+    // NOTA: No usar phaseManager_ como guard — ensureSharedData() lo crea primero
+    // y si retornamos acá, nunca se crean AiCoachAdapter, LlmClient ni callbacks.
+    if (aiCoachAdapter_.get() != nullptr) {
+        earlyCrashLog("BRAIN", "initBrainModules: already fully initialized");
+        return true;
     }
     
     try {
-        earlyCrashLog("BRAIN", "initBrainModules: creando PhaseManager");
+        earlyCrashLog("BRAIN", "initBrainModules: inicializando modulos");
         auto& registry = sharedData_->getSlotRegistry();
         
-        phaseManager_ = std::make_unique<PhaseManager>(registry);
-        earlyCrashLog("BRAIN", "initBrainModules: PhaseManager OK, creando CoachEngine");
-        coachEngine_  = std::make_unique<CoachEngine>(*phaseManager_, *sharedData_);
-        earlyCrashLog("BRAIN", "initBrainModules: CoachEngine OK");
+        // ═══ Crear PhaseManager + CoachEngine si ensureSharedData() no lo hizo ═══
+        if (phaseManager_.get() == nullptr) {
+            phaseManager_ = std::make_unique<PhaseManager>(registry);
+            coachEngine_ = std::make_unique<CoachEngine>(*phaseManager_.get(), *sharedData_, audioAnalyzer_);
+            earlyCrashLog("BRAIN", "initBrainModules: PhaseManager+CoachEngine creados");
+        } else {
+            earlyCrashLog("BRAIN", "initBrainModules: PhaseManager+CoachEngine ya existian");
+        }
+        
+        // ═══ Crear AiCoachAdapter (si no existe) y conectar callbacks ═════════════════
+        auto* cePtr = coachEngine_.get();
+        auto* pmPtr = phaseManager_.get();
+        aiCoachAdapter_ = std::make_unique<AiCoachAdapter>(
+            *sharedData_, audioAnalyzer_, *cePtr, *pmPtr);
+
+        // ═══ Detectar DAW anfitrión via PluginHostType ════════════════════════
+        // PluginHostType detecta el DAW examinando el ejecutable anfitrión y
+        // los metadatos del wrapper VST3. Usa getHostDescription() para obtener
+        // el nombre legible (ej: "FL Studio", "Ableton Live").
+        {
+            juce::PluginHostType host;
+            const char* desc = host.getHostDescription();
+            if (desc != nullptr && strlen(desc) > 0)
+            {
+                juce::String dawName = juce::String(desc).trim();
+                aiCoachAdapter_->setHostName(dawName);
+                logMessage("[MixCoach] DAW detectado: " + dawName
+                    + " — catalogo de plugins nativos disponible");
+            }
+            else
+            {
+                logMessage("[MixCoach] No se pudo detectar el DAW via PluginHostType");
+            }
+        }
+
+        earlyCrashLog("BRAIN", "initBrainModules: AiCoachAdapter OK");
+        
+        // ═══ Crear LlmClient con Qwen2.5 7B local + OpenRouter fallback ═══
+        //
+        // PROVEEDOR PRIMARIO: Ollama local con Qwen2.5 7B.
+        //   - qwen2.5:7b es mucho más capaz que phi3:mini (~2x parámetros,
+        //     mejor razonamiento, contexto 32K vs 4K)
+        //   - Instala: ollama pull qwen2.5:7b
+        //   - Otros modelos locales compatibles:
+        //       • llama3.2:3b  — rápido, bueno para respuestas cortas
+        //       • llama3.2:1b  — ultra rápido, ligero
+        //       • qwen2.5:14b — más capaz pero requiere ~12GB RAM
+        //       • deepseek-r1:7b — excelente razonamiento
+        //
+        // FALLBACK: OpenRouter con meta-llama/llama-3.2-3b-instruct.
+        //   - Si Ollama no está disponible o falla la request,
+        //     el LlmClient reenvía automáticamente al fallback.
+        //   - El usuario DEBE configurar su API key de OpenRouter en la UI.
+        //   - Regístrate gratis: https://openrouter.ai/keys
+        //   - Modelo fallback: meta-llama/llama-3.2-3b-instruct:free
+        //
+        // El proveedor activo persiste en session_state.json y se restaura
+        // entre sesiones de FL Studio.
+        auto llmClient = std::make_unique<LlmClient>();
+        LlmClient::Config llmConfig;
+        llmConfig.provider     = LlmClient::Provider::Ollama;
+        llmConfig.endpointUrl  = "http://localhost:11434";
+        llmConfig.apiKey       = {};
+        llmConfig.model        = "qwen2.5:7b";
+        llmConfig.temperature  = 0.7f;
+        llmConfig.maxTokens    = 1024;
+        llmConfig.timeoutMs    = 30000;
+
+        // ─── Fallback a OpenRouter (requiere API key del usuario) ────────
+        llmConfig.useFallback              = true;
+        llmConfig.fallbackProvider         = LlmClient::Provider::OpenAICompatible;
+        llmConfig.fallbackEndpointUrl      = "https://openrouter.ai/api/v1";
+        llmConfig.fallbackApiKey           = {};  // Usuario debe configurar en UI
+        llmConfig.fallbackModel            = "meta-llama/llama-3.2-3b-instruct:free";
+        llmConfig.fallbackTemperature      = 0.7f;
+        llmConfig.fallbackMaxTokens        = 1024;
+        llmConfig.fallbackTimeoutMs        = 15000;
+
+        llmClient->setConfig(llmConfig);
+
+        // ⚠ NO hacer checkAvailability() aquí — es HTTP síncrono y bloquearía
+        // el message thread (timeout 5s). El LlmClient ya hará el retry
+        // automáticamente desde su background thread cuando llegue el primer
+        // mensaje del usuario (processRequest → checkAvailability).
+        LogHelper::writeToLog("[PluginProcessor] LLM config: primario=Ollama/" + llmConfig.model
+                              + ", fallback=OpenRouter/" + llmConfig.fallbackModel);
+        // Asignar al adapter
+        aiCoachAdapter_.get()->setLlmClient(llmClient.get());
+        earlyCrashLog("BRAIN", "initBrainModules: LlmClient OK");
+        
+        // Conectar callback de cambios en tracks (verifyTrackCorrections → session memory)
+        coachEngine_.get()->setTrackChangeCallback(
+            [this](int slotIndex, const juce::String& trackName,
+                   const juce::String& description, float beforeValue, float afterValue)
+            {
+                if (aiCoachAdapter_.get())
+                    aiCoachAdapter_.get()->recordChange(slotIndex, trackName, description, beforeValue, afterValue);
+            });
+        
+        // Conectar callback de consulta de historial (/session command)
+        coachEngine_.get()->setSessionQueryCallback(
+            [this]() -> juce::String
+            {
+                if (aiCoachAdapter_.get())
+                    return aiCoachAdapter_.get()->buildSessionHistoryString();
+                return {};
+            });
+        
+        // Conectar callback de sugerencia de roles via LLM
+        // Se usa en requestLLMRoleSuggestions() para que el LLM sugiera roles
+        // de pistas que quedaron Unknown tras la inferencia deterministica.
+        coachEngine_.get()->setRoleSuggestionCallback(
+            [this](const juce::String& prompt,
+                   std::function<void(const juce::String&)> responseCallback)
+            {
+                auto* rawClient = llmClient_.get();
+                if (rawClient && rawClient->isAvailable())
+                {
+                    rawClient->sendPrompt(
+                        "You are MixCoach's role suggestion assistant. "
+                        "Suggest instrument roles based on track names and genre.\n",
+                        prompt,
+                        [responseCallback](bool success, const juce::String& response, const juce::String&)
+                        {
+                            responseCallback(success ? response : juce::String{});
+                        });
+                }
+                else
+                {
+                    responseCallback({});
+                }
+            });
+
+        LogHelper::writeToLog("[PluginProcessor] RoleSuggestionCallback conectado");
+
+        // Conectar callback de respuestas LLM (retorna bool: true=manejado, false=no disponible)
+        // ⚠ NO pre-verificar isLlmAvailable() aquí: askLlm() internamente llama
+        // checkAvailability() con retry, así que funciona incluso si Ollama se
+        // inició después de que el plugin cargó.
+        coachEngine_.get()->setLlmResponseCallback(
+            [this](const juce::String& userMessage,
+                   std::function<void(const juce::String&)> responseCallback) -> bool
+            {
+                if (aiCoachAdapter_.get())
+                {
+                    // askLlm() maneja disponibilidad internamente con retry
+                    aiCoachAdapter_.get()->askLlm(userMessage,
+                        [responseCallback](bool success, const juce::String& response)
+                        {
+                            if (success)
+                                responseCallback(response);
+                            else
+                                responseCallback("\xF0\x9F\x94\x84 " + response);
+                        });
+                    return true;
+                }
+                return false;
+            });
+
+        // Conectar callback de respuestas LLM con STREAMING
+        // (retorna bool: true=manejado, false=no disponible)
+        // El onToken se llama por cada token recibido (message thread).
+        // El onComplete se llama cuando termina, con la respuesta completa.
+        coachEngine_.get()->setLlmStreamingCallback(
+            [this](const juce::String& userMessage,
+                   std::function<void(const juce::String& token)> onToken,
+                   std::function<void(const juce::String&)> onComplete) -> bool
+            {
+                if (aiCoachAdapter_.get())
+                {
+                    // askLlmStream() maneja disponibilidad y conversation history
+                    aiCoachAdapter_.get()->askLlmStream(
+                        userMessage,
+                        onToken,
+                        [onComplete](bool success, const juce::String& response)
+                        {
+                            if (success)
+                                onComplete(response);
+                            else
+                                onComplete("\xF0\x9F\x94\x84 " + response);
+                        });
+                    return true;
+                }
+                return false;
+            });
+        
+        // Conectar callback de setup LLM (FASE 0 — bienvenida personalizada + sugerencia de roles)
+        // ⚠ Usamos llmClient_.get()->sendPrompt() DIRECTAMENTE, NO askLlm(), porque el prompt de setup
+        // ya incluye instrucciones completas y NO debe mezclarse con telemetría ni la personalidad
+        // de ingeniero de mezcla (buildSystemPrompt + buildFullContext).
+        coachEngine_.get()->setSetupLlmCallback(
+            [this](const juce::String& prompt,
+                   std::function<void(const juce::String&)> responseCallback)
+            {
+                // Use raw pointer to avoid const unique_ptr access issue in MSVC
+                auto* rawClient = llmClient_.get();
+                if (rawClient && rawClient->isAvailable())
+                {
+                    rawClient->sendPrompt(
+                        "You are MixCoach's setup assistant, starting a new mixing session. "
+                        "Be warm, professional, and concise. Speak Spanish or English as appropriate.",
+                        prompt,
+                        [responseCallback](bool success, const juce::String& response, const juce::String&)
+                        {
+                            responseCallback(success ? response : juce::String{});
+                        });
+                }
+                else
+                {
+                    responseCallback({}); // No LLM available, fallback to hardcoded rules
+                }
+            });
+        
+        // Cargar sesión previa desde disco
+        if (aiCoachAdapter_.get())
+            aiCoachAdapter_.get()->autoLoad();
+        
+        // ═══ Guardar LlmClient como miembro (debe vivir más que el callback) ═══
+        llmClient_ = std::move(llmClient);
         
         // Inicializar LogHelper (usamos un archivo distinto)
         LogHelper::setLogFile(
@@ -435,6 +668,7 @@ void MixCoachAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         ensureSharedData();
 
         audioAnalyzer_.prepare(sampleRate, samplesPerBlock);
+        refPlayer_.prepare(sampleRate, samplesPerBlock);
         prepared_ = true;
 
         logMessage("prepareToPlay: sampleRate=" + juce::String(sampleRate)
@@ -450,24 +684,66 @@ void MixCoachAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
 void MixCoachAudioProcessor::releaseResources()
 {
+    refPlayer_.releaseResources();
+}
+
+// ═══ Helper NIVEL 1: protege contra C++ exceptions (try/catch) ══════════
+// SEPARADO de safeProcessAudio() porque MSVC C2713 prohibe try/catch
+// y __try/__except en la misma función.
+static void safeProcessAudioInner(MixCoachAudioProcessor& proc,
+                                   juce::AudioBuffer<float>& buffer)
+{
+    try
+    {
+        proc.getAudioAnalyzer().processBlock(buffer);
+        proc.getRefPlayer().mixIntoBuffer(buffer, 0.5f);
+    }
+    catch (const std::exception& e)
+    {
+        earlyCrashLog("AUDIO_CPP", e.what());
+        proc.getRefPlayer().pause();
+    }
+    catch (...)
+    {
+        earlyCrashLog("AUDIO_CPP", "unknown");
+        proc.getRefPlayer().pause();
+    }
+}
+
+// ═══ Helper NIVEL 2: protege contra SEH (Access Violations) ═════════════
+// SEPARADO de processBlock() porque MSVC C2712 prohíbe __try en funciones
+// con objetos C++ que tengan destructores (como ScopedNoDenormals).
+// __try/__except SÍ captura Access Violations (SEH). C++ catch() NO.
+// Llamamos a safeProcessAudioInner() desde DENTRO del __try para que
+// las C++ exceptions se capturen allí y los SEH aquí.
+// Las funciones SEPARADAS evitan C2713 (solo una forma de EH por función).
+static void safeProcessAudio(MixCoachAudioProcessor& proc,
+                              juce::AudioBuffer<float>& buffer)
+{
+    __try
+    {
+        safeProcessAudioInner(proc, buffer);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        // SEH capturado (AV, heap corrupto, etc.)
+        // ⚠ SOLO atomic store — NO llamar stop() ni clear() porque
+        // juce::String::clear() desasigna heap y podría AV si el heap
+        // está corrupto, causando un nested SEH que mata el proceso.
+        // pause() solo setea isPlaying_=false (atomic, sin heap).
+        proc.getRefPlayer().pause();
+    }
 }
 
 void MixCoachAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Protección: algunos DAWs llaman processBlock ANTES de prepareToPlay
     if (!prepared_) {
         return;
     }
 
-    // Pasamos el audio (MixCoach esta en el Master, el audio pasa directo)
-    auto now = juce::Time::getMillisecondCounter();
-    if (now - lastAnalysisTime_ > 500) // analisis cada 500ms como maximo
-    {
-        audioAnalyzer_.processBlock(buffer);
-        lastAnalysisTime_ = now;
-    }
+    safeProcessAudio(*this, buffer);
 }
 
 juce::AudioProcessorEditor* MixCoachAudioProcessor::createEditor()
@@ -490,13 +766,13 @@ void MixCoachAudioProcessor::logMessage(const juce::String& msg) const
             .getChildFile("MixCoach_Logs")
             .getChildFile("MixCoach_Brain.log");
         logFile.getParentDirectory().createDirectory();
-        if (!logStream_ || logStream_->getFile() != logFile) {
+        if (!logStream_.get() || logStream_.get()->getFile() != logFile) {
             logStream_ = std::make_unique<juce::FileOutputStream>(logFile, true);
         }
-        if (logStream_ && logStream_->openedOk()) {
-            *logStream_ << "[" << juce::Time::getCurrentTime().toString(true, true)
+        if (logStream_.get() && logStream_.get()->openedOk()) {
+            *logStream_.get() << "[" << juce::Time::getCurrentTime().toString(true, true)
                        << "] [BRAIN] " << msg << "\n";
-            logStream_->flush();
+            logStream_.get()->flush();
         }
     }
     catch (...) {}
@@ -510,22 +786,157 @@ void MixCoachAudioProcessor::logCrash(const juce::String& msg) const
 void MixCoachAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     juce::MemoryOutputStream mos(destData, false);
-    if (phaseManager_) {
-        mos.writeInt(static_cast<int>(phaseManager_->getCurrentPhase()));
+
+    // ═══ Versión 2: phase + referencias + V4 Dual Mode ═════════════════
+    constexpr int kDataVersion = 2;
+    mos.writeInt(kDataVersion);
+
+    // Phase
+    auto* pm = phaseManager_.get();
+    if (pm) {
+        mos.writeInt(static_cast<int>(pm->getCurrentPhase()));
     } else {
-        mos.writeInt(static_cast<int>(MentorPhase::Welcome));
+        mos.writeInt(static_cast<int>(MentorPhase::Organizacion));
+    }
+
+    // Referencias — leemos del cache del processor (siempre disponible,
+    // actualizado via callbacks en cada cambio).
+    const auto& filePaths = getCachedFilePaths();
+    const auto& urls      = getCachedURLs();
+
+    mos.writeInt(static_cast<int>(filePaths.size()));
+    for (const auto& p : filePaths)
+        mos.writeString(p);
+
+    mos.writeInt(static_cast<int>(urls.size()));
+    for (const auto& u : urls)
+        mos.writeString(u);
+
+    // ═══ V4 Dual Mode: CoachMode + MasterDestination ═══════════════════
+    auto* ce = coachEngine_.get();
+    if (ce) {
+        mos.writeInt(static_cast<int>(ce->getCoachMode()));
+        mos.writeInt(static_cast<int>(ce->getMasterDestination()));
+    } else {
+        mos.writeInt(static_cast<int>(CoachMode::Mix));
+        mos.writeInt(static_cast<int>(MasterDestination::StreamingGeneral));
     }
 }
 
 void MixCoachAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+    if (sizeInBytes < 4)
+        return;
+
     juce::MemoryInputStream mis(data, sizeInBytes, false);
-    if (sizeInBytes >= 4) {
+
+    int version = mis.readInt();
+
+    // ─── Phase (compatible con version 0 sin version header) ──────────────
+    auto* pm = phaseManager_.get();
+    if (version == 1 || version == 2) {
+        // Versión 1/2: tiene phase después del version header
         auto phase = static_cast<MentorPhase>(mis.readInt());
-        if (phaseManager_) {
-            phaseManager_->setPhase(phase);
+        if (pm) {
+            pm->setPhase(phase);
+        }
+    } else {
+        // Versión 0 (legacy, sin version header): el primer int es la phase
+        auto phase = static_cast<MentorPhase>(version);
+        if (pm) {
+            pm->setPhase(phase);
+        }
+        return;
+    }
+
+    // ─── Referencias ─────────────────────────────────────────────────────
+    std::vector<juce::String> filePaths, urls;
+
+    int numFiles = mis.readInt();
+    filePaths.reserve(numFiles);
+    for (int i = 0; i < numFiles; ++i)
+        filePaths.push_back(mis.readString());
+
+    int numUrls = mis.readInt();
+    urls.reserve(numUrls);
+    for (int i = 0; i < numUrls; ++i)
+        urls.push_back(mis.readString());
+
+    // ═══ V4 Dual Mode: restauracion desde version 2 ═════════════════════
+    if (version >= 2 && mis.getNumBytesRemaining() >= 8)
+    {
+        CoachMode mode = static_cast<CoachMode>(mis.readInt());
+        MasterDestination dest = static_cast<MasterDestination>(mis.readInt());
+
+        auto* ce = coachEngine_.get();
+        if (ce) {
+            ce->setCoachMode(mode);
+            ce->setMasterDestination(dest);
         }
     }
+
+    // Almacenar para que el editor las restaure cuando la UI esté lista
+    setPendingReferencePaths(filePaths, urls);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  setApiKey — Actualiza la API key en runtime desde la UI del chat
+// ═══════════════════════════════════════════════════════════════════════════
+void MixCoachAudioProcessor::setApiKey(const juce::String& apiKey)
+{
+    if (apiKey.isEmpty())
+        return;
+
+    apiKey_ = apiKey;
+
+    if (llmClient_ != nullptr)
+    {
+        auto config = llmClient_->getConfig();
+        config.apiKey = apiKey;
+        llmClient_->setConfig(config);
+        // Verificar disponibilidad de la API key inmediatamente.
+        // El check es ligero (GET /models) y permite que el usuario sepa
+        // si la key es valida sin esperar el background worker.
+        llmClient_->checkAvailability();
+        LogHelper::writeToLog("[MixCoach] API key actualizada desde la UI");
+    }
+    else
+    {
+        logMessage("[MixCoach] API key guardada para cuando LlmClient se inicialice");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  retryOllamaConnection — Re-intenta conectar con Ollama
+// ═══════════════════════════════════════════════════════════════════════════
+void MixCoachAudioProcessor::retryOllamaConnection()
+{
+    if (llmClient_ != nullptr)
+    {
+        llmClient_->checkAvailability();
+        bool available = llmClient_->isAvailable();
+
+        // Notificar a la UI
+        if (ollamaStatusCallback_)
+        {
+            juce::MessageManager::callAsync(
+                [this, available]()
+                {
+                    auto config = llmClient_->getConfig();
+                    ollamaStatusCallback_(available, config.model);
+                });
+        }
+
+        LogHelper::writeToLog("[MixCoach] Ollama retry: " + juce::String(available ? "conectado" : "desconectado"));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  isLlmAvailable — Retorna true si el LlmClient está disponible
+// ═══════════════════════════════════════════════════════════════════════════
+bool MixCoachAudioProcessor::isLlmAvailable() const noexcept
+{
+    return llmClient_ != nullptr && llmClient_->isAvailable();
 }
 
 } // namespace mixcoach

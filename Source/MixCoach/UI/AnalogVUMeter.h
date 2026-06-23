@@ -48,12 +48,15 @@ private:
     static constexpr float kVuMin    = -20.0f;
     static constexpr float kVuMax    =   3.0f;
 
-    // ─── Geométria del arco (en JUCE coords: 0°=right, 90°=down) ──
+    // ─── Geometría del arco (en JUCE coords: 0°=right, 90°=down) ──
     // El arco va desde ~215° (izquierda, -20 VU) a ~325° (derecha, +3 VU)
     // pasando por 270° (arriba, 0 VU) → ~110° total
-    static constexpr float kArcStartAngle = juce::MathConstants<float>::pi * 1.194f;  // ~215°
-    static constexpr float kArcEndAngle   = juce::MathConstants<float>::pi * 1.806f;  // ~325°
-    static constexpr float kArcRange      = kArcEndAngle - kArcStartAngle;  // ~110°
+    static constexpr float kArcStartAngle    = juce::MathConstants<float>::pi * 1.194f;  // ~215°
+    static constexpr float kArcEndAngle      = juce::MathConstants<float>::pi * 1.806f;  // ~325°
+    static constexpr float kArcRange         = kArcEndAngle - kArcStartAngle;  // ~110°
+    // Constantes de geometría compartidas entre draw*() y paintNeedle()
+    static constexpr float kPivotOffsetY     = 10.0f;   // pívote sube un poco del borde
+    static constexpr float kScaleRadiusFactor = 0.82f;  // fraccion de (h - kPivotOffsetY)
 
     // ─── Suavizado ────────────────────────────────────────────────
     SmoothValue smoothedVu_{ kVuMin, 6.0f, 40.0f };
@@ -73,11 +76,10 @@ private:
     void drawScale(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
     void drawNeedle(juce::Graphics& g, juce::Rectangle<float> faceBounds, float angle) const;
     void drawVuLabel(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
+    void drawChannelLabel(juce::Graphics& g, juce::Rectangle<float> faceBounds) const;
 
     void rebuildFaceCache();
     void paintStaticFace(juce::Graphics& g, juce::Rectangle<float> bounds) const;
-    void paintNeedleAndReadout(juce::Graphics& g, juce::Rectangle<float> faceBounds,
-                               juce::Rectangle<float> valArea) const;
 
     juce::Image faceCache_;
     bool faceCacheValid_ = false;

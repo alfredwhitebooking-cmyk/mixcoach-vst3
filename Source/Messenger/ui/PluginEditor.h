@@ -1,40 +1,37 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
-
-#include "StereoMeter.h"
-#include "WaveformView.h"
-#include "CircularGauge.h"
-#include "ColourSwatch.h"
-#include "ColourPresetStrip.h"
 #include "../../Common/types/Types.h"
+#include "../../Common/types/Constants.h"
+#include "../../MixCoach/UI/MixCoachTheme.h"
+#include "../../MixCoach/UI/SmoothValue.h"
+#include "../core/MessengerType.h"
 
 namespace mixcoach {
 
 class MessengerAudioProcessor;
 
-// ─── Change listener interno para el selector de color ─────────────────────
-class ColourSelectorListener : public juce::ChangeListener
-{
-public:
-    std::function<void(juce::Colour)> onColourChanged;
-
-    void changeListenerCallback(juce::ChangeBroadcaster* source) override
-    {
-        if (auto* selector = dynamic_cast<juce::ColourSelector*>(source)) {
-            if (onColourChanged)
-                onColourChanged(selector->getCurrentColour());
-        }
-    }
-};
-
-// ─── Messenger Plugin Editor (Rediseñado) ─────────────────────────────────
-//  3-column NIVELES layout: INPUT (L+R) | GR (circular) | OUTPUT (L+R)
-//  VU meters con escala exacta +6..-60 dB, peak triangle ◀, gradiente
+// ═══════════════════════════════════════════════════════════════════════════
+//  Messenger Audio Processor Editor
+//  ═══ TRACK INSPECTOR — Diseño premium tipo vidrio oscuro  ═══════════════
+//  Referencia visual: workspace_memory/referencias_visuales/Messenger.png
+//
+//  Layout:
+//    ┌─────────────────────────────────────────┐
+//    │  INFORMACION TRACK                 ●    │ ← Título púrpura + LED
+//    ├─────────────────────────────────────────┤ ← Divisor
+//    │  ✏️ NOMBRE     [________________]      │
+//    ├─────────────────────────────────────────┤
+//    │  🎨 COLOR      [● ▾______________]      │
+//    ├─────────────────────────────────────────┤
+//    │  📦 TIPO       [▾________________]      │
+//    ├─────────────────────────────────────────┤
+//    │  ➡️ RUTEO      [▾________________]      │
+//    └─────────────────────────────────────────┘
 // ═══════════════════════════════════════════════════════════════════════════
 class MessengerAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                     public juce::TextEditor::Listener,
-                                     public juce::Timer
+                                      public juce::TextEditor::Listener,
+                                      private juce::Timer
 {
 public:
     explicit MessengerAudioProcessorEditor(MessengerAudioProcessor&);
@@ -46,112 +43,73 @@ public:
 private:
     // TextEditor::Listener
     void textEditorTextChanged(juce::TextEditor&) override;
-
-    // juce::Timer
     void timerCallback() override;
-
-    void openColourSelector();
 
     MessengerAudioProcessor& processorRef_;
 
-    // ─── Componentes UI ─────────────────────────────────────────────────
+    // ─── Componentes UI ──────────────────────────────────────────────
 
-    // ===== INFO PANEL (form-style rows) =====
+    // Título: "INFORMACION TRACK"
+    juce::Label titleLabel_;
 
-    // Row 1: NOMBRE
+    // Nombre de pista (TextEditor)
     juce::TextEditor nameEditor_;
-    std::unique_ptr<ColourSwatch> colourSwatch_;
-    std::unique_ptr<juce::Component> colourPresetStrip_;
-    ColourPresetStrip* colourPresetStripRaw_{nullptr};
 
-    // Row 2: GRUPO
-    juce::Label      busValueLabel_;   // Texto violeta del bus (Drums Bus)
-    juce::ComboBox   busComboBox_;
+    // Tipo de instrumento (Kick, Snare, Voz, etc.)
+    juce::ComboBox typeComboBox_;
 
-    // Row 3: COLOR (coloured dot + preset strip)
-    juce::Label      statusLabel_;
+    // Ruteo (Bus)
+    juce::ComboBox busComboBox_;
 
-    // Row 4: TIPO (derivado del bus)
-    juce::Label      tipoValueLabel_;
+    // Color: dropdown con preview circle + PopupMenu
+    static constexpr int kNumColours = 8;
+    juce::Colour presetColours_[kNumColours];
+    juce::Rectangle<float> colourDropdownBounds_;  // Hit area: circle + arrow
+    juce::Rectangle<float> colourCircleBounds_;    // Color preview circle
+    int selectedColourIndex_ = 0;
 
-    // Row 5: PRIORIDAD
-    juce::Label      prioridadValueLabel_;
+    // ─── Layout bounds (para paint) ──────────────────────────────────
+    juce::Rectangle<int> titleDividerBounds_;
+    juce::Rectangle<int> nameDividerBounds_;
+    juce::Rectangle<int> colourDividerBounds_;
+    juce::Rectangle<int> typeDividerBounds_;
 
-    // Row 6: NOTAS
-    juce::TextEditor notasEditor_;
+    // ─── Icon helpers ────────────────────────────────────────────────
+    void drawPencilIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+    void drawPaletteIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+    void drawBoxIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+    void drawArrowIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour);
+    void drawIconCircle(juce::Graphics& g, juce::Rectangle<float> bounds);
 
-    // Row 7: MUTE button
-    juce::TextButton muteButton_;
+    // ─── Color dropdown ──────────────────────────────────────────────
+    void showColourPopup();
 
-    // ─── 3-Column NIVELES: INPUT | REDUCCIÓN DE GANANCIA | OUTPUT ──────
+    // ─── LED state ───────────────────────────────────────────────────
+    bool ledState_ = false;
 
-    // Column headers
-    juce::Label      inputLabel_;
-    juce::Label      grLabel_;
-    juce::Label      outputLabel_;
+    // ─── Animation state ────────────────────────────────────────────
+    SmoothValue iconHoverAlpha_[4];   // 0=normal, 1=hovered (4 icon rows)
+    SmoothValue colourHoverGlow_;     // 0=normal, 1=hovered (colour dropdown)
+    SmoothValue typeHoverGlow_;       // 0=normal, 1=hovered (TIPO combo)
+    SmoothValue busHoverGlow_;        // 0=normal, 1=hovered (RUTEO combo)
+    SmoothValue nameFocusGlow_;       // 0=normal, 1=focused (name editor)
+    SmoothValue ledGlow_;             // 0.0-1.0 smooth LED pulse
+    int hoveredRow_ = -1;            // -1=none, 0-3=row index
+    int hoveredCombo_ = -1;          // -1=none, 0=type, 1=bus
+    int iconRowY_[4] = {};           // cached Y position of each row start
+    uint32_t lastTimerMs_ = 0;       // for delta-time in 60fps timer
+    uint32_t lastTrackTypeSyncMs_ = 0; // throttle for Feedback Loop V9: sync TrackType ~1s
+    float ledPhase_ = 0.0f;          // phase accumulator for sine pulse
 
-    // Column value labels (grandes, blancos)
-    juce::Label      inputValueLabel_;
-    juce::Label      grValueLabel_;
-    juce::Label      outputValueLabel_;
+    // ─── Actions ─────────────────────────────────────────────────────
+    void applyType(TrackType type);
+    void applyColour(int colourIndex);
+    void applyBus(BusType bus);
 
-    // 2 StereoMeters: Input (L+R), Output (L+R)
-    std::unique_ptr<StereoMeter> stereoInput_;
-    std::unique_ptr<StereoMeter> stereoOutput_;
-    
-    // Una etiqueta L/R debajo de cada estéreo
-    juce::Label      stereoInputLabel_;
-    juce::Label      stereoOutputLabel_;
-
-    // Circular GR Gauge
-    std::unique_ptr<CircularGauge> grGauge_;
-
-    // Bottom info row (RMS, φ correlation)
-    juce::Label      rmsLabel_;
-    juce::Label      correlationLabel_;
-
-    // Bounds para el fondo del panel NIVELES (con esquinas redondeadas)
-    juce::Rectangle<int> nivelesPanelBounds_;
-
-    // Datos de telemetria para el timer
-    float lastPeakLeft_{-100.0f};
-    float lastPeakRight_{-100.0f};
-    float lastRMS_{-100.0f};
-    float lastCorrelation_{1.0f};
-    float lastGR_{0.0f};  // Gain reduction simulada (dB)
-
-    juce::Colour currentColour_{0xFF808080};
-
-    // Listener de cambio de color
-    ColourSelectorListener colourListener_;
-
-    void applyPresetColour(juce::Colour colour);
-    void updateMuteDisplay();
-
-    // ─── Helpers inline (evitan problemas de encoding con MSVC) ──────
-    static juce::String getTipoForBus(BusType bus) {
-        switch (bus) {
-            case BusType::Drums:   return "Bateria / Transiente";
-            case BusType::Bass:    return "Bajo / Fundamental";
-            case BusType::Guitars: return "Guitarra / Armonica";
-            case BusType::Keys:    return "Teclado / Armonico";
-            case BusType::Vocals:  return "Voz / Melodica";
-            case BusType::FX:      return "FX / Textura";
-            default:               return "—";
-        }
-    }
-    static juce::String getPrioridadForBus(BusType bus) {
-        switch (bus) {
-            case BusType::Drums:
-            case BusType::Vocals:  return "Alta";
-            case BusType::Bass:
-            case BusType::Keys:    return "Media";
-            case BusType::Guitars:
-            case BusType::FX:      return "Baja";
-            default:               return "—";
-        }
-    }
-    static void drawRowIcon(juce::Graphics& g, int rowIndex, juce::Rectangle<float> bounds);
+    // Mouse handling
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseMove(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MessengerAudioProcessorEditor)
 };

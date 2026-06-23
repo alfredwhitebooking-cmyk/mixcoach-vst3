@@ -252,86 +252,101 @@ static void test_for_each_active()
 }
 
 // ============================================================================
-//  8. Telemetry buffer access
+//  8. Stale flag behavior
 // ============================================================================
-static void test_telemetry_buffer()
+static void test_stale_flag()
 {
-    std::printf("\n── Telemetry Buffer ──\n");
+    std::printf("\n── Stale Flag ──\n");
     auto reg = std::make_unique<mixcoach::SlotRegistry>();
 
     reg->registerSlot("Vocal", juce::Colour(0xFF9B59B6), mixcoach::BusType::Vocals);
 
-    auto& buf = reg->getTelemetry(0);
-    TEST("telemetry buffer size is 0 initially", buf.size() == 0);
+    auto info = reg->getSlotInfo(0);
+    TEST("freshly registered slot not stale", !info.stale);
 
-    // Push telemetry data
-    mixcoach::TrackTelemetry t1;
-    t1.timestamp = 1000;
-    t1.peakLeft = -6.0f;
-    t1.peakRight = -8.0f;
-    t1.rmsLeft = -18.0f;
-    t1.correlation = 0.95f;
-    t1.lufsIntegrated = -14.0f;
-    buf.push(t1);
+    // setActive(false) should mark stale
+    reg->setActive(0, false);
+    info = reg->getSlotInfo(0);
+    TEST("slot inactive after setActive(false)", !info.active);
+    TEST("slot stale after setActive(false)", info.stale);
 
-    TEST("telemetry buffer size = 1 after push", buf.size() == 1);
+    // setActive(true) should clear stale
+    reg->setActive(0, true);
+    info = reg->getSlotInfo(0);
+    TEST("slot active again", info.active);
+    TEST("stale cleared", !info.stale);
 
-    auto latest = buf.latest();
-    TEST_NEAR("latest peakLeft", latest.peakLeft, -6.0f, 0.001f);
-    TEST_NEAR("latest peakRight", latest.peakRight, -8.0f, 0.001f);
-    TEST_NEAR("latest correlation", latest.correlation, 0.95f, 0.001f);
-    TEST_NEAR("latest lufsIntegrated", latest.lufsIntegrated, -14.0f, 0.001f);
-
-    // Const ref también funciona
-    const auto& constBuf = reg->getTelemetry(0);
-    TEST("const telemetry buffer has 1 entry", constBuf.size() == 1);
+    // checkStaleSlots without SHM should not crash
+    reg->checkStaleSlots();
+    TEST("checkStaleSlots without SHM does not crash", true);
 }
 
 // ============================================================================
-//  9. Audio ring buffer access
+//  9. TrackTelemetry struct (V3 sensor puro)
 // ============================================================================
-static void test_audio_buffer()
+static void test_telemetry_struct()
 {
-    std::printf("\n── Audio Ring Buffer ──\n");
-    auto reg = std::make_unique<mixcoach::SlotRegistry>();
+    std::printf("\n── TrackTelemetry Struct ──\n");
 
-    reg->registerSlot("Guitarra", juce::Colour(0xFF2ECC71), mixcoach::BusType::Guitars);
+    mixcoach::TrackTelemetry t;
+    TEST("telemetry default timestamp = 0", t.timestamp == 0);
+    TEST("telemetry default rms = -100", t.rms == -100.0f);
+    TEST("telemetry default peak = -100", t.peak == -100.0f);
+    TEST("telemetry default active = false", !t.active);
 
-    auto& buf = reg->getAudioBuffer(0);
-    TEST("audio buffer initially empty", !buf.hasData());
-    TEST("audio buffer available = 0", buf.available() == 0);
+    // Set and read back
+    t.timestamp = 12345678;
+    t.rms = -18.5f;
+    t.peak = -6.2f;
+    t.active = true;
+    t.slotIndex = 3;
+    t.colour = juce::Colour(0xFFE74C3C);
 
-    // Escribir samples de audio
-    float testData[] = {0.5f, -0.3f, 0.1f, -0.7f, 0.9f};
-    buf.write(testData, 5);
-    TEST("audio buffer has data after write", buf.hasData());
-    TEST("audio buffer available = 5", buf.available() == 5);
+    TEST("telemetry timestamp = 12345678", t.timestamp == 12345678);
+    TEST_NEAR("telemetry rms = -18.5", t.rms, -18.5f, 0.001f);
+    TEST_NEAR("telemetry peak = -6.2", t.peak, -6.2f, 0.001f);
+    TEST("telemetry active = true", t.active);
+    TEST("telemetry slotIndex = 3", t.slotIndex == 3);
+    TEST("telemetry colour ARGB matches",
+         t.colour.getARGB() == juce::Colour(0xFFE74C3C).getARGB());
+}
 
-    // Leer back
-    float readback[8] = {};
-    int read = buf.read(readback, 3);
-    TEST("read returns 3 samples", read == 3);
-    TEST_NEAR("readback[0]", readback[0], 0.5f, 0.001f);
-    TEST_NEAR("readback[1]", readback[1], -0.3f, 0.001f);
-    TEST_NEAR("readback[2]", readback[2], 0.1f, 0.001f);
-    TEST("audio buffer available = 2 after read", buf.available() == 2);
+// ============================================================================
+// 10. SlotInfo character array operations
+// ============================================================================
+static void test_slot_info_chars()
+{
+    std::printf("\n── SlotInfo Char Ops ──\n");
 
-    // Peek (sin consumir)
-    float peekBuf[8] = {};
-    int peeked = buf.peek(peekBuf, 2);
-    TEST("peek returns 2 samples", peeked == 2);
-    TEST_NEAR("peek[0]", peekBuf[0], -0.7f, 0.001f);
-    TEST_NEAR("peek[1]", peekBuf[1], 0.9f, 0.001f);
-    TEST("audio buffer available still 2 after peek", buf.available() == 2);
+    mixcoach::SlotInfo info;
+    TEST("default slotIndex = -1", info.slotIndex == -1);
+    TEST("default active = false", !info.active);
+    TEST("default stale = false", !info.stale);
+    TEST("default bus = None", info.bus == mixcoach::BusType::None);
 
-    // Reset
-    buf.reset();
-    TEST("audio buffer empty after reset", !buf.hasData());
-    TEST("audio buffer available = 0 after reset", buf.available() == 0);
+    // setTrackName via const char*
+    info.setTrackName("Bateria");
+    TEST("trackName after set: Bateria",
+         std::string(info.trackName) == "Bateria");
+    TEST("getTrackName() returns Bateria",
+         info.getTrackName() == "Bateria");
 
-    // Const ref
-    const auto& constBuf = reg->getAudioBuffer(0);
-    TEST("const audio buffer exists", true);
+    // setTrackName via std::string
+    info.setTrackName(std::string("Guitarra Electrica"));
+    TEST("trackName after set: Guitarra Electrica",
+         info.getTrackName() == "Guitarra Electrica");
+
+    // slotIndex, colour, bus
+    info.slotIndex = 5;
+    info.active = true;
+    info.colour = juce::Colour(0xFF3498DB);
+    info.bus = mixcoach::BusType::Bass;
+
+    TEST("slotIndex = 5", info.slotIndex == 5);
+    TEST("active = true", info.active);
+    TEST("bus = Bass", info.bus == mixcoach::BusType::Bass);
+    TEST("colour ARGB matches",
+         info.colour.getARGB() == juce::Colour(0xFF3498DB).getARGB());
 }
 
 // ============================================================================
@@ -471,8 +486,9 @@ int main()
     test_set_active();
     test_updates();
     test_for_each_active();
-    test_telemetry_buffer();
-    test_audio_buffer();
+    test_stale_flag();
+    test_telemetry_struct();
+    test_slot_info_chars();
     test_invalid_slot();
     test_full_slots();
     test_local_change_count();

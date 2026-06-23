@@ -1,4 +1,5 @@
 #include "VUMeter.h"
+#include "../../MixCoach/UI/MixCoachTheme.h"
 
 namespace mixcoach {
 
@@ -8,11 +9,6 @@ constexpr uint32_t kLime    = 0xFF84CC16;
 constexpr uint32_t kYellow  = 0xFFEAB308;
 constexpr uint32_t kOrange  = 0xFFF97316;
 constexpr uint32_t kRed     = 0xFFEF4444;
-
-constexpr uint32_t kBgBar   = 0xFF0A0A0F;
-constexpr uint32_t kBorder  = 0xFF2C2C3E;
-constexpr uint32_t kGrid    = 0xFF1A1A2E;
-constexpr uint32_t kScaleText = 0xFF6B7280;
 
 // Escala exacta del visual design (top → bottom)
 static constexpr float kScaleValues[] = {
@@ -84,11 +80,11 @@ void VUMeter::paint(juce::Graphics& g)
     const float radius = 0.8f;  // Esquinas sutiles para barra delgada
 
     // ─── Fondo del bar ──────────────────────────────────────────────────
-    g.setColour(juce::Colour(kBgBar));
+    g.setColour(MixCoachTheme::bgInput());
     g.fillRoundedRectangle(barBounds, radius);
 
     // ─── Grid lines ─────────────────────────────────────────────────────
-    g.setColour(juce::Colour(kGrid).withAlpha(0.45f));
+    g.setColour(MixCoachTheme::divider().withAlpha(0.45f));
     for (float db : { -18.0f, -12.0f, -6.0f, 0.0f }) {
         float y = levelToY(db, barBounds);
         g.drawHorizontalLine((int)y, barBounds.getX() + 1.0f, barBounds.getRight() - 1.0f);
@@ -131,7 +127,7 @@ void VUMeter::paint(juce::Graphics& g)
 
     // ─── Escala completa a la derecha: 6, 0, -6, -12, ..., -60 ──────────
     g.setFont(juce::Font(juce::FontOptions(6.0f)));
-    g.setColour(juce::Colour(kScaleText).withAlpha(0.7f));
+    g.setColour(MixCoachTheme::textMuted().withAlpha(0.7f));
     for (int i = 0; i < kNumScaleMarks; ++i) {
         float y = levelToY(kScaleValues[i], barBounds);
         g.drawText(juce::String((int)kScaleValues[i]),
@@ -140,7 +136,7 @@ void VUMeter::paint(juce::Graphics& g)
     }
 
     // ─── Borde ──────────────────────────────────────────────────────────
-    g.setColour(juce::Colour(kBorder).withAlpha(0.5f));
+    g.setColour(MixCoachTheme::borderCard().withAlpha(0.5f));
     g.drawRoundedRectangle(barBounds, radius, 1.0f);
 
     // ─── Clip indicator (> -0.5 dB) ─────────────────────────────────────

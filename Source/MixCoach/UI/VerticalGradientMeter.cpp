@@ -5,6 +5,7 @@ namespace mixcoach {
 
 float VerticalGradientMeter::dbToNorm(float db) noexcept
 {
+    // Escala balística unificada sobre un rango de 66dB (+6 a -60)
     return juce::jlimit(0.0f, 1.0f, (db - kMinDb) / (kMaxDb - kMinDb));
 }
 
@@ -15,16 +16,14 @@ float VerticalGradientMeter::normToY(float norm, juce::Rectangle<float> meterBou
 
 juce::Colour VerticalGradientMeter::colourForDb(float db) noexcept
 {
-    // Returns the color at a given position in the gradient range (-60 to 0 dB)
-    // Gradient: 0%-50% green, 50%-70% lime, 70%-85% yellow, 85%-95% orange, 95%-100% red
-    // Maps -60dB→0% (bottom) to 0dB→100% (top)
-    float norm = juce::jlimit(0.0f, 1.0f, (db - kMinDb) / (kMaxDb - kMinDb));
+    float norm = dbToNorm(db);
     
-    if (norm < 0.50f) return MixCoachTheme::meterGreen();
-    if (norm < 0.70f) return MixCoachTheme::meterLime();
-    if (norm < 0.85f) return MixCoachTheme::meterYellow();
-    if (norm < 0.95f) return MixCoachTheme::meterOrange();
-    return MixCoachTheme::meterRed();
+    // Mapeo dinámico multi-stop continuo para consultas analíticas rápidas
+    if (norm < 0.55f) return MixCoachTheme::meterGreen().interpolatedWith(MixCoachTheme::meterLime(), norm / 0.55f);
+    if (norm < 0.75f) return MixCoachTheme::meterLime().interpolatedWith(MixCoachTheme::meterYellow(), (norm - 0.55f) / 0.20f);
+    if (norm < 0.88f) return MixCoachTheme::meterYellow().interpolatedWith(MixCoachTheme::meterOrange(), (norm - 0.75f) / 0.13f);
+    
+    return MixCoachTheme::meterOrange().interpolatedWith(MixCoachTheme::meterRed(), (norm - 0.88f) / 0.12f);
 }
 
 void VerticalGradientMeter::drawDbScale(juce::Graphics& g, juce::Rectangle<float> bounds,
@@ -33,21 +32,22 @@ void VerticalGradientMeter::drawDbScale(juce::Graphics& g, juce::Rectangle<float
     g.setColour(MixCoachTheme::bgDarker());
     g.fillRoundedRectangle(bounds, 2.0f);
 
-    g.setFont(juce::Font(juce::FontOptions(6.5f)));
-    // Escala exacta del visual design: 6, 0, -6, -12, -18, -24, -30, -36, -42, -48, -60
-    const int marks[] = { 6, 0, -6, -12, -18, -24, -30, -36, -42, -48, -60 };
+    g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)));
+    const int marks[] = { 6, 0, -3, -6, -12, -18, -24, -30, -40, -50, -60 };
 
     for (int db : marks)
     {
-        const float norm = dbToNorm((float) db);
+        const float norm = dbToNorm((float)db);
         const float y = topIsZero ? normToY(norm, bounds) : bounds.getY() + norm * bounds.getHeight();
 
-        g.setColour(MixCoachTheme::rowDivider().withAlpha(0.55f));
-        g.drawHorizontalLine((int) y, bounds.getX() + 1.0f, bounds.getRight() - 1.0f);
+        // Línea divisoria técnica sutil
+        g.setColour(MixCoachTheme::rowDivider().withAlpha(db == 0 ? 0.55f : 0.20f));
+        g.drawHorizontalLine((int)y, bounds.getX(), bounds.getRight());
 
-        g.setColour(MixCoachTheme::textMuted().withAlpha(0.75f));
+        // Tipografía de marcas numéricas protegida contra desbordamientos
+        g.setColour(db > 0 ? MixCoachTheme::error().withAlpha(0.6f) : MixCoachTheme::textMuted().withAlpha(0.4f));
         g.drawText(juce::String(db),
-                   juce::Rectangle<float>(bounds.getX(), y - 5.0f, bounds.getWidth(), 9.0f),
+                   juce::Rectangle<float>(bounds.getX(), y - 4.5f, bounds.getWidth(), 9.0f),
                    juce::Justification::centred);
     }
 }
@@ -55,85 +55,93 @@ void VerticalGradientMeter::drawDbScale(juce::Graphics& g, juce::Rectangle<float
 void VerticalGradientMeter::drawGradientBar(juce::Graphics& g, juce::Rectangle<float> bounds,
                                             float levelDb, float radius)
 {
-    g.setColour(MixCoachTheme::bgCanvas());
+    // Fondo de canal oscuro anodizado
+    g.setColour(MixCoachTheme::bgDarker());
     g.fillRoundedRectangle(bounds, radius);
-    g.setColour(MixCoachTheme::border().withAlpha(0.25f));
-    g.drawRoundedRectangle(bounds, radius, 0.5f);
 
     const float norm = dbToNorm(levelDb);
-    if (norm <= 0.001f)
+    if (norm <= 0.005f)
         return;
 
     auto fillTop = normToY(norm, bounds);
     auto fillBounds = bounds.withTop(fillTop);
 
-    // Fixed multi-stop gradient: green→lime→yellow→orange→red (bottom→top)
-    // Colors placed at 0%, 50%, 70%, 85%, 95%, 100% of bar height
-    const float topNorm = (levelDb - kMinDb) / (kMaxDb - kMinDb);
-    const float botNorm = 0.0f;
-    
-    // Mapear las posiciones del gradiente al rango visible del fill
-    // El gradiente es fijo en todo el rango -60..0 dB, el fill recorta
-    juce::ColourGradient grad;
-    grad.isRadial = false;
-    grad.point1 = juce::Point<float>(fillBounds.getCentreX(), fillBounds.getY());     // top
-    grad.point2 = juce::Point<float>(fillBounds.getCentreX(), fillBounds.getBottom()); // bottom
-    
-    grad.addColour(0.00f, MixCoachTheme::meterRed());      // top → red
-    grad.addColour(0.05f, MixCoachTheme::meterRed());       // 5%
-    grad.addColour(0.15f, MixCoachTheme::meterOrange());    // 15%
-    grad.addColour(0.30f, MixCoachTheme::meterYellow());    // 30%
-    grad.addColour(0.50f, MixCoachTheme::meterLime());      // 50%
-    grad.addColour(1.00f, MixCoachTheme::meterGreen());     // bottom → green
-    
-    g.setGradientFill(grad);
-    g.fillRoundedRectangle(fillBounds, radius);
+    // Fijar el gradiente a las dimensiones estáticas absolutas de la pista (Riel)
+    // Esto garantiza que el color refleje fielmente el valor en dB sin importar el tamaño del fill
+    juce::ColourGradient grad(
+        MixCoachTheme::meterGreen(),  bounds.getCentreX(), bounds.getBottom(),
+        MixCoachTheme::meterRed(),    bounds.getCentreX(), bounds.getY(), false);
 
-    auto shine = fillBounds.withHeight(juce::jmax(2.0f, fillBounds.getHeight() * 0.08f));
-    g.setColour(juce::Colours::white.withAlpha(0.12f));
-    g.fillRoundedRectangle(shine, radius);
+    grad.addColour(0.55f, MixCoachTheme::meterLime());
+    grad.addColour(0.75f, MixCoachTheme::meterYellow());
+    grad.addColour(0.88f, MixCoachTheme::meterOrange());
+
+    g.setGradientFill(grad);
+    
+    // Renderizado seguro por máscara de recorte para preservar los bordes redondeados inferiores
+    g.saveState();
+    g.reduceClipRegion(fillBounds.toNearestInt());
+    g.fillRoundedRectangle(bounds, radius);
+    g.restoreState();
+
+    // Resplandor superior técnico (Glow frontal de impacto)
+    auto shine = fillBounds.withHeight(juce::jmin(2.5f, fillBounds.getHeight()));
+    g.setColour(juce::Colours::white.withAlpha(0.30f));
+    g.fillRect(shine);
 }
 
 void VerticalGradientMeter::drawSolidBar(juce::Graphics& g, juce::Rectangle<float> bounds,
                                          float levelDb, juce::Colour colour, float radius)
 {
-    g.setColour(MixCoachTheme::bgCanvas());
+    g.setColour(MixCoachTheme::bgDarker());
     g.fillRoundedRectangle(bounds, radius);
 
     const float norm = dbToNorm(levelDb);
-    if (norm <= 0.001f)
+    if (norm <= 0.005f)
         return;
 
     auto fillBounds = bounds.withTop(normToY(norm, bounds));
-    g.setColour(colour.withAlpha(0.92f));
+    g.setColour(colour.withAlpha(0.85f));
     g.fillRoundedRectangle(fillBounds, radius);
 }
 
-void VerticalGradientMeter::drawPeakTriangle(juce::Graphics& g,
-                                             juce::Rectangle<float> scaleBounds,
-                                             float peakHoldDb, juce::Colour colour)
+void VerticalGradientMeter::drawPeakTriangle(juce::Graphics& g, juce::Rectangle<float> scaleBounds,
+                                             float peakHoldDb, juce::Colour colour, bool alignLeft)
 {
     if (peakHoldDb <= kMinDb + 0.5f)
         return;
 
     const float y = normToY(dbToNorm(peakHoldDb), scaleBounds);
-    // ◀ peak triangle a la izquierda del scale (visual design)
-    const float x = scaleBounds.getX() - 1.0f;
-
+    const float triSize = 3.0f;
+    
     juce::Path tri;
-    tri.addTriangle(x, y,
-                    x + 5.0f, y - 3.0f,
-                    x + 5.0f, y + 3.0f);
-    g.setColour(colour);
+    
+    if (alignLeft)
+    {
+        const float x = scaleBounds.getX() - 1.5f;
+        tri.addTriangle(x, y,
+                        x - triSize, y - triSize + 0.5f,
+                        x - triSize, y + triSize - 0.5f);
+    }
+    else
+    {
+        const float x = scaleBounds.getRight() + 1.5f;
+        tri.addTriangle(x, y,
+                        x + triSize, y - triSize + 0.5f,
+                        x + triSize, y + triSize - 0.5f);
+    }
+
+    g.setColour(peakHoldDb >= 0.0f ? MixCoachTheme::error() : colour.withAlpha(0.9f));
     g.fillPath(tri);
 }
 
 void VerticalGradientMeter::drawPeakReadout(juce::Graphics& g, juce::Rectangle<float> bounds,
                                             float peakDb, juce::Colour colour)
 {
-    juce::String text = peakDb <= kMinDb + 1.0f ? "--.-" : juce::String(peakDb, 1);
+    juce::String text = peakDb <= kMinDb + 1.0f ? "--.-" : ((peakDb >= 0.0f ? "+" : "") + juce::String(peakDb, 1));
+    
     g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
-    g.setColour(colour);
+    g.setColour(peakDb >= 0.0f ? MixCoachTheme::error() : colour);
     g.drawText(text, bounds, juce::Justification::centred);
 }
 
@@ -145,16 +153,23 @@ void MeterChannelBallistics::setLevelDb(float db) noexcept
     if (db >= peakHoldDb)
     {
         peakHoldDb = db;
-        peakHoldFrames = 45;
+        peakHoldFrames = 45; // Sostener el pico por ~750ms antes de comenzar la caída
     }
 }
 
 void MeterChannelBallistics::tickHold() noexcept
 {
     if (peakHoldFrames > 0)
+    {
         --peakHoldFrames;
+    }
     else if (peakHoldDb > VerticalGradientMeter::kMinDb)
-        peakHoldDb += (VerticalGradientMeter::kMinDb - peakHoldDb) * 0.04f;
+    {
+        // Caída lineal en decibelios (0.55 dB por frame), mucho más natural
+        peakHoldDb -= 0.55f;
+        if (peakHoldDb < VerticalGradientMeter::kMinDb)
+            peakHoldDb = VerticalGradientMeter::kMinDb;
+    }
 }
 
 } // namespace mixcoach

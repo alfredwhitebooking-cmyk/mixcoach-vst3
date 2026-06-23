@@ -153,18 +153,20 @@ static int gTestsFailed = 0;
 static void test_enum_values() {
     std::printf("\n── Enum Values ──\n");
 
-    TEST("Welcome = 0",
-         static_cast<int>(mixcoach::MentorPhase::Welcome) == 0);
+    TEST("Organizacion = 0",
+         static_cast<int>(mixcoach::MentorPhase::Organizacion) == 0);
     TEST("GainStaging = 1",
          static_cast<int>(mixcoach::MentorPhase::GainStaging) == 1);
-    TEST("Organisation = 2",
-         static_cast<int>(mixcoach::MentorPhase::Organisation) == 2);
-    TEST("TonalBalance = 3",
-         static_cast<int>(mixcoach::MentorPhase::TonalBalance) == 3);
-    TEST("Dynamics = 4",
-         static_cast<int>(mixcoach::MentorPhase::Dynamics) == 4);
-    TEST("Spatial = 5",
-         static_cast<int>(mixcoach::MentorPhase::Spatial) == 5);
+    TEST("Balance = 2",
+         static_cast<int>(mixcoach::MentorPhase::Balance) == 2);
+    TEST("EQ = 3",
+         static_cast<int>(mixcoach::MentorPhase::EQ) == 3);
+    TEST("Compresion = 4",
+         static_cast<int>(mixcoach::MentorPhase::Compresion) == 4);
+    TEST("Espacio = 5",
+         static_cast<int>(mixcoach::MentorPhase::Espacio) == 5);
+    TEST("MasterCheck = 6",
+         static_cast<int>(mixcoach::MentorPhase::MasterCheck) == 6);
 
     TEST("FirstTrack = 0",
          static_cast<int>(mixcoach::Achievement::FirstTrack) == 0);
@@ -172,37 +174,39 @@ static void test_enum_values() {
          static_cast<int>(mixcoach::Achievement::FiveTracks) == 1);
     TEST("TenTracks = 2",
          static_cast<int>(mixcoach::Achievement::TenTracks) == 2);
-    TEST("FullMix = 3",
-         static_cast<int>(mixcoach::Achievement::FullMix) == 3);
+    TEST("FullMap = 3",
+         static_cast<int>(mixcoach::Achievement::FullMap) == 3);
     TEST("PhaseMaster = 4",
          static_cast<int>(mixcoach::Achievement::PhaseMaster) == 4);
-    TEST("DynamicControl = 5",
-         static_cast<int>(mixcoach::Achievement::DynamicControl) == 5);
-    TEST("GainGod = 6",
-         static_cast<int>(mixcoach::Achievement::GainGod) == 6);
+    TEST("FirstReference = 5",
+         static_cast<int>(mixcoach::Achievement::FirstReference) == 5);
+    TEST("MixComplete = 6",
+         static_cast<int>(mixcoach::Achievement::MixComplete) == 6);
 }
 
 static void test_phase_descriptions() {
     std::printf("\n── Phase Descriptions ──\n");
 
-    TEST("Welcome has description",
-         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Welcome) != nullptr);
+    TEST("Organizacion has description",
+         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Organizacion) != nullptr);
     TEST("GainStaging has description",
          mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::GainStaging) != nullptr);
-    TEST("Organisation has description",
-         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Organisation) != nullptr);
-    TEST("TonalBalance has description",
-         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::TonalBalance) != nullptr);
-    TEST("Dynamics has description",
-         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Dynamics) != nullptr);
-    TEST("Spatial has description",
-         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Spatial) != nullptr);
+    TEST("Balance has description",
+         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Balance) != nullptr);
+    TEST("EQ has description",
+         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::EQ) != nullptr);
+    TEST("Compresion has description",
+         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Compresion) != nullptr);
+    TEST("Espacio has description",
+         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Espacio) != nullptr);
+    TEST("MasterCheck has description",
+         mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::MasterCheck) != nullptr);
 
     // All descriptions should be non-empty
-    TEST("Welcome description non-empty",
-         std::strlen(mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Welcome)) > 0);
-    TEST("Spatial description non-empty",
-         std::strlen(mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Spatial)) > 0);
+    TEST("Organizacion description non-empty",
+         std::strlen(mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::Organizacion)) > 0);
+    TEST("MasterCheck description non-empty",
+         std::strlen(mixcoach::PhaseManager::phaseDescription(mixcoach::MentorPhase::MasterCheck)) > 0);
 }
 
 // ============================================================================
@@ -213,18 +217,20 @@ static void test_min_tracks() {
     std::printf("\n── minTracksForPhase ──\n");
 
     // Valores esperados
-    TEST("Welcome → 0",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Welcome) == 0);
+    TEST("Organizacion → 0",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Organizacion) == 0);
     TEST("GainStaging → 1",
          mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::GainStaging) == 1);
-    TEST("Organisation → 3",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Organisation) == 3);
-    TEST("TonalBalance → 5",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::TonalBalance) == 5);
-    TEST("Dynamics → 8",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Dynamics) == 8);
-    TEST("Spatial → 10",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Spatial) == 10);
+    TEST("Balance → 3",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Balance) == 3);
+    TEST("EQ → 3",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::EQ) == 3);
+    TEST("Compresion → 5",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Compresion) == 5);
+    TEST("Espacio → 3",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Espacio) == 3);
+    TEST("MasterCheck → 3",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::MasterCheck) == 3);
 
     // Edge cases: valores fuera de rango
     auto invalidLow  = static_cast<mixcoach::MentorPhase>(-1);
@@ -235,30 +241,21 @@ static void test_min_tracks() {
          mixcoach::PhaseManager::minTracksForPhase(invalidHigh) == 0);
 
     // Monotonía estricta: cada fase requiere >= tracks que la anterior
-    TEST("GainStaging >= Welcome",
+    TEST("GainStaging >= Organizacion",
          mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::GainStaging) >=
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Welcome));
-    TEST("Organisation >= GainStaging",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Organisation) >=
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Organizacion));
+    TEST("Balance >= GainStaging",
+         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Balance) >=
          mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::GainStaging));
-    TEST("TonalBalance >= Organisation",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::TonalBalance) >=
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Organisation));
-    TEST("Dynamics >= TonalBalance",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Dynamics) >=
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::TonalBalance));
-    TEST("Spatial >= Dynamics",
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Spatial) >=
-         mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Dynamics));
 
     // Valor máximo de tracks requerido
     int maxTracks = 0;
-    for (int p = 0; p <= static_cast<int>(mixcoach::MentorPhase::Spatial); ++p) {
+    for (int p = 0; p <= static_cast<int>(mixcoach::MentorPhase::MasterCheck); ++p) {
         int t = mixcoach::PhaseManager::minTracksForPhase(static_cast<mixcoach::MentorPhase>(p));
         if (t > maxTracks) maxTracks = t;
     }
-    TEST("Spatial has max track requirement",
-         maxTracks == mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Spatial));
+    TEST("Compresion has max track requirement",
+         maxTracks == mixcoach::PhaseManager::minTracksForPhase(mixcoach::MentorPhase::Compresion));
     TEST("Max tracks <= SlotRegistry::kMaxSlots",
          maxTracks <= mixcoach::SlotRegistry::kMaxSlots);
 }
@@ -280,52 +277,56 @@ static void test_phase_transitions() {
     mixcoach::PhaseManager pm(*registry);
 
     // Estado inicial
-    TEST("Initial phase is Welcome",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Welcome);
+    TEST("Initial phase is Organizacion",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::Organizacion);
 
-    // Transiciones progresivas: Welcome → GainStaging → Organisation
+    // Transiciones progresivas: Organizacion → GainStaging → Balance → EQ → Compresion → Espacio → MasterCheck
     pm.advanceToNextPhase();
     TEST("After advance 1 → GainStaging",
          pm.getCurrentPhase() == mixcoach::MentorPhase::GainStaging);
 
     pm.advanceToNextPhase();
-    TEST("After advance 2 → Organisation",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Organisation);
+    TEST("After advance 2 → Balance",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::Balance);
 
     pm.advanceToNextPhase();
-    TEST("After advance 3 → TonalBalance",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::TonalBalance);
+    TEST("After advance 3 → EQ",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::EQ);
 
     pm.advanceToNextPhase();
-    TEST("After advance 4 → Dynamics",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Dynamics);
+    TEST("After advance 4 → Compresion",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::Compresion);
 
     pm.advanceToNextPhase();
-    TEST("After advance 5 → Spatial",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Spatial);
-
-    // No debe avanzar más allá de Spatial
-    pm.advanceToNextPhase();
-    TEST("After advance 6 → still Spatial (no overflow)",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Spatial);
+    TEST("After advance 5 → Espacio",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::Espacio);
 
     pm.advanceToNextPhase();
+    TEST("After advance 6 → MasterCheck",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::MasterCheck);
+
+    // No debe avanzar más allá de MasterCheck
     pm.advanceToNextPhase();
-    TEST("After multiple advances → still Spatial",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Spatial);
+    TEST("After advance 7 → still MasterCheck (no overflow)",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::MasterCheck);
+
+    pm.advanceToNextPhase();
+    pm.advanceToNextPhase();
+    TEST("After multiple advances → still MasterCheck",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::MasterCheck);
 
     // setPhase() debe saltar a cualquier fase directamente
-    pm.setPhase(mixcoach::MentorPhase::Welcome);
-    TEST("setPhase(Welcome) works",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Welcome);
+    pm.setPhase(mixcoach::MentorPhase::Organizacion);
+    TEST("setPhase(Organizacion) works",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::Organizacion);
 
-    pm.setPhase(mixcoach::MentorPhase::Dynamics);
-    TEST("setPhase(Dynamics) works",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Dynamics);
+    pm.setPhase(mixcoach::MentorPhase::MasterCheck);
+    TEST("setPhase(MasterCheck) works",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::MasterCheck);
 
-    pm.setPhase(mixcoach::MentorPhase::Spatial);
-    TEST("setPhase(Spatial) works",
-         pm.getCurrentPhase() == mixcoach::MentorPhase::Spatial);
+    pm.setPhase(mixcoach::MentorPhase::Espacio);
+    TEST("setPhase(Espacio) works",
+         pm.getCurrentPhase() == mixcoach::MentorPhase::Espacio);
 
     registry.reset();
 }
@@ -368,16 +369,16 @@ static void test_achievement_unlocking() {
          pm.getAchievementCount() == 3);
 
     // Desbloquear todos los 7 logros
-    pm.unlockAchievement(mixcoach::Achievement::FullMix);
+    pm.unlockAchievement(mixcoach::Achievement::FullMap);
     pm.unlockAchievement(mixcoach::Achievement::PhaseMaster);
-    pm.unlockAchievement(mixcoach::Achievement::DynamicControl);
-    pm.unlockAchievement(mixcoach::Achievement::GainGod);
+    pm.unlockAchievement(mixcoach::Achievement::FirstReference);
+    pm.unlockAchievement(mixcoach::Achievement::MixComplete);
     TEST("Count = 7 after all achievements",
          pm.getAchievementCount() == 7);
 
     // Ya no se pueden desbloquear más
     TEST("Unlock after all unlocked → false",
-         pm.unlockAchievement(mixcoach::Achievement::GainGod) == false);
+         pm.unlockAchievement(mixcoach::Achievement::MixComplete) == false);
     TEST("Count still = 7 after final duplicate",
          pm.getAchievementCount() == 7);
 
@@ -390,38 +391,38 @@ static void test_phase_completion() {
     auto registry = std::make_unique<mixcoach::SlotRegistry>();
     mixcoach::PhaseManager pm(*registry);
 
-    // Welcome siempre está completo
-    TEST("Welcome is always complete",
-         pm.isPhaseComplete(mixcoach::MentorPhase::Welcome) == true);
+    // Organizacion: necesita al menos 1 track activo
+    TEST("Organizacion complete with 0 tracks",
+         pm.isPhaseComplete(mixcoach::MentorPhase::Organizacion) == false);
 
-    // GainStaging: completa cuando activeCount > 0
-    TEST("GainStaging incomplete with 0 tracks",
+    // Registrar 1 pista → Organizacion se completa
+    registry->registerSlot("Pista 1", juce::Colours::red, mixcoach::BusType::Drums);
+    TEST("Organizacion complete with 1 track",
+         pm.isPhaseComplete(mixcoach::MentorPhase::Organizacion) == true);
+
+    // GainStaging: depende de gainMetrics_.hasData
+    TEST("GainStaging incomplete without metrics",
          pm.isPhaseComplete(mixcoach::MentorPhase::GainStaging) == false);
 
-    // Registrar 1 pista → GainStaging se completa
-    registry->registerSlot("Pista 1", juce::Colours::red, mixcoach::BusType::Drums);
-    TEST("GainStaging complete with 1 track",
-         pm.isPhaseComplete(mixcoach::MentorPhase::GainStaging) == true);
+    // Balance: depende de balanceMetrics_.hasData
+    TEST("Balance incomplete without metrics",
+         pm.isPhaseComplete(mixcoach::MentorPhase::Balance) == false);
 
-    // Organisation: necesita >= 3 tracks activos
-    TEST("Organisation incomplete with 1 track",
-         pm.isPhaseComplete(mixcoach::MentorPhase::Organisation) == false);
+    // EQ: depends on tonalMetrics
+    TEST("EQ incomplete without metrics",
+         pm.isPhaseComplete(mixcoach::MentorPhase::EQ) == false);
 
-    registry->registerSlot("Pista 2", juce::Colours::blue, mixcoach::BusType::Bass);
-    TEST("Organisation incomplete with 2 tracks",
-         pm.isPhaseComplete(mixcoach::MentorPhase::Organisation) == false);
+    // Compresion: depends on dynamicsMetrics
+    TEST("Compresion incomplete without metrics",
+         pm.isPhaseComplete(mixcoach::MentorPhase::Compresion) == false);
 
-    registry->registerSlot("Pista 3", juce::Colours::green, mixcoach::BusType::Guitars);
-    TEST("Organisation complete with 3 tracks",
-         pm.isPhaseComplete(mixcoach::MentorPhase::Organisation) == true);
+    // Espacio: depends on espacioMetrics
+    TEST("Espacio incomplete without metrics",
+         pm.isPhaseComplete(mixcoach::MentorPhase::Espacio) == false);
 
-    // TonalBalance, Dynamics, Spatial: siempre completas (por diseño)
-    TEST("TonalBalance always complete",
-         pm.isPhaseComplete(mixcoach::MentorPhase::TonalBalance) == true);
-    TEST("Dynamics always complete",
-         pm.isPhaseComplete(mixcoach::MentorPhase::Dynamics) == true);
-    TEST("Spatial always complete",
-         pm.isPhaseComplete(mixcoach::MentorPhase::Spatial) == true);
+    // MasterCheck: siempre completa (fase final)
+    TEST("MasterCheck always complete",
+         pm.isPhaseComplete(mixcoach::MentorPhase::MasterCheck) == true);
 
     // Fase inválida → false
     auto invalidPhase = static_cast<mixcoach::MentorPhase>(99);
@@ -437,38 +438,38 @@ static void test_phase_progress() {
     auto registry = std::make_unique<mixcoach::SlotRegistry>();
     mixcoach::PhaseManager pm(*registry);
 
-    // Welcome → 100%
-    TEST("Welcome progress = 1.0",
-         pm.getPhaseProgress(mixcoach::MentorPhase::Welcome) == 1.0f);
+    // Organizacion → 100% siempre
+    TEST("Organizacion progress = 1.0",
+         pm.getPhaseProgress(mixcoach::MentorPhase::Organizacion) == 1.0f);
+    TEST("Organizacion progress = 1.0",
+         pm.getPhaseProgress(mixcoach::MentorPhase::Organizacion) == 1.0f);
 
-    // GainStaging: 0.5 si hay tracks, 0.0 si no
-    TEST("GainStaging progress = 0.0 with 0 tracks",
+    // GainStaging: 0.0 sin metrics
+    TEST("GainStaging progress = 0.0 without metrics",
          pm.getPhaseProgress(mixcoach::MentorPhase::GainStaging) == 0.0f);
 
-    registry->registerSlot("Pista 1", juce::Colours::red, mixcoach::BusType::Drums);
-    TEST("GainStaging progress = 0.5 with 1 track",
-         pm.getPhaseProgress(mixcoach::MentorPhase::GainStaging) >= 0.49f);
+    // Balance: 0.0 sin metrics
+    float progBal = pm.getPhaseProgress(mixcoach::MentorPhase::Balance);
+    TEST("Balance progress = 0.0 without metrics",
+         progBal == 0.0f);
 
-    // Organisation: activeCount / 10.0, clamped to [0, 1]
-    float prog3 = pm.getPhaseProgress(mixcoach::MentorPhase::Organisation);
-    TEST("Organisation progress with 1 track ≈ 0.1",
-         prog3 > 0.05f && prog3 < 0.15f);
-
-    // Registrar 9 tracks más = 10 total → Organisation progress = 1.0
-    for (int i = 2; i <= 10; ++i) {
-        registry->registerSlot("Pista " + std::to_string(i),
+    // Registrar 10 tracks para probar progress
+    for (int i = 1; i <= 10; ++i) {
+        registry->registerSlot("Track " + std::to_string(i),
                                juce::Colours::blue, mixcoach::BusType::Bass);
     }
-    TEST("Organisation progress = 1.0 with 10 tracks",
-         pm.getPhaseProgress(mixcoach::MentorPhase::Organisation) >= 0.99f);
 
-    // TonalBalance, Dynamics, Spatial → 0.0 (no implementados)
-    TEST("TonalBalance progress = 0.0",
-         pm.getPhaseProgress(mixcoach::MentorPhase::TonalBalance) == 0.0f);
-    TEST("Dynamics progress = 0.0",
-         pm.getPhaseProgress(mixcoach::MentorPhase::Dynamics) == 0.0f);
-    TEST("Spatial progress = 0.0",
-         pm.getPhaseProgress(mixcoach::MentorPhase::Spatial) == 0.0f);
+    // EQ: 0.0 sin metrics
+    TEST("EQ progress = 0.0 without metrics",
+         pm.getPhaseProgress(mixcoach::MentorPhase::EQ) == 0.0f);
+
+    // Compresion: 0.0 sin metrics
+    TEST("Compresion progress = 0.0 without metrics",
+         pm.getPhaseProgress(mixcoach::MentorPhase::Compresion) == 0.0f);
+
+    // MasterCheck: 0.0 sin metrics
+    TEST("MasterCheck progress = 0.0 without metrics",
+         pm.getPhaseProgress(mixcoach::MentorPhase::MasterCheck) == 0.0f);
 
     // Fase inválida → 0.0
     auto invalidPhase = static_cast<mixcoach::MentorPhase>(99);

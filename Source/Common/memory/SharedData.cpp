@@ -11,8 +11,7 @@ namespace mixcoach {
 SharedData::SharedData() noexcept
 {
     try {
-        // Inicializar gestor de memoria compartida (IPC entre procesos)
-        // CreateFileMapping permite que MixCoach y Messenger vean los mismos slots
+        // ─── Inicializar SharedMemory (IPC de identidad) ────────────────
         shm_ = std::make_unique<SharedMemoryManager>();
         if (shm_->initialize()) {
             slotRegistry_.setSharedMemory(shm_.get());
@@ -21,6 +20,19 @@ SharedData::SharedData() noexcept
         } else {
             LogHelper::writeToLog("[SharedData] SharedMemory IPC NO disponible, modo local");
             shmInitialized_ = false;
+        }
+
+        // ─── Inicializar SharedAudioMemory (IPC de audio RAW) ───────────
+        if (audioMemory_.initialize()) {
+            LogHelper::writeToLog("[SharedData] SharedAudioMemory audio RAW IPC OK");
+        } else {
+            LogHelper::writeToLog("[SharedData] SharedAudioMemory NO disponible");
+        }
+        // ─── Inicializar SharedAudioMemoryV2 (stereo) ────────────────
+        if (audioMemoryV2_.initialize()) {
+            LogHelper::writeToLog("[SharedData] SharedAudioMemoryV2 stereo IPC OK");
+        } else {
+            LogHelper::writeToLog("[SharedData] SharedAudioMemoryV2 NO disponible");
         }
     }
     catch (const std::exception& e) {
@@ -116,5 +128,6 @@ MentorMessage SharedData::getMessage(int index) const
         return messages_[index];
     return MentorMessage{};
 }
-
+SharedAudioMemoryV2& SharedData::getAudioMemoryV2() noexcept { return audioMemoryV2_; }
+const SharedAudioMemoryV2& SharedData::getAudioMemoryV2() const noexcept { return audioMemoryV2_; }
 } // namespace mixcoach
