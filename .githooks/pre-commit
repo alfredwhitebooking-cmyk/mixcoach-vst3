@@ -1,0 +1,34 @@
+#!/bin/sh
+# ═══════════════════════════════════════════════════════════════════════════
+#  pre-commit hook — MixCoach AI Rules Validation
+#
+#  Wrapper POSIX sh. Delegado a pre-commit.validate.ps1.
+#
+#  Detecta pwsh (PowerShell 7+) o, en su defecto, powershell.exe (Windows
+#  PowerShell 5.1). El shebang anterior #!/usr/bin/env pwsh fallaba en máquinas
+#  sin PowerShell 7, dejando los commits sin validación real.
+#
+#  Skip validation:
+#    git commit --no-verify
+#    or set env SKIP_MIXCOACH_AI_VALIDATION=1
+# ═══════════════════════════════════════════════════════════════════════════
+
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VALIDATE="$SCRIPT_DIR/pre-commit.validate.ps1"
+
+# ─── Detectar runtime PowerShell disponible ──────────────────────────────
+PWSH=""
+if command -v pwsh >/dev/null 2>&1; then
+    PWSH="pwsh"
+elif command -v powershell >/dev/null 2>&1; then
+    PWSH="powershell"
+elif [ -x "/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" ]; then
+    PWSH="/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+else
+    echo "[pre-commit] ⚠️  PowerShell no encontrado. Saltando validación." >&2
+    exit 0
+fi
+
+"$PWSH" -NoProfile -ExecutionPolicy Bypass -File "$VALIDATE"
