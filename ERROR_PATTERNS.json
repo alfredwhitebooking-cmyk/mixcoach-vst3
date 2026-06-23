@@ -1,8 +1,8 @@
 {
-  "version": "2.0.0",
-  "last_updated": "",
+  "version": "3.0.0",
+  "last_updated": "2026-06-06",
   "auto_learning_enabled": true,
-  "_comment": "Error memory system for MixCoach JUCE/C++ project. Auto-learns from build errors. Patterns are matched by error_code + pattern text.",
+  "_comment": "V3: Error memory system for MixCoach JUCE/C++ project. No V2 legacy references. Patterns matched by error_code + pattern text.",
 
   "patterns": [
     {
@@ -23,8 +23,10 @@
           "Missing inline function body in header"
         ],
         "symbol_map": {
-          "SlotRegistry": "Source/Common/SlotRegistry.h",
-          "SharedData": "Source/Common/SharedData.h"
+          "SlotRegistry": "Source/Common/memory/SlotRegistry.h",
+          "SharedData": "Source/Common/memory/SharedData.h",
+          "AudioAnalyzer": "Source/MixCoach/audio/AudioAnalyzer.h",
+          "AudioAnalysis": "Source/Common/audio/AudioAnalysis.h"
         }
       }
     },
@@ -39,7 +41,6 @@
       "confidence": 0.85,
       "project_specific": {
         "common_cases": [
-          "Missing SlotRegistry::instance_ static definition in SlotRegistry.cpp",
           "JUCE_*_EXPORT macro mismatch between Debug/Release configs",
           "Static const member defined in header but not in cpp"
         ]
@@ -75,9 +76,8 @@
       "project_specific": {
         "common_cases": [
           "Missing #include <juce_dsp/juce_dsp.h> for FFT operations",
-          "Missing #include \"../Common/Types.h\" for BusType/TrackData",
-          "Namespace: use juce::dsp::FFT or using namespace juce;",
-          "Missing #include <optional> for std::optional",
+          "Missing #include \"../audio/AudioAnalyzer.h\" for getMasterAnalysis()",
+          "Missing #include \"SharedData.h\" for getTrackAudioResult()",
           "Missing #include <atomic> for std::atomic"
         ],
         "include_map": {
@@ -116,9 +116,8 @@
       "confidence": 0.75,
       "project_specific": {
         "common_cases": [
-          "Using TrackData members after only forward declaration",
-          "Including SlotRegistry.h after only forward declaring SlotRegistry",
-          "Using SharedData members after forward declaration"
+          "Using AudioAnalysis members after only forward declaration",
+          "Including SharedData.h after only forward declaring SharedData"
         ]
       }
     },
@@ -147,15 +146,14 @@
       "pattern": "attempting to reference a deleted function",
       "cause": "Trying to copy a non-copyable object (unique_ptr, atomic, mutex, etc.)",
       "fix_strategy": "Use std::move(), pass by reference, or store as pointer/shared_ptr.",
-      "times_seen": 2,
-      "last_fix_description": "Changed std::atomic<TrackData> to std::shared_ptr<std::atomic<TrackData>>",
+      "times_seen": 1,
+      "last_fix_description": "Fixed unique_ptr copy in class with JUCE_DECLARE_NON_COPYABLE",
       "confidence": 0.8,
       "project_specific": {
         "common_cases": [
-          "std::atomic<TrackData> cannot be copied — use std::atomic_ref or pointer",
+          "std::atomic<float> in a struct that gets copied",
           "juce::AudioBuffer copied instead of passed by reference",
-          "std::unique_ptr in a class that gets copied",
-          "std::mutex in a class that gets copy-constructed"
+          "std::unique_ptr in a class with JUCE_DECLARE_NON_COPYABLE"
         ]
       }
     },
@@ -210,6 +208,60 @@
       }
     },
     {
+      "error_code": "BUILD_FALSO_POSITIVO",
+      "type": "infrastructure",
+      "pattern": "build exit code 0 despite errors",
+      "cause": "Pipe operator (| tail, | Tee-Object) swallows the exit code of the preceding command. cmake --build fails but tail/Tee-Object returns 0.",
+      "fix_strategy": "Always capture $LASTEXITCODE or $? BEFORE any pipe operation. In PowerShell: `$result = cmd 2>&1; $exit = $LASTEXITCODE; $result | Tee-Object log`. In bash: use PIPESTATUS or set -o pipefail.",
+      "times_seen": 1,
+      "last_fix_description": "Fixed build.ps1 to capture $LASTEXITCODE before Tee-Object pipe",
+      "confidence": 1.0,
+      "project_specific": {
+        "common_cases": [
+          "build.ps1 line 87: $buildResult = cmake ... | Tee-Object → $LASTEXITCODE es 0 siempre",
+          "cmake --build ... | tail -10 → exit code 0 aunque cmake falle",
+          "Cualquier pipe en PowerShell o bash que oculte el error real"
+        ]
+      }
+    },
+    {
+      "error_code": "DECLARACION_MISMATCH",
+      "type": "compiler",
+      "pattern": "function does not accept N arguments / unresolved external",
+      "cause": "Declaration in .h file has different number/types of parameters than definition in .cpp file. Not caught until linking.",
+      "fix_strategy": "Compare .h declaration with .cpp definition. Check: param count, const qualifiers, reference vs value, default params. Use code-searcher to find all call sites. ALWAYS update the .h declaration when changing a function's signature in .cpp.",
+      "times_seen": 2,
+      "last_fix_description": "Added missing 'float peakHold' parameter to drawVUMeter() declaration in header",
+      "confidence": 0.95,
+      "project_specific": {
+        "common_cases": [
+          "Header has 2 float params but cpp has 3",
+          "Header uses const& but cpp uses value (or vice versa)",
+          "Default params in header but not in definition",
+          "Adding a new parameter to a UI drawing function in .cpp but forgetting the .h",
+          "Changing parameter types (float to double, value to const&) in one file but not the other"
+        ],
+        "prevention": "After changing any function signature, do: code-searcher with function name in *.h files to verify declaration matches definition"
+      }
+    },
+    {
+      "error_code": "LNK2019_SOURCE_MISSING",
+      "type": "linker",
+      "pattern": "unresolved external symbol",
+      "cause": "A .cpp/.h file is used in the code (via #include or class usage) but not listed in CMakeLists.txt target_sources(). The linker finds the declarations but no implementations.",
+      "fix_strategy": "Add the missing .h and .cpp files to CMakeLists.txt under the appropriate target_sources(). Check: every #include in the code has a corresponding source entry in CMakeLists.txt.",
+      "times_seen": 1,
+      "last_fix_description": "Added CrestPanel.h/.cpp to MixCoach target_sources in CMakeLists.txt",
+      "confidence": 0.95,
+      "project_specific": {
+        "common_cases": [
+          "New UI component added to project but not registered in CMakeLists.txt",
+          "Refactored class into separate files but old file list not updated",
+          "Split header into .h/.cpp but only .h added to CMakeLists.txt"
+        ]
+      }
+    },
+    {
       "error_code": "CMake_CONFIG_ERROR",
       "type": "cmake",
       "pattern": "CMake Error at CMakeLists.txt",
@@ -232,7 +284,7 @@
       "pattern": "command failed with exit code",
       "cause": "Post-build or custom command failed",
       "fix_strategy": "Check the custom command in .vcxproj or CMakeLists.txt. Common: deployment script, resource compilation.",
-      "times_seen": 2,
+      "times_seen": 1,
       "last_fix_description": "Fixed DeployVST3.ps1 path in post-build step",
       "confidence": 0.75,
       "project_specific": {
@@ -249,15 +301,14 @@
       "pattern": "unexpected error",
       "cause": "Internal MSBuild crash (transient)",
       "fix_strategy": "Rerun the build. If persistent, clean build. Use --clean-first flag.",
-      "times_seen": 5,
+      "times_seen": 3,
       "last_fix_description": "Clean build resolved the transient crash",
       "confidence": 0.9,
       "project_specific": {
         "common_cases": [
           "Transient crash in CL.exe — retry with cmake --build Builds --config Release",
           "Transient linker crash — retry with larger virtual memory",
-          "Use --clean-first for persistent failures",
-          "MSVC 14.51 crash (C1001) with Ninja + Release in juce_graphics_Harfbuzz.cpp"
+          "Use --clean-first for persistent failures"
         ]
       }
     },
@@ -289,17 +340,16 @@
       "type": "runtime",
       "pattern": "shared memory open/create failure",
       "cause": "Cannot open or create shared memory mapping",
-      "fix_strategy": "Check slot index uniqueness. Verify no leftover mappings from crashes. Backup file path must be writable. Use %LOCALAPPDATA% instead of %TEMP% for backup files.",
-      "times_seen": 4,
-      "last_fix_description": "Changed backup directory from %%TEMP%% to %%LOCALAPPDATA%%",
+      "fix_strategy": "Check slot index uniqueness. Verify no leftover mappings from crashes. Map name must be unique per project. Use Local\\MixCoachSharedMemV2 format.",
+      "times_seen": 2,
+      "last_fix_description": "Fixed map name collision between VST3 instances",
       "confidence": 0.9,
       "project_specific": {
         "common_cases": [
           "SlotRegistry::registerSlot returns -1 when all slots are full",
-          "SharedMemoryManager::createOrOpen fails on second plugin instance",
-          "Backup directory doesn't exist or is not writable",
-          "Windows: mapped file name collisions between VST3 instances",
-          "FL Studio scanning causes slot collisions"
+          "SharedMemoryManager::initialize fails on second plugin instance",
+          "FL Studio scanning causes slot collisions during plugin scan",
+          "Plugin instance count exceeds kSharedMaxSlots (128)"
         ]
       }
     },
@@ -314,10 +364,9 @@
       "confidence": 0.8,
       "project_specific": {
         "common_cases": [
-          "AnalyzerPanelComponents updateAll() called on message thread with too many tracks",
-          "SlotRegistry::syncFromShared() called on audio thread (blocking)",
-          "Backup file I/O on message thread",
-          "Too many repaints per frame causing 100%% CPU"
+          "AudioAnalyzer::flushBuffer() called on message thread (heavy FFT)",
+          "Too many repaints per frame causing 100%% CPU",
+          "Background worker blocking on SharedData lock"
         ]
       }
     }
@@ -334,12 +383,6 @@
       "timestamp": "2026-05-18T14:20:00",
       "error_code": "C2664",
       "fix": "Added .toRawUTF8() conversion for juce::String parameter",
-      "success": true
-    },
-    {
-      "timestamp": "2026-05-20T09:15:00",
-      "error_code": "RUNTIME_IPC_FAILURE",
-      "fix": "Changed backup directory to %%LOCALAPPDATA%% to fix permission issues",
       "success": true
     },
     {
@@ -362,12 +405,55 @@
     }
   ],
 
-  "auto_learned_patterns": [],
+  "auto_learned_patterns": [
+    {
+      "error_code": "COORDINATE_MATH_BUG",
+      "type": "logic",
+      "pattern": "coordinates shifted|offscreen|floating|misaligned",
+      "cause": "Elliptical vs circular coordinate math: Y coordinates computed for a circle but the arc is an ellipse (vertical radius = half of horizontal). Common mistake: forgetting the elliptical ratio when computing points on an elliptical arc.",
+      "fix_strategy": "Identify the arc's bounding ellipse: (cx, cy) center, (radius, halfR) radii. For any point at angle a: x = cx + cos(a)*radius, y = cy + sin(a)*halfR. NEVER use the same scaling for X and Y. The vertical radius is always halfR = radius * 0.5f.",
+      "times_seen": 2,
+      "last_fix_description": "Fixed needle trajectory from circular to elliptical path using halfR/radius scaling factor",
+      "confidence": 0.95,
+      "project_specific": {
+        "common_cases": [
+          "Drawing tick marks on VU meter arc: Y = cy + sin(a)*halfR - halfR (erroneous -halfR offset)",
+          "Needle/cursor following the arc: Needle tip used circular path (radius for both X and Y) but arc is elliptical (radius for X, halfR for Y)",
+          "Pivot/center point wrong: Using (cx, cy - halfR) instead of (cx, cy) as the ellipse center"
+        ],
+        "fix_guide": {
+          "formula": "x = cx + cos(angle) * radius\ny = cy + sin(angle) * halfR",
+          "common_mistakes": [
+            "y = cy + sin(a) * radius (ignores ellipse vertical compression)",
+            "y = cy + sin(a) * halfR - halfR (extra offset moves everything)",
+            "pivot = (cx, cy - halfR) instead of (cx, cy)"
+          ]
+        }
+      }
+    },
+    {
+      "error_code": "SCALE_RANGE_MISMATCH",
+      "type": "logic",
+      "pattern": "needle out of scale|indicator out of bounds|marker beyond range",
+      "cause": "The indicator (needle, marker) uses a different angular range than the scale marks. Common: needle sweeps the full arc (270°) but scale marks only cover a portion (198°). At mid-values, the needle points far beyond the last scale mark.",
+      "fix_strategy": "Verify that the needle/marker range matches the scale range EXACTLY. If scale marks go from startAngle to markEndAngle, use markEndAngle - startAngle (not endAngle - startAngle) for the indicator's angular range. Create a dbToNorm() mapping function for non-linear VU scales.",
+      "times_seen": 1,
+      "last_fix_description": "VU meter needle range changed from fullArc (270°) to markRange (198°) to match the scale marks",
+      "confidence": 0.9,
+      "project_specific": {
+        "common_cases": [
+          "Arc from 135° to 405° (270° range), but scale marks only from 135° to 333° (198°)",
+          "Needle at 0dB points past the +5dB mark because the angular scale factors are different",
+          "Indicator position computed with normalizedLevel * fullArc instead of normalizedLevel * markRange"
+        ]
+      }
+    }
+  ],
   "statistics": {
-    "total_fixes": 6,
-    "unique_errors": 6,
+    "total_fixes": 10,
+    "unique_errors": 10,
     "most_frequent": "LNK2038",
     "average_time_to_fix_minutes": 15,
-    "learned_patterns_count": 0
+    "learned_patterns_count": 2
   }
 }

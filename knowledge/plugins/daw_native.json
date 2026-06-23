@@ -1,0 +1,323 @@
+{
+  "_meta": {
+    "version": 2,
+    "description": "Plugins nativos por DAW para sugerencias contextuales del coach"
+  },
+  "FL Studio": {
+    "EQ": [
+      { "name": "Fruity Parametric EQ 2", "tip": "Ecualizador paramétrico de 7 bandas. Ideal para cortes quirúrgicos y realces suaves. Atajo: F9 → seleccionar." },
+      { "name": "Fruity Parametric EQ", "tip": "Versión anterior del EQ paramétrico. Menos bandas pero funcional." },
+      { "name": "Fruity 7 Band EQ", "tip": "EQ gráfico de 7 bandas. Rápido para ajustes visuales." }
+    ],
+    "Comp": [
+      { "name": "Fruity Limiter (Comp mode)", "tip": "Activa el modo Comp (botón COMP) para usarlo como compresor. Ratio 4:1, attack 10ms, release 200ms como punto de partida." },
+      { "name": "Fruity Compressor", "tip": "Compresor clásico con control de threshold, ratio, attack y release. Bueno para voces y bus de batería." },
+      { "name": "Maximus", "tip": "Compresor multibanda de 3 bandas con crossover ajustable. Ideal para master o buses complejos." },
+      { "name": "Fruity Multiband Compressor", "tip": "Compresor multibanda para control por frecuencias." }
+    ],
+    "Reverb": [
+      { "name": "Fruity Reverb 2", "tip": "Reverb con algoritmo mejorado. Decay 2.5s, predelay 20ms para voces. Predecay y stereo width ajustables." },
+      { "name": "Fruity Reeverb 2", "tip": "Reverb con más parámetros que la Reverb 2. Útil para efectos creativos." },
+      { "name": "Fruity Convolver", "tip": "Reverb de convolución con IRs. Calidad superior para espacios realistas." }
+    ],
+    "Delay": [
+      { "name": "Fruity Delay 3", "tip": "Delay estéreo con filtro y feedback. Sincronizable al tempo del proyecto." },
+      { "name": "Fruity Delay 2", "tip": "Delay mono/stéreo simple. Perfecto para delays rítmicos." },
+      { "name": "Fruity Delay Bank", "tip": "Delay multitap con hasta 8 taps. Ideal para efectos de ritmo complejos." }
+    ],
+    "Limiter": [
+      { "name": "Fruity Limiter", "tip": "Limitador/compresor todo-en-uno. Ceiling -0.5dB, release 200ms para master. También tiene función de compresor y gate." }
+    ],
+    "Saturation": [
+      { "name": "Fruity Waveshaper", "tip": "Modelador de onda con 7 curvas de saturación predefinidas. Preamp + Wet/Dry para saturación paralela." },
+      { "name": "Fruity Soft Clipper", "tip": "Clip suave para control de picos. Muy usado en el canal master para ganar 2-3dB sin distorsión audible." }
+    ],
+    "Gate": [
+      { "name": "Fruity Limiter (Gate mode)", "tip": "Activa el modo Gate para silenciar ruido de fondo en tracks silenciosos." },
+      { "name": "Fruity Stereo Gate", "tip": "Gate básico. Útil para percusión y baterías." }
+    ],
+    "Stereo": [
+      { "name": "Fruity Stereo Shaper", "tip": "Control de ancho estéreo. Útil para ajustar el campo estéreo sin plugins externos." },
+      { "name": "Fruity Balance", "tip": "Panning y volumen. Subestimar su utilidad: buen control de balance mono." }
+    ],
+    "Analyzer": [
+      { "name": "Fruity Spectroman", "tip": "Analizador de espectro visual. Pobre en precisión pero da una idea general." },
+      { "name": "Fruity Wavecandy", "tip": "Medidor de forma de onda y espectro. Visible en el mixer de FL Studio." }
+    ],
+    "Pitch": [
+      { "name": "NewTone", "tip": "Editor de pitch y time-stretching. Corrector de tono integrado en FL Studio." },
+      { "name": "Pitcher", "tip": "Corrector de tono automático en tiempo real. Bueno para voces." }
+    ],
+    "Distortion": [
+      { "name": "Fruity Fast Distortion", "tip": "Distorsión simple con varios algoritmos (Sine, Even, Half, Full, etc.)."},
+      { "name": "Fruity Blood Overdrive", "tip": "Overdrive con modelado de válvula. Bueno para guitarras y bajos." }
+    ],
+    "Filter": [
+      { "name": "Fruity Filter", "tip": "Filtro con modulación (LFO/Envelope). Bueno para sweeps y efectos de DJ." },
+      { "name": "Fruity Free Filter", "tip": "Filtro de estado variable con más opciones. LP/HP/BP/Notch." }
+    ]
+  },
+  "Ableton Live": {
+    "EQ": [
+      { "name": "EQ Eight", "tip": "EQ paramétrico de 8 bandas con analizador de espectro integrado. Q variable por banda. Atajo: selecciona el track y presiona Ctrl+Shift+E." },
+      { "name": "EQ Three", "tip": "EQ de 3 bandas inspirado en ecualizadores de DJ. Rápido para ajustes de mezcla." },
+      { "name": "Auto Filter", "tip": "Filtro con LFO y envelope follower. Puede usarse como EQ dinámico." }
+    ],
+    "Comp": [
+      { "name": "Ableton Compressor", "tip": "Compresor con control de threshold, ratio, attack, release y knee. Incluye sidechain integrado con filtro." },
+      { "name": "Glue Compressor", "tip": "Compresor estilo bus (inspirado en SSL). Ideal para buses de batería, grupos y master." },
+      { "name": "Multiband Dynamics", "tip": "Compresor/expander multibanda de 3 bandas con crossover ajustable." },
+      { "name": "Drum Buss", "tip": "Procesador todo-en-uno para baterías: compresión, saturación, boom y transients." }
+    ],
+    "Reverb": [
+      { "name": "Ableton Reverb", "tip": "Reverb con algoritmo híbrido (convolution + algorithmic). Tamaño, decay, predelay, stereo width y chorus integrado." },
+      { "name": "Hybrid Reverb", "tip": "Reverb que combina convolución y algorítmico para lo mejor de ambos mundos." },
+      { "name": "Roar", "tip": "Saturación/reverb creativa. Bueno para efectos experimentales." }
+    ],
+    "Delay": [
+      { "name": "Simple Delay", "tip": "Delay básico sincronizable al tempo. Filtro de feedback integrado." },
+      { "name": "Ping Pong Delay", "tip": "Delay estéreo con rebote izquierda/derecha. Sincronizable al tempo." },
+      { "name": "Beat Repeat", "tip": "Efecto de repetición rítmica. No es delay tradicional pero útil para texturas." }
+    ],
+    "Limiter": [
+      { "name": "Ableton Limiter", "tip": "Limitador con look-ahead. Ceiling ajustable, oversampling. Modo expandido con control de gain reduction." }
+    ],
+    "Saturation": [
+      { "name": "Saturator", "tip": "Saturación con 5 curvas (Alegre, Medium, Hard, Sinoid, Triangle). Control de drive, color y modo analógico." },
+      { "name": "Dynamic Tube", "tip": "Modelado de válvula con respuesta dinámica. Más suave que el Saturator." }
+    ],
+    "Gate": [
+      { "name": "Gate", "tip": "Gate con control de threshold, attack, hold, release y lookahead. Sidechain integrado." },
+      { "name": "Auto Pan (Gate mode)", "tip": "Puede usarse como gate rítmico modulando la amplitud." }
+    ],
+    "Stereo": [
+      { "name": "Utility", "tip": "Control de ganancia, panning, balance estéreo y fase. Indispensable: Width (0% = mono), Balance (L/R)." },
+      { "name": "Stereo Tool", "tip": "Herramienta de procesado estéreo: bass mono, procesado M/S, ancho por banda." }
+    ],
+    "Analyzer": [
+      { "name": "Spectrum", "tip": "Analizador FFT con resolución ajustable. Peak hold opcional. Se puede usar como sidechain visual." },
+      { "name": "Phase Scope", "tip": "Vectorscope para monitoreo de correlación de fase. Útil para ver problemas de fase." }
+    ],
+    "Pitch": [
+      { "name": "Pitch Hack", "tip": "Cambio de tono en tiempo real con control de formantes. Bueno para voces y samples." },
+      { "name": "Auto-Tune (Ableton)", "tip": "Corrector de tono automático con velocidad ajustable." }
+    ],
+    "Distortion": [
+      { "name": "Pedal", "tip": "Emulador de pedal de guitarra con distorsión, fuzz y overdrive." },
+      { "name": "Redux", "tip": "Reductor de resolución (bitcrushing). Efecto lo-fi digital controlado." }
+    ],
+    "Filter": [
+      { "name": "Auto Filter", "tip": "Filtro con LFO, envelope follower y sidechain. LP/HP/BP/Notch con resonant Q." }
+    ]
+  },
+  "Logic Pro": {
+    "EQ": [
+      { "name": "Channel EQ", "tip": "EQ paramétrico de 8 bandas con analizador integrado. Tu ecualizador de trabajo diario. Atajo: selecciona el track y usa el canal de inserción." },
+      { "name": "Linear Phase EQ", "tip": "EQ sin desplazamiento de fase. Ideal para buses de grupo y mastering donde la integridad de fase es crítica." },
+      { "name": "Match EQ", "tip": "Analiza y aplica el espectro de frecuencias de una pista de referencia. Úsalo para aprender cómo se ven las mezclas profesionales." },
+      { "name": "Vintage Tube EQ", "tip": "Emulación Pultec-style con ecualizadores de válvula. Sonido cálido y musical para voces y bajos." }
+    ],
+    "Comp": [
+      { "name": "Compressor", "tip": "Compresor con 7 modelos de hardware (Platinum, Studio VCA, Vintage VCA, FET, Classic VCA, Vintage Opto, Studio FET). Prueba Vintage Opto para voces." },
+      { "name": "Multipressor", "tip": "Compresor multibanda con hasta 4 bandas cruzadas. Ideal para masterizar o controlar rangos específicos." },
+      { "name": "Envelope Follower", "tip": "Modula parámetros según el volumen de entrada. Útil para sidechain creativo y ducking automático." }
+    ],
+    "Reverb": [
+      { "name": "Space Designer", "tip": "Reverb de convolución con IRs de espacios reales y hardware clásico. Carga tu propio .wav para crear reverb personalizada." },
+      { "name": "ChromaVerb", "tip": "Reverb algorítmica con visualizador en tiempo real. Ajusta la cola exactamente donde la necesitas sin ensuciar la mezcla." },
+      { "name": "SilverVerb", "tip": "Reverb simple y limpia. Bajo consumo de CPU para sesiones con muchas pistas." }
+    ],
+    "Delay": [
+      { "name": "Delay Designer", "tip": "Delay multitap con hasta 26 taps independientes. Crea patrones rítmicos complejos con filtro y panning por tap." },
+      { "name": "Tape Delay", "tip": "Emulación de delay de cinta analógica. Automatiza el tiempo para efectos de pitch shifting psicodélicos." },
+      { "name": "Stereo Delay", "tip": "Delay con tiempos independientes para canal izquierdo y derecho. Útil para crear espacios anchos." }
+    ],
+    "Limiter": [
+      { "name": "Adaptive Limiter", "tip": "Limitador con look-ahead y ganancia adaptativa. Colócalo al final del master con ceiling a -1.0dB." },
+      { "name": "Limiter", "tip": "Limitador brick-wall simple. Bueno para control rápido de picos en pistas individuales." }
+    ],
+    "Saturation": [
+      { "name": "Phat FX", "tip": "Multiefecto con distorsión, filtros y modulación. Excelente para dar carácter a sintetizadores y baterías." },
+      { "name": "Overdrive", "tip": "Distorsión suave tipo overdrive. Bueno para calentar pistas con un toque sutil." }
+    ],
+    "Gate": [
+      { "name": "Noise Gate", "tip": "Gate con control de threshold, attack, hold y release. Colócalo en baterías grabadas para eliminar el bleed entre golpes." },
+      { "name": "Expander", "tip": "Expansor downward para reducción de ruido más suave que un gate. Útil en grabaciones con ruido de fondo constante." }
+    ],
+    "Stereo": [
+      { "name": "Direction Mixer", "tip": "Control de ancho estéreo y balance M/S. Úsalo en pistas con mucho grave para estrechar la imagen y mantener compatibilidad mono." },
+      { "name": "Stereo Spread", "tip": "Ensancha el campo estéreo por frecuencias. Aplica solo en agudos para evitar problemas de fase en graves." }
+    ],
+    "Analyzer": [
+      { "name": "Multimeter", "tip": "Suite completa: analizador de espectro, medidor de nivel, correlación y goniometer. Monitoreo todo-en-uno." },
+      { "name": "Loudness Meter", "tip": "Medidor LUFS para estándares de streaming. Controla que tu mezcla cumpla con EBU R128 o ATSC A/85." },
+      { "name": "Correlation Meter", "tip": "Mide la correlación de fase M/S. Mantén la aguja sobre 0 para evitar cancelación de fase en mono." }
+    ],
+    "Pitch": [
+      { "name": "Pitch Correction", "tip": "Corrector automático de tono en tiempo real. Modo rápido para efecto T-Pain, modo lento para corrección natural." },
+      { "name": "Flex Pitch", "tip": "Editor de pitch integrado en el timeline. Corrección no destructiva con control nota por nota." }
+    ],
+    "Distortion": [
+      { "name": "Distortion", "tip": "Distorsión general-purpose con control de drive, tone y output. Bueno para guitarras y bajos sintéticos." },
+      { "name": "Clip Distortion", "tip": "Hard clipping con modelado de curva. Añade agresividad a baterías y loops." },
+      { "name": "BitCrusher", "tip": "Reducción de resolución y downsampling. Ideal para texturas lo-fi en baterías y pads." }
+    ],
+    "Filter": [
+      { "name": "AutoFilter", "tip": "Filtro con LFO y envelope follower sincronizable al tempo. Crea sweeps rítmicos para transiciones." },
+      { "name": "SilverFilter", "tip": "Filtro resonante básico. Rápido para ajustes de ecualización simple sin abrir un EQ completo." }
+    ]
+  },
+  "Cubase Pro": {
+    "EQ": [
+      { "name": "Frequency 2", "tip": "EQ paramétrico con analizador en tiempo real. Usa los filtros de corte LP/HP integrados para limpiar subsónico y agudos innecesarios." },
+      { "name": "Q-Eq", "tip": "EQ paramétrico quirúrgico con Q ajustable. Ideal para cortes precisos donde necesitas control exacto." },
+      { "name": "StudioEQ", "tip": "EQ gráfico de 6 bandas con filtros shelving. Útil para ajustes rápidos de tono general." }
+    ],
+    "Comp": [
+      { "name": "Compressor", "tip": "Compresor con modo RMS (natural) y Peak (transientes). Sidechain con filtro integrado para de-essing y ducking." },
+      { "name": "Tube Compressor", "tip": "Compresor tipo válvula con sonido cálido. Bueno para voces, bajos y buses de grupo." },
+      { "name": "VintageCompressor", "tip": "Emulación de compresores vintage con carácter. Ideal para baterías y pistas rítmicas." },
+      { "name": "VocalChain", "tip": "Cadena completa para voces: EQ, compresor, de-esser, gate y saturación en un solo plugin. Acelera el workflow vocal." }
+    ],
+    "Reverb": [
+      { "name": "REVerence", "tip": "Reverb de convolución con IRs de alta calidad. Carga IRs de espacios reales o hardware clásico para realismo extremo." },
+      { "name": "RoomWorks", "tip": "Reverb algorítmica con control detallado de espacio. Parámetros de room size, decay, early reflections y diffusion." },
+      { "name": "RoomWorks SE", "tip": "Versión simplificada de RoomWorks. Menos parámetros, más rápida de ajustar para sesiones ágiles." },
+      { "name": "Revelation", "tip": "Reverb creativa con sonido moderno y parámetros no convencionales. Ideal para efectos atmosféricos." }
+    ],
+    "Delay": [
+      { "name": "Delay", "tip": "Delay con ducker integrado: el delay se atenúa automáticamente mientras la fuente suena. Perfecto para voces." },
+      { "name": "PingPongDelay", "tip": "Delay estéreo con rebote izquierda/derecha. Sincronizable al tempo para efectos rítmicos." },
+      { "name": "ModDelay", "tip": "Delay con modulación (chorus/flanger en el feedback). Crea texturas ricas y en movimiento." },
+      { "name": "MultiTapDelay", "tip": "Delay multitap con hasta 8 taps independientes con panning y feedback por tap." }
+    ],
+    "Limiter": [
+      { "name": "Maximizer", "tip": "Limitador para mastering con control de threshold, release y auto gain. Colócalo al final de la cadena de master." },
+      { "name": "Brickwall Limiter", "tip": "Limitador brick-wall con look-ahead. Ceiling ajustable para evitar clipping digital." },
+      { "name": "Limiter", "tip": "Limitador simple para control de picos en pistas individuales. Bajo CPU." }
+    ],
+    "Saturation": [
+      { "name": "Magneto II", "tip": "Emulación de saturación de cinta magnética. Añade calidez analógica y pegamento a buses y pistas." },
+      { "name": "SoftClipper", "tip": "Clip suave para control de picos con carácter. Útil en el master para ganar 1-2dB sin distorsión dura." }
+    ],
+    "Gate": [
+      { "name": "Gate", "tip": "Gate con control de threshold, attack, hold, release y range. Ajusta el Range a valores moderados para que no suene artificial." }
+    ],
+    "Stereo": [
+      { "name": "StereoEnhancer", "tip": "Ensancha el campo estéreo con control de ancho por frecuencia. Reduce el ancho en graves para mantener el centro sólido." },
+      { "name": "Imager", "tip": "Herramienta de procesado estéreo con bass mono, M/S y ajuste de ancho por banda." }
+    ],
+    "Analyzer": [
+      { "name": "MultiScope", "tip": "Analizador multiuso: espectro, fase, goniometer y medidor de nivel. Monitorea relación de fase para evitar cancelación en mono." },
+      { "name": "Loudness Meter", "tip": "Medidor LUFS con soporte para EBU R128 y ATSC A/85. Esencial para mastering orientado a streaming." },
+      { "name": "PhaseScope", "tip": "Vectorscope para monitoreo de correlación de fase en tiempo real. Detecta problemas de fase al instante." }
+    ],
+    "Pitch": [
+      { "name": "Pitch Correct", "tip": "Corrector de tono automático. Velocidad rápida para efecto estilizado, lenta para corrección natural." },
+      { "name": "PitchShifter", "tip": "Cambio de tono en tiempo real. Útil para efectos creativos y armonización." },
+      { "name": "VariAudio", "tip": "Editor de pitch integrado en el Sample Editor. Corrección no destructiva nota por nota con control de formantes." }
+    ],
+    "Distortion": [
+      { "name": "Distortion", "tip": "Distorsión multialgoritmo con control de tone y output. Añade armónicos a bajos y sintetizadores." },
+      { "name": "Grungelizer", "tip": "Efecto lo-fi que combina distorsión, filtro y ruido. Ideal para texturas sucias y creativas." },
+      { "name": "AmpSimulator", "tip": "Simulador de amplificador de guitarra. Bueno para dar carácter a pistas de guitarra directa." }
+    ],
+    "Filter": [
+      { "name": "DualFilter", "tip": "Filtro dual LP/HP simultáneo con modulación. Ideal para efectos de radio y transiciones." },
+      { "name": "MorphFilter", "tip": "Filtro con morphing entre modos LP/BP/HP. Crea barridos espectrales evolutivos." },
+      { "name": "AutoFilter", "tip": "Filtro con LFO y envelope follower sincronizable al tempo. Sweeps rítmicos para transiciones." },
+      { "name": "StepFilter", "tip": "Filtro con step sequencer de 16 pasos. Patrones de filtro rítmicos para música electrónica." }
+    ]
+  },
+  "Studio One": {
+    "EQ": [
+      { "name": "Pro EQ3", "tip": "EQ paramétrico con analizador de espectro en tiempo real. Usa el visualizador para limpiar frecuencias resonantes molestas." },
+      { "name": "Channel Strip", "tip": "EQ + compresor + gate integrados. Flujo de trabajo rápido con modelado analógico (Neve, SSL, API)." }
+    ],
+    "Comp": [
+      { "name": "Compressor", "tip": "Compresor con modelos FET, Opto y VCA. Ratio 4:1, threshold hasta 3-6dB de reducción para control natural." },
+      { "name": "Multiband Dynamics", "tip": "Compresor/expander multibanda con hasta 3 bandas. Ideal para control de frecuencias específicas." }
+    ],
+    "Reverb": [
+      { "name": "Room Reverb", "tip": "Reverb algorítmica con control de tamaño, decay y early reflections. Úsala en envíos con Mix al 100% para controlar profundidad." },
+      { "name": "MixVerb", "tip": "Reverb algorítmica versátil con modulación. Desde salas sutiles hasta ambientes masivos." },
+      { "name": "OpenAir", "tip": "Reverb de convolución con IRs de alta calidad. Ideal para espacios realistas y reverb de sala natural." }
+    ],
+    "Delay": [
+      { "name": "Analog Delay", "tip": "Delay estilo cinta analógica con modulación. Automatiza el tiempo para efectos de pitch shift al final de frases." },
+      { "name": "Beat Delay", "tip": "Delay sincronizable al tempo con feedback filtrable. Patrones rítmicos precisos sin calcular milisegundos." }
+    ],
+    "Limiter": [
+      { "name": "Limiter²", "tip": "Limitador con ceiling ajustable y true peak. Ceiling a -0.3dB, ajusta input gain sin destruir transientes." }
+    ],
+    "Saturation": [
+      { "name": "RedlightDist (Tube)", "tip": "Saturación/distorsión con modo Tube. Drive bajo para calidez sutil en pistas digitales frías." }
+    ],
+    "Gate": [
+      { "name": "Gate", "tip": "Gate con control de threshold, attack, hold y release. Hold moderado para evitar cortar colas naturales." }
+    ],
+    "Stereo": [
+      { "name": "Binaural Pan", "tip": "Panning binaural para imagen estéreo ultra ancha que no colapsa en mono. Ideal para guitarras acústicas y pads." },
+      { "name": "Mixtool", "tip": "Utilidad multiuso: polarity, gain, pan, mono/mute. Imprescindible para ajustes rápidos de fase y balance." }
+    ],
+    "Analyzer": [
+      { "name": "Spectrum Meter", "tip": "Analizador FFT con resolución ajustable y peak hold. Monitorea la relación sub-graves/bombo para balancear." },
+      { "name": "Phase Meter", "tip": "Medidor de correlación de fase. Útil para verificar compatibilidad mono en tiempo real." }
+    ],
+    "Pitch": [
+      { "name": "Pitch Operator", "tip": "Corrector de tono con velocidad ajustable y control de formantes. Suave para corrección natural, rápido para efecto T-Pain." }
+    ],
+    "Distortion": [
+      { "name": "RedlightDist (Distortion)", "tip": "Modo Distortion para saturación más agresiva. Bueno para baterías electrónicas y bajos sintéticos." },
+      { "name": "Ampire", "tip": "Simulador de amplificador no solo para guitarras. Pruébalo en snares y bajos con mezcla Wet/Dry para textura." }
+    ],
+    "Filter": [
+      { "name": "Auto Filter", "tip": "Filtro con LFO y envelope follower sincronizado al tempo. Crea movimiento y texturas rítmicas en sonidos estáticos." },
+      { "name": "Step Filter", "tip": "Filtro con step sequencer. Patrones de filtro rítmicos ideales para música electrónica y transiciones." }
+    ]
+  },
+  "Reaper": {
+    "EQ": [
+      { "name": "ReaEQ", "tip": "EQ paramétrico de bandas ilimitadas. Extremadamente eficiente en CPU. Usa la rueda del ratón sobre los puntos de frecuencia para ajustar el Q rápidamente." },
+      { "name": "ReaFIR", "tip": "Filtro FFT multiuso. En modo Subtract, captura y elimina ruido de fondo con 'Automatically build noise profile'." }
+    ],
+    "Comp": [
+      { "name": "ReaComp", "tip": "Compresor con modo Feedback para sonido más clásico y natural. Precompensation (lookahead) para atrapar transientes." },
+      { "name": "ReaXcomp", "tip": "Compresor multibanda con crossover ajustable. Usa el modo Solo por banda para escuchar exactamente qué frecuencias estás procesando." }
+    ],
+    "Reverb": [
+      { "name": "ReaVerb", "tip": "Reverb de convolución. Carga archivos .wav de IRs de espacios reales para reverb hiperrealista. Soporta zero-latency con IRs cortas." },
+      { "name": "ReaVerbate", "tip": "Reverb algorítmica tipo Freeverb. Bajo CPU y sonido clásico. Ideal para sesiones con muchas pistas." }
+    ],
+    "Delay": [
+      { "name": "ReaDelay", "tip": "Delay multitap con taps ilimitados. Crea patrones rítmicos complejos con panning y filtro por tap." }
+    ],
+    "Limiter": [
+      { "name": "LOSER/MasterLimiter (JSFX)", "tip": "Limitador transparente para el bus master. Colócalo al final con ceiling a -0.5dB para evitar clipping sin colorear la mezcla." },
+      { "name": "ReaComp (como limitador)", "tip": "Pon el ratio a INF:1 (modo brickwall), threshold bajo, attack 0.1ms, release 100ms. Úsalo como limitador de pico transparente en pistas individuales." }
+    ],
+    "Saturation": [
+      { "name": "Saturation (JSFX)", "tip": "Saturación armónica simple. Añade calidez a pistas digitales que suenen demasiado limpias o frías." }
+    ],
+    "Gate": [
+      { "name": "ReaGate", "tip": "Gate con lookahead integrado para evitar cortar transientes. Ajusta el range en vez de infinito para un cierre más natural." }
+    ],
+    "Stereo": [
+      { "name": "ReaSurroundPan", "tip": "Panning envolvente con modos estéreo, 5.1, 7.1 y más. Control preciso de posición y ancho." }
+    ],
+    "Analyzer": [
+      { "name": "Frequency Spectrum Analyzer Meter (JSFX)", "tip": "Analizador FFT con resolución ajustable. Visualiza la distribución de energía para detectar enmascaramientos entre pistas." },
+      { "name": "ReaTune", "tip": "Analizador de tono y corrector de pitch. Muestra la nota detectada en tiempo real. Útil para afinar voces e instrumentos." }
+    ],
+    "Pitch": [
+      { "name": "ReaPitch", "tip": "Pitch shifter independiente con control de formantes. Para armonización vocal y efectos de capas." },
+      { "name": "Pitch Shifter (Time-based JSFX)", "tip": "Cambio de tono con preservación de tiempo. Efectivo para cambios pequeños y efectos creativos." }
+    ],
+    "Distortion": [
+      { "name": "Distortion (JSFX)", "tip": "Distorsión con control de drive. Experimenta para añadir suciedad y carácter a bajos, guitarras y sintetizadores." }
+    ],
+    "Filter": [
+      { "name": "Butterworth 4-Pole Filter (JSFX)", "tip": "Filtro resonante excelente para efectos de paso alto/bajo dramáticos en transiciones." }
+    ]
+  }
+}

@@ -1,0 +1,359 @@
+# 🗂️ MixCoach — Component Index
+# Índice semántico de todos los componentes del proyecto.
+# Versión: 1.0 | Última actualización: 2026-06-06
+
+# ─── Criticidad ────────────────────────────────────────────
+# [CORE] 🔴 NO TOCAR sin autorización explícita
+# [HIGH] 🟠 Tocar con cuidado + code review + tests
+# [MED]  🟡 Modificable con tests
+# [LOW]  🟢 Bajo riesgo, cambios directos
+# ✂️     Legacy — no usar, programado para eliminar
+
+# ─── PLUGIN: MixCoach (Master Bus) ─────────────────────────
+
+components:
+  # Core
+  - name: PluginProcessor (MixCoach)
+    path: Source/MixCoach/core/PluginProcessor.h/.cpp
+    type: entry_point
+    criticality: CORE
+    description: Entry point VST3. Lazy init. No procesa audio.
+    dependencies: [AudioAnalyzer, SharedData, CoachEngine]
+    tests: []
+
+  - name: PluginEditor (MixCoach)
+    path: Source/MixCoach/core/PluginEditor.h/.cpp
+    type: entry_point
+    criticality: HIGH
+    description: Editor window. Background Worker. Timer 60fps. Crea MainTabbedComponent.
+    dependencies: [MainTabbedComponent, SharedData]
+    tests: []
+
+  # Audio
+  - name: AudioAnalyzer
+    path: Source/MixCoach/audio/AudioAnalyzer.h/.cpp
+    type: analysis
+    criticality: CORE
+    description: Procesa el Master. FFT 1024, LUFS EBU R128, correlación, RMS/Peak, vectorscope.
+    dependencies: [AudioAnalysis, LoudnessAnalyzer]
+    tests: [TestAudioAnalyzer (15 tests)]
+    provides: [getMasterAnalysis, getLeftAnalysis, getRightAnalysis, getMomentaryLUFS,
+              getShortTermLUFS, getIntegratedLUFS, getTruePeakDBTP, getLoudnessRange,
+              getSpectrum, flushSampleBufferToVectorscope]
+
+  # Engine
+  - name: CoachEngine
+    path: Source/MixCoach/engine/CoachEngine.h/.cpp
+    type: engine
+    criticality: CORE
+    description: Motor de IA. 6 fases de mentoría con datos reales.
+    dependencies: [AudioAnalyzer, SharedData, PhaseManager]
+    tests: [TestCoachEngine (41 tests)]
+
+  - name: PhaseManager
+    path: Source/MixCoach/engine/PhaseManager.h/.cpp
+    type: engine
+    criticality: HIGH
+    description: Máquina de estados. 6 fases progresivas con logros.
+    dependencies: []
+    tests: [TestPhaseManager (80 tests)]
+
+  # UI — Tab 1: MixCoachPanel
+  - name: MainTabbedComponent
+    path: Source/MixCoach/UI/MainTabbedComponent.h/.cpp
+    type: ui
+    criticality: HIGH
+    description: Contenedor de tabs. Punto de entrada del layout.
+    dependencies: [CoachChatComponent, AnalyzersPanelComponent, ProfessionalAnalyzersComponent]
+
+  - name: CoachChatComponent (MixCoachPanel)
+    path: Source/MixCoach/UI/CoachChatComponent.h/.cpp
+    type: ui
+    criticality: HIGH
+    description: Chat + master meters + messenger list. Tab 1.
+    dependencies: [MasterMeterPanel, MessengerListComponent, SharedData, CoachEngine]
+
+  - name: MasterMeterPanel
+    path: Source/MixCoach/UI/MasterMeterPanel.h/.cpp
+    type: ui
+    criticality: HIGH
+    description: Meters del master: LUFS I/S/M/TP/R, peak L/R, correlation, crest.
+    dependencies: [AudioAnalyzer, SmoothValue, MixCoachTheme]
+    provides: [rawPeak_, rawRms_, rawCorrelation_, lufsMomentary_, etc.]
+
+  - name: MessengerListComponent
+    path: Source/MixCoach/UI/MessengerListComponent.h/.cpp
+    type: ui
+    criticality: HIGH
+    description: Lista de tracks con peak/RMS y estado 🟢🟡🔴.
+    dependencies: [SharedData, MixCoachTheme]
+    data_source: SharedData::getTrackAudioResult()
+
+  # UI — Tab 2: Analyzers
+  - name: AnalyzersPanelComponent
+    path: Source/MixCoach/UI/AnalyzersPanelComponent.h/.cpp
+    type: ui
+    criticality: HIGH
+    description: Panel de analizadores. Contiene PhaseScope, CrestPanel, VUMeters.
+    dependencies: [AudioAnalyzer, VectorscopeComponent, SpectrographComponent,
+                  LUFSMeter, StereoVUMeter, SmoothValue, MixCoachTheme]
+    data_source: AudioAnalyzer (directo)
+    # Layout SESIÓN 4: PhaseScope 28%, CrestPanel 25%, VUMeters 47%
+    # Incluye VintageVUMeters (VU analógicos Neve con peak hold)
+
+  - name: VectorscopeComponent
+    path: Source/MixCoach/UI/VectorscopeComponent.h/.cpp
+    type: ui
+    criticality: MED
+    description: Vectorscopio de fase L/R con persistencia fósforo.
+    dependencies: [AudioAnalyzer]
+
+  - name: SpectrographComponent
+    path: Source/MixCoach/UI/SpectrographComponent.h/.cpp
+    type: ui
+    criticality: MED
+    description: Espectrograma FFT. 512 bins.
+    dependencies: [AudioAnalyzer]
+
+  - name: LUFSMeter
+    path: Source/MixCoach/UI/LUFSMeter.h/.cpp
+    type: ui
+    criticality: LOW
+    description: Medidor LUFS M/S/I/LRA/TP.
+    dependencies: [AudioAnalyzer]
+
+  - name: StereoVUMeter
+    path: Source/MixCoach/UI/StereoVUMeter.h/.cpp
+    type: ui
+    criticality: LOW
+    description: VU meters estéreo con gradiente.
+    dependencies: [AudioAnalyzer, SmoothValue]
+
+  - name: SmoothValue
+    path: Source/MixCoach/UI/SmoothValue.h/.cpp
+    type: utility
+    criticality: LOW
+    description: Suavizado exponencial para meters (attack/release configurables).
+    tests: [TestSmoothValue (12 tests)]
+
+  - name: MixCoachTheme
+    path: Source/MixCoach/UI/MixCoachTheme.h
+    type: utility
+    criticality: LOW
+    description: Tema visual. Colores, fuentes, estilos. TODOS los componentes lo usan.
+
+  # UI — Tab 3: Profesional Analizadores
+  - name: ProfessionalAnalyzersComponent
+    path: Source/MixCoach/UI/ProfessionalAnalyzersComponent.h/.cpp
+    type: ui
+    criticality: MED
+    status: AUDITED
+    description: Analizadores profesionales. Vectorscopio (VectorscopeSystem con fósforo, grid cache, timer 30fps) + correlación (PhaseCorrelationSystem con smooth attack/release).
+    dependencies: [AudioAnalyzer, VectorscopeComponent]
+    contains: [VectorscopeSystem, PhaseCorrelationSystem]
+
+  # UI — Legacy / Pendiente
+  - name: TrackDashboardComponent
+    path: Source/MixCoach/UI/TrackDashboardComponent.h/.cpp
+    type: ui
+    criticality: MED
+    status: V3_VERIFIED
+    description: Dashboard de pista. Ya migrado a V3 (SharedData::getTrackAudioResult()).
+
+  - name: ReferencePanelComponent
+    path: Source/MixCoach/UI/ReferencePanelComponent.h/.cpp
+    type: ui
+    criticality: MED
+    status: PENDING
+    description: Pistas de referencia A/B. TODO: Play audio reference.
+
+  - name: VirtualBusesComponent
+    path: Source/MixCoach/UI/VirtualBusesComponent.h/.cpp
+    type: ui
+    criticality: MED
+    status: AUDITED
+    description: Gestión de buses virtuales. ✅ Auditado Jun 2026: usa MixCoachTheme, colores de bus, hitTest, callback onBusSelected. Sin bugs.
+    dependencies: [MixCoachTheme, Constants, Types]
+
+  - name: PlaylistComponent
+    path: Source/MixCoach/UI/PlaylistComponent.h/.cpp
+    type: ui
+    criticality: MED
+    status: AUDITED
+    description: Playlist de tracks agrupada por buses. ✅ Auditado Jun 2026: layout complejo con bus headers, track cards, LED strip animado (SmoothValue), auto-scroll, mouseDown con hit detection. Sin bugs.
+
+  # ─── PLUGIN: Messenger (Sensor) ─────────────────────────
+
+  - name: PluginProcessor (Messenger)
+    path: Source/Messenger/core/PluginProcessor.h/.cpp
+    type: entry_point
+    criticality: CORE
+    description: Sensor puro. Pasa audio intacto. Escribe RAW a SharedAudioMemory.
+    dependencies: [SharedAudioMemoryV2, SlotRegistry, SharedMemory]
+    note: SIN RMS, SIN Peak, SIN FFT, SIN LUFS, SIN correlación (V3)
+
+  - name: PluginEditor (Messenger)
+    path: Source/Messenger/ui/PluginEditor.h/.cpp
+    type: ui
+    criticality: MED
+    description: UI mínima: nombre, color, tipo, bus, LED.
+
+  # ─── COMMON (Compartido) ────────────────────────────────
+
+  - name: SharedData
+    path: Source/Common/memory/SharedData.h/.cpp
+    type: infra
+    criticality: CORE
+    description: Singleton thread-safe. Bridge: SlotRegistry + SharedMemory + cache TrackAudioResult.
+    dependencies: [SlotRegistry, SharedMemory]
+    tests: [TestIPCIntegration (86 tests)]
+
+  - name: SlotRegistry
+    path: Source/Common/memory/SlotRegistry.h/.cpp
+    type: infra
+    criticality: CORE
+    description: Corazón del IPC. Registro de slots (128 max). Solo identidad.
+    dependencies: [SharedMemory]
+    tests: [TestSlotRegistry (~10 tests), TestStress128Slots (1595 tests)]
+
+  - name: SharedMemory
+    path: Source/Common/memory/SharedMemory.h/.cpp
+    type: infra
+    criticality: CORE
+    description: IPC V6 via CreateFileMappingW. SharedSlotEntry (5 campos, struct versionado).
+    dependencies: []
+    tests: [TestSharedMemory, TestStress128Slots]
+
+  - name: SharedAudioMemoryV2
+    path: Source/Common/memory/SharedAudioMemoryV2.h/.cpp
+    type: infra
+    criticality: CORE
+    description: IPC audio RAW estéreo. Ring buffer lock-free cross-process.
+    dependencies: []
+
+  - name: SharedAudioMemory (V1 legacy)
+    path: Source/Common/memory/SharedAudioMemory.h/.cpp
+    type: infra
+    criticality: MED
+    status: LEGACY
+    description: IPC audio RAW mono (legacy). No usar para nuevas features.
+
+  - name: AudioAnalysis
+    path: Source/Common/audio/AudioAnalysis.h/.cpp
+    type: analysis
+    criticality: HIGH
+    description: FFT 1024-point Hann, RMS, correlación de fase, safe_sqrt(), safe_atan2().
+    dependencies: []
+
+  - name: LoudnessAnalyzer
+    path: Source/Common/audio/LoudnessAnalyzer.h/.cpp
+    type: analysis
+    criticality: HIGH
+    description: LUFS EBU R128: K-weighting filter, Momentary/ShortTerm/Integrated/LRA/TruePeak.
+    dependencies: []
+
+  - name: Types
+    path: Source/Common/types/Types.h
+    type: infra
+    criticality: CORE
+    description: Estructuras compartidas: BusType, SlotInfo, MentorMessage, TrackAudioResult (V3).
+    note: 18 archivos dependen de este archivo ⚠️
+
+  - name: Constants
+    path: Source/Common/types/Constants.h
+    type: utility
+    criticality: LOW
+    description: Constantes globales: kMaxTracks=128, kFFTSize=1024, colores de bus.
+
+  - name: LogHelper
+    path: Source/Common/types/LogHelper.h
+    type: utility
+    criticality: LOW
+    description: Logger por archivo para diagnóstico.
+
+# ─── TESTS ─────────────────────────────────────────────────
+
+tests:
+  - name: TestAudioAnalyzer
+    path: tests/TestAudioAnalyzer.cpp
+    count: 15
+    scope: AudioAnalyzer (FFT, LUFS, correlación, RMS/Peak, vectorscope)
+    trigger: Al modificar MixCoach/audio/ o Common/audio/
+
+  - name: TestCoachEngine
+    path: tests/TestCoachEngine.cpp
+    count: 41
+    scope: CoachEngine (mentoría)
+    trigger: Al modificar engine/
+
+  - name: TestIPCIntegration
+    path: tests/TestIPCIntegration.cpp
+    count: 86
+    scope: SharedData + SharedMemory pipeline
+    trigger: Al modificar Common/memory/
+
+  - name: TestStress128Slots
+    path: tests/TestStress128Slots.cpp
+    count: 1595
+    scope: IPC worst-case
+    trigger: Al modificar SlotRegistry/SharedMemory
+
+  - name: TestStress50Tracks
+    path: tests/TestStress50Tracks.cpp
+    count: 55
+    scope: IPC moderate load
+    trigger: Al modificar SlotRegistry
+
+  - name: TestPhaseManager
+    path: tests/TestPhaseManager.cpp
+    count: 80
+    scope: PhaseManager (fases y logros)
+    trigger: Al modificar engine/
+
+  - name: TestSharedMemory
+    path: tests/TestSharedMemory.cpp
+    scope: SharedMemory init/close
+    trigger: Al modificar SharedMemory
+
+  - name: TestSlotRegistry
+    path: tests/TestSlotRegistry.cpp
+    count: ~10
+    trigger: Al modificar SlotRegistry
+
+  - name: TestSmoothValue
+    path: tests/TestSmoothValue.cpp
+    count: 12
+    scope: UI meters
+    trigger: Al modificar SmoothValue
+
+  - name: TestVectorscopeComponent
+    path: tests/TestVectorscopeComponent.cpp
+    scope: Vectorscopio
+
+  - name: TestSpectrographComponent
+    path: tests/TestSpectrographComponent.cpp
+    scope: Espectrograma
+
+  - name: TestLUFSMeter
+    path: tests/TestLUFSMeter.cpp
+    scope: Medidor LUFS
+
+  # ✂️ TestTelemetryDSP ELIMINADO: era V2 legacy, no compilaba
+
+# ─── DOCUMENTACIÓN IA ─────────────────────────────────────
+
+documentation:
+  - name: AI_CONTEXT
+    path: AI_CONTEXT.md
+    priority: 1
+    description: Única fuente de verdad para IA. Todo en 1 documento: contexto, §11 leyes, §12 checklist. Leer COMPLETO antes de tocar código.
+
+  - name: AI_COMPONENT_INDEX
+    path: AI_COMPONENT_INDEX.yaml
+    priority: 2
+    description: ⬅️ ESTE ARCHIVO. Índice semántico de todos los componentes.
+
+  - name: SAFE_EDIT_GUIDE
+    path: SAFE_EDIT_GUIDE.md
+    priority: 3
+    description: Guía de modificación segura — cómo editar sin romper IPC.

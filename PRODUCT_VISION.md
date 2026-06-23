@@ -1,267 +1,415 @@
-# 🎯 PRODUCT_VISION.md — La Visión de MixCoach
+# 🎯 PRODUCT VISION — MixCoach
 
-> **El alma del proyecto. Léeme primero para entender QUÉ es MixCoach, QUÉ NO es, y HACIA DÓNDE va.**
-> **Versión:** 1.0 | **Última actualización:** 2026-06-03
-
----
-
-## ⚡ La Frase que lo Define
-
-> **MixCoach no es un procesador de audio. Es un Mentor Profesional que te guía a través del proceso de mezcla, convirtiéndote en un ingeniero de audio más capaz, organizado y seguro de tus decisiones.**
-
-Esta frase NO es decorativa. Es la **estrella del norte** del proyecto. Cada decisión de diseño, cada funcionalidad, cada línea de código debe responder: *"¿Esto acerca al usuario a ser un mejor ingeniero?"*
+> **Documento canónico de experiencia de usuario y visión de producto.**
+> Cualquier feature, UI o cambio arquitectónico debe contrastarse contra esta visión.
+>
+> **Actualizado para:** MASTER VISION v3
+> **Versión:** 2.0 | **Última actualización:** 13 junio 2026
 
 ---
 
-## 🧠 Los 3 Pilares del Producto
+## 📋 Índice
 
-### 1. Mentor, no Juez 🧑‍🏫
-
-| El Mentor... | El Juez... |
-|-------------|------------|
-| Sugiere, guía, enseña | Critica, califica, señala |
-| Dice "prueba a subir 1dB en 60Hz" | Dice "tu mezcla está mal" |
-| Explica POR QUÉ | Solo dice QUÉ está mal |
-| Se adapta al nivel del ingeniero | Aplica el mismo estándar a todos |
-| Celebra el progreso (logros) | Solo señala errores |
-
-**En código:** Los mensajes de `CoachEngine` son TIPS y sugerencias, no juicios. El tono es profesional pero alentador. Los warnings existen (clipping, fase negativa) pero siempre con solución.
-
-### 2. Enfoque 80/20 🎯
-
-> El 80% del resultado viene del 20% de las acciones. MixCoach se enfoca en las métricas y fases que más impacto tienen en la mezcla.
-
-**¿Qué significa en la práctica?**
-
-- No necesitas un analizador de 2048 bandas — con 512 bins FFT es suficiente
-- No necesitas 50 métricas — con Peak, RMS, LUFS, correlación y crest factor cubres el 90% de los problemas
-- Las fases de mentoría cubren el flujo completo de mezcla, pero sin profundidad excesiva en cada una
-
-**¿Qué NO haremos?**
-- ❌ Analizador espectral de precisión de laboratorio
-- ❌ Medición de distorsión armónica (THD)
-- ❌ Análisis de fase en frecuencia (solo correlación global)
-- ❌ Soporte para Surround / Dolby Atmos
-
-### 3. Relación de Equipo: "Ingeniero + MixCoach" 🤝
-
-```
-TÚ (Ingeniero)          MixCoach (Mentor)
-     │                        │
-     │  Decide creativamente  │
-     │───────────────────────▶│
-     │                        │  Analiza, sugiere, alerta
-     │                        │───────────────────────▶
-     │◀───────────────────────│
-     │  Toma la decisión final│
-     │                        │
-     ▼                        ▼
-     ──── MEZCLA MEJOR ────
-```
-
-**MixCoach NUNCA toca el audio.** El ingeniero mantiene el control creativo total. MixCoach solo provee criterio, datos y consejo.
+1. [🏛️ Filosofía Central](#️-filosofía-central)
+2. [🎭 La Experiencia Completa (Simulación UX 6 Fases)](#-la-experiencia-completa-simulación-ux-6-fases)
+3. [🧠 Principios de Diseño](#-principios-de-diseño)
+4. [🏗️ Mapa de Implementación](#️-mapa-de-implementación)
+5. [📊 Roadmap Técnico](#-roadmap-técnico)
 
 ---
 
-## 🎨 Identidad Visual
+## 🏛️ Filosofía Central
 
-### Look & Feel
+### La jerarquía de MixCoach
 
 ```
-FONDOS:       Negro profundo (#0A0A0F) con paneles sutilmente elevados
-MARCA:        Violeta (#7C3AED / #8B5CF6)
-IA/ESPECTRO:  Cyan (#00B4D8 / #00E5FF)
-TIPOGRAFÍA:   Sans-serif moderna, ALL CAPS para headers de sección
-ESTILO:       Profesional, oscuro, denso (como iZotope Ozone / IK Multimedia)
+1. El oído humano está por encima de los números
+2. La organización define la calidad del análisis
+3. El balance es más importante que el procesamiento
+4. La referencia define el estándar real
+5. El sistema debe formar ingenieros, no crear dependencia
 ```
 
-**Referencias visuales (fuente de verdad):**
-- `UI_REFERENCES/Messenger.png` — UI del plugin por pista
-- `UI_REFERENCES/MixCoach_Tab1_AICoach.png` — Pestaña de chat + pistas
-- `UI_REFERENCES/MixCoach_Tab2_Analyzers.png` — Pestaña de analizadores
+### Arquitectura del Ingeniero Virtual
 
-### Paleta de Colores de Bus (inviolable)
+MixCoach funciona con **tres capas estrictamente separadas**:
 
-| Bus | Color | Código |
-|-----|:-----:|:------:|
-| Drums | 🟣 Violeta | `#8B5CF6` |
-| Bass | 🔵 Azul | `#3B82F6` |
-| Guitars | 🟠 Naranja | `#F97316` |
-| Keys/Synths | 🟢 Verde-teal | `#10B981` |
-| Vocals | 🩷 Rosa | `#EC4899` |
-| FX | 🫀 Teal | `#14B8A6` |
+```
+MESSENGER (por pista)        → Identidad estructural
+       ↓
+COACH ENGINE (global)        → Inteligencia musical
+       ↓
+MASTER OUTPUT (referencia)   → Validación final
+```
 
-**Regla:** Estos colores NUNCA se hardcodean. Siempre se usan via `MixCoachTheme::busColour()` + `Constants.h::kBusColourARGB`.
+| Capa | Rol | Lo que NO hace |
+|:-----|:----|:---------------|
+| **Messenger** | Identifica y estructura la sesión | No toma decisiones musicales |
+| **Coach Engine** | Interpreta y guía la mezcla | No identifica pistas ni construye estructura |
+| **Master Output** | Valida contra la referencia | No reemplaza al coach |
+
+### Regla crítica
+
+> **El Coach Engine nunca trabaja sin Messenger.**
+>
+> Si Messenger no está activo en cada pista:
+> - No hay coaching avanzado
+> - No hay decisiones estructurales
+> - Solo análisis básico de audio
 
 ---
 
-## 🏗️ Arquitectura Conceptual
+## 🎭 La Experiencia Completa (Simulación UX 6 Fases)
+
+> *Esta simulación fue creada por el fundador del proyecto y describe la experiencia de usuario definitiva de MixCoach. Es el norte del producto.*
+
+---
+
+### FASE 1: BIENVENIDA — El primer contacto
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      FL STUDIO (DAW)                         │
-│                                                              │
-│  PISTA 1          PISTA 2  ...  PISTA N         MASTER      │
-│  ┌────────┐       ┌────────┐     ┌────────┐    ┌────────┐  │
-│  │MESSENGER│      │MESSENGER│     │MESSENGER│   │MIXCOACH│  │
-│  │ (oídos) │      │ (oídos) │     │ (oídos) │   │(cerebro)│  │
-│  │ CPU <0.05│     │ CPU <0.05│    │ CPU <0.05│   │         │  │
-│  └────┬───┘       └────┬───┘     └────┬───┘    └────────┘  │
-│       │                │              │           ▲         │
-│       └────────────────┴──────────────┘───────────┘         │
-│                        │  IPC (SHM + backup)                │
-│                        ▼                                    │
-│                   DATOS EN TIEMPO REAL                       │
-│              (Peak, RMS, FFT, LUFS, fase)                   │
-└──────────────────────────────────────────────────────────────┘
+MixCoach: 🎧 ¡Hola Ingeniero! ¿Qué vamos a mezclar hoy?
+
+Tú: Hoy es reggaetón tipo Bad Bunny.
+
+MixCoach: 🔥 ¡Perfecto! Reggaetón. Vamos a hacer que tu mezcla suene enorme.
+          Te voy a guiar paso a paso. Primero, necesito que actives el Messenger
+          en CADA pista de tu sesión.
+
+📋 CHECKLIST INICIAL:
+☐ Activar Messenger en cada pista
+☐ Organizar por colores (batería, bajo, voces, melodías, fx)
+☐ Verificar que MixCoach recibe señal en el master
 ```
 
-### Los Dos Plugins
+**Mecánica:** El coach pregunta intención, configura expectativas según género, y da la primera instrucción clara: activar Messenger.
 
-| Plugin | Metáfora | Rol | CPU Objetivo |
-|--------|----------|-----|:------------:|
-| **Messenger** | 👂 Los Oídos | Uno por pista. Escucha, mide, envía telemetría. NO toca el audio. | < 0.05% |
-| **MixCoach** | 🧠 El Cerebro | Uno en el Master. Recibe datos, ejecuta mentoría, muestra analizadores. | < 2% (con 60+ tracks) |
+---
 
-### El Flujo de Datos
+### FASE 2: ACTIVACIÓN DE MESSENGER — Identidad por pista
 
 ```
-Messenger en cada pista:
-  1. Audio entra → NO se modifica (passthrough)
-  2. TelemetryCollector analiza: Peak, RMS, FFT, correlación, LUFS
-  3. Datos viajan a MixCoach por:
-     a) Shared Memory (CreateFileMappingW) → RÁPIDO (~1μs)
-     b) Backup Files (%LOCALAPPDATA%) → GARANTIZADO (~5ms)
+Tú: Listo, Messenger activo en todas las pistas.
 
-MixCoach en el Master:
-  4. SlotRegistry recibe datos de N Messengers
-  5. CoachEngine analiza según la fase activa
-  6. UI muestra analizadores + chat con sugerencias
+MixCoach: ✅ Detectando tu sesión...
+
+📡 MESSENGER ACTIVO — IDENTIFICANDO PISTAS...
+
+🎧 Total de pistas detectadas: 30
+
+Identificando rol de cada pista...
+
+Track 1:  Kick     → Rol: Kick (Drum Bus)     ✅
+Track 2:  Snare    → Rol: Snare (Drum Bus)     ✅
+Track 3:  HiHat    → Rol: HiHat (Drum Bus)     ✅
+Track 4:  808_1    → Rol: 808 Bass (Bass Bus)  ✅
+Track 5:  Vox      → Rol: Lead Vocal (Vox Bus) ✅
+...
+
+⚠️ 3 pistas sin identificar:
+  - "Audio 1" → ¿Qué es esto? (seleccionar rol)
+  - "Track 5" → ¿Qué es esto? (seleccionar rol)
+  - "Synth 2" → ¿Qué es esto? (seleccionar rol)
+```
+
+**Mecánica CLAVE:**
+- Messenger responde: **"¿Qué es este sonido dentro de la mezcla?"**
+- Identifica: tipo de instrumento, rol musical, rango frecuencial, bus, routing
+- Las pistas que no puede identificar, las marca para que el usuario las etiquete
+- Messenger NO toma decisiones musicales — solo identifica y estructura
+
+**Resultado de Messenger por pista:**
+```
+Track: Vocal 1
+Role: Lead vocal
+Bus: Vox Bus
+Position: Center
+Range: 1k–5k Hz
 ```
 
 ---
 
-## 🗺️ Roadmap de Mentoría (Las 6 Fases)
+### FASE 3: CONSTRUCCIÓN DEL MAPA DE MEZCLA
 
 ```
-FASE 0: WELCOME 🎉
-    ● Mensaje de bienvenida
-    ● Detección de pistas
-    ● Setup de género musical
-    → Avance: automático al detectar primera pista
+MixCoach: 📊 Generando mapa de mezcla...
 
-FASE 1: GAIN STAGING 📊
-    ● Detección de clipping (peak > -0.5dB)
-    ● Headroom (-6dB target)
-    ● Señal baja (peak < -30dB)
-    ● Crest factor analysis
-    → Objetivo: sin clipping, headroom saludable
+Con la información de Messenger, construyo el mapa completo de tu sesión:
 
-FASE 2: ORGANISATION 📝
-    ● Nombrar pistas descriptivamente
-    ● Asignar colores por familia
-    ● Agrupar en buses virtuales
-    → Objetivo: mezcla organizada visualmente
+📋 MAPA DE MEZCLA — REGGAETÓN
+═══════════════════════════════════════════════════════════════
+🥁 DRUM BUS (4)
+  Kick  → Drum Bus → Master    [Center | 60-100Hz fund.]
+  Snare → Drum Bus → Master    [Center | 200Hz-4kHz]
+  HiHat → Drum Bus → Master    [Stereo | 8-15kHz]
+  Percu → Drum Bus → Master    [Stereo | 200Hz-3kHz]
 
-FASE 3: TONAL BALANCE 🎛️
-    ● Análisis espectral por bandas
-    ● Detección de 6 desbalances (subs, graves, presencia, etc.)
-    ● Enmascaramiento espectral entre pares
-    → Objetivo: espectro balanceado
+🎸 BASS BUS (2)
+  808_1 → Bass Bus → Master    [Center | 50-60Hz fund.]
+  808_2 → Bass Bus → Master    [Center | 45-55Hz fund.]
 
-FASE 4: DYNAMICS ⚡
-    ● Crest factor por pista
-    ● Compresión excesiva vs insuficiente
-    ● LUFS y loudness range
-    → Objetivo: dinámica controlada
+🎹 MUSIC BUS (8)
+  Piano  → Music Bus → Master  [Stereo]
+  Synth  → Music Bus → Master  [Stereo]
+  ...
 
-FASE 5: SPATIAL 🌌
-    ● Correlación de fase
-    ● Fase negativa
-    ● Compatibilidad mono
-    → Objetivo: mezcla con profundidad y ancho
+🎤 VOX BUS (9)
+  Voz Principal → Vox Bus → Master  [Center]
+  Adlibs        → Vox Bus → Master  [Stereo]
+  ...
+
+🌊 FX BUS (4)
+  Risers → FX Bus → Master    [Stereo]
+  ...
+═══════════════════════════════════════════════════════════════
+
+MixCoach: ¿Es correcto este mapa? Confirma el ruteo antes de seguir.
 ```
 
-**Filosofía de fases:** El usuario AVANZA cuando QUIERE (comando `/next`). No hay obligación. La gamificación (logros) motiva pero no fuerza.
+**Mecánica:** Messenger genera la identidad de todas las pistas, la relación entre elementos y el flujo hacia el master. El usuario valida el mapa antes de continuar.
 
 ---
 
-## ✅ QUÉ ES MixCoach (Sí)
+### FASE 4: COACHING ACTIVO — Balance, problemas, técnicas
 
-- ✅ Un mentor que analiza tu mezcla y da sugerencias
-- ✅ Un sistema de analizadores visuales profesionales
-- ✅ Un organizador de pistas (nombres, colores, buses virtuales)
-- ✅ Un detector de problemas (clipping, fase, enmascaramiento)
-- ✅ Un sistema de gamificación que motiva el aprendizaje
-- ✅ Un plugin VST3 para Windows (FL Studio y DAWs compatibles)
-- ✅ Una herramienta que funciona con 1 pista o con 100+
+**Subfase 4.1 — Balance inicial**
 
-## ❌ QUÉ NO ES MixCoach (Nunca)
+```
+MixCoach: 📊 FASE 4: BALANCE INICIAL
 
-- ❌ **NO** es un procesador de audio (no ecualiza, no comprime, no limita)
-- ❌ **NO** es un sustituto de oído entrenado (es una herramienta más)
-- ❌ **NO** es iZotope Neutron / Ozone (no tiene procesamiento AI de audio)
-- ❌ **NO** es FabFilter Pro-Q / Pro-C (no reemplaza tus plugins favoritos)
-- ❌ **NO** es un medidor de laboratorio (precisiones redondeadas son aceptables)
-- ❌ **NO** es multi-plataforma (solo Windows VST3 por ahora)
-- ❌ **NO** funciona como standalone sin DAW
-- ❌ **NO** altera el audio en ninguna circunstancia
+Vamos a establecer el balance de niveles antes de procesar nada.
+Usa el trim o ganancia de entrada — no toques los faders aún.
+
+🥁 Kick         → RMS: -3dB  🔴 Bájale -2dB (muy caliente)
+🥁 Snare        → RMS: -8dB  🟢 Sube +1dB (un poco bajo)
+🎸 808_1        → RMS: -10dB 🟢 Sube +3dB (importante peso)
+🎤 Voz Principal→ RMS: -4dB  🔴 Bájale -1dB
+...
+```
+
+**Subfase 4.2 — Problemas críticos**
+
+```
+MixCoach: ⚠️ Detecté problemas que atender antes de seguir:
+
+🔴 MASTER EN CLIPPING (+0.3dBFS) — Baja el master fader 3dB YA
+🔴 Kick y 808 compiten en 60Hz — enmascaramiento de graves
+🟡 Voz sin presencia en 2-4kHz — se pierde en la mezcla
+
+Empecemos por el clipping. Después ajustamos el resto.
+```
+
+**Subfase 4.3 — Organización**
+
+```
+MixCoach: Antes de profundizar, arreglemos el orden:
+
+⚠️ Track "Audio 1" sin nombre → renombrar
+⚠️ Track "Synth 2" sin color asignado → asignar color del bus Music
+⚠️ Guitarra en bus de voces → mover a Music Bus
+
+El orden es la base de todo. 5 minutos y seguimos.
+```
+
+**Subfase 4.4 — Técnicas de mezcla**
+
+```
+MixCoach: 🎧 DINÁMICA
+
+🥁 Kick → El ataque se pierde. Prueba compresor 4:1,
+          attack 10ms, release 80ms.
+
+Tú: [Aplico compresión 8:1 en el kick]
+
+MixCoach: ⚠️ 8:1 aplasta el transiente. Bájalo a 4:1.
+          El kick debe "empujar", no "golpear seco".
+
+Tú: [Ajusto a 4:1]
+
+MixCoach: ✅ ¡Mejor! Ahora el kick tiene pegada pero no rompe.
+          ¿Escuchas la diferencia?
+```
+
+**Subfase 4.5 — Correcciones progresivas**
+
+Loop de corrección:
+1. Coach recomienda un valor exacto
+2. Usuario aplica (a veces exagera)
+3. Coach escucha el resultado y corrige
+4. Se repite hasta "óptimo"
 
 ---
 
-## 👤 El Usuario
+### FASE 5: REFERENCIAS — Comparación contra tracks reales
 
-MixCoach está diseñado para:
+```
+MixCoach: 🎯 FASE 5: REFERENCIAS
 
-| Perfil | ¿Qué valora? | MixCoach le ayuda a... |
-|--------|-------------|----------------------|
-| **Ingeniero principiante** | Aprender el proceso de mezcla | Entender el flujo completo, evitar errores comunes |
-| **Ingeniero intermedio** | Validar decisiones, ahorrar tiempo | Detectar problemas rápido, mantener consistencia |
-| **Ingeniero avanzado** | Segunda opinión, objetividad | Ver lo que el oído ya no escucha por fatiga |
+Carga tu referencia. Un archivo de audio o un enlace.
 
-**Lo que NO somos:** Para productores que solo quieren "masterizar" sin aprender. MixCoach requiere que el ingeniero participe activamente.
+Tú: [Cargo "Tití Me Preguntó" de Bad Bunny]
+
+MixCoach: 🔍 Analizando referencia...
+
+📊 COMPARACIÓN MIX vs REFERENCIA
+═══════════════════════════════════════════════════════════════
+🎚️ LUFS:   Mix: -12dB  |  Ref: -8.2dB  |  Diff: +3.8dB 🔴
+🥁 808:    Mix: -10dB  |  Ref: -6dB    |  Diff: +4dB   🔴
+🎤 Voz:    Mix: plano  |  Ref: +3dB@3kHz | Sin presencia 🟡
+✅ Batería: Bien posicionada
+✅ Melodías: Buen balance
+═══════════════════════════════════════════════════════════════
+
+MixCoach: Tu 808 está 4dB más bajo que la referencia.
+          Sube 2dB en la fundamental (50-60Hz) y escuchamos.
+```
+
+**Mecánica:** La referencia se usa para evaluar cercanía y guiar ajustes. No es opcional — es parte fundamental del flujo.
 
 ---
 
-## 🧭 Hacia Dónde Vamos (Visión a Futuro)
+### FASE 6: REFINAMIENTO — Profundidad, estéreo, impacto final
 
-### Corto plazo (próximos meses)
 ```
-● Estabilidad con 100+ Messengers ✅ (logrado)
-● UI alineada con imágenes de referencia
-● CoachEngine con mensajes más contextuales y variados
-● Exportación de informes de mezcla
-● /commands avanzados (historial, estadísticas, export)
+MixCoach: 🌊 FASE 6: REFINAMIENTO
+
+Vamos a darle profundidad y dimensión a la mezcla.
+
+🎤 Voz → Reverb de sala, pre-delay 40ms, decay 1.8s, envío 30%
+🥁 Drum Bus → Compresión paralela 8:1, mix 20%
+🎸 Melodías → Delay estéreo 1/8, feedback 20%, mix 15%
+
+Tú: [Aplico los ajustes]
+
+MixCoach: ✅ Ahora la mezcla tiene profundidad.
+
+📊 IMPACTO FINAL:
+═══════════════════════════════════════════════════════════════
+✅ Estructura de ganancia
+✅ Compresión en elementos clave
+✅ EQ quirúrgico y de realce
+✅ Saturación y clipping
+✅ Reverb, delays y procesamiento paralelo
+✅ Mezcla traducible a otros sistemas
+═══════════════════════════════════════════════════════════════
+
+🎯 RESUMEN DE SESIÓN:
+• 30 pistas organizadas y procesadas
+• 12 recomendaciones aplicadas
+• 3 loops de corrección
+• Referencia: Tití Me Preguntó (80% de cercanía)
+
+🏆 ¿Qué quieres hacer ahora?
+A) Exportar la mezcla
+B) Guardar sesión y continuar mañana
+C) Empezar una nueva sesión
 ```
 
-### Mediano plazo
-```
-● Soporte para arrastrar/soltar archivos de referencia
-● Comparación A/B con pistas de referencia
-● Análisis de espectro por bus
-● Detección de enmascaramiento mejorada
-```
-
-### Largo plazo (visión)
-```
-● Perfiles de usuario que recuerdan preferencias
-● Modo "rehearsal" donde MixCoach analiza sin el artista presente
-● Integración con servicios de referencia (Spotify, etc.)
-● Versión macOS (cuando JUCE lo permita)
-```
+**Mecánica:** El refinamiento incluye profundidad, estéreo, automatización e impacto final. La sesión termina con un resumen de logros y opciones para el usuario.
 
 ---
 
-## 🔗 Referencias Cruzadas
+## 🧠 Principios de Diseño
 
-| Documento | Relación |
-|-----------|----------|
-| `HOW_TO_WORK_ON_THIS_PROJECT.md` | Todo cambio debe preservar la visión del producto |
-| `APPROVED_PATTERNS.md` | PX3: Prohibido lógica de audio en UI (MixCoach solo analiza) |
-| `DEFINITION_OF_DONE.md` | Criterio 1: "Preserva el objetivo del producto: mentor/analyzer, no audio processor" |
-| `USER_PERSONA.md` | Detalla el perfil del usuario final |
-| `AGENTS.md` | Entrada rápida que referencia esta visión |
+Extraídos de la simulación anterior. Toda decisión de producto debe alinearse con estos principios.
+
+### 1. Doble capa: Messenger + Coach Engine
+```
+Messenger = identidad estructural por pista
+Coach Engine = inteligencia musical global
+```
+Ninguna puede reemplazar a la otra. Trabajan en serie: primero Messenger, después Coach.
+
+### 2. Messenger obligatorio
+El Coach Engine **nunca** trabaja sin Messenger. Si Messenger no está activo en cada pista, el coach solo da análisis básico — no hay mentoría avanzada ni decisiones estructurales.
+
+### 3. Mentor, no procesador
+MixCoach **nunca toca el audio**. Solo analiza, sugiere y verifica. El usuario tiene el control creativo total.
+
+### 4. Loop de corrección
+Recomendar → Usuario aplica → Coach verifica → Corrige si es necesario. Este ciclo es el corazón de la experiencia de aprendizaje.
+
+### 5. Mapa de mezcla explícito
+La sesión no solo se escanea — se construye como un mapa visual que el usuario puede ver y validar. El mapa incluye: identidad de cada pista, routing, relación entre elementos.
+
+### 6. Referencia como estándar
+El usuario siempre debe tener una referencia. MixCoach compara espectro, LUFS, balance tonal y da diferencias cuantificables. La referencia no es opcional — es parte del flujo.
+
+### 7. Organización ante todo
+Si la sesión está desordenada, el coach lo detecta y lo corrige **antes** de cualquier análisis de audio. Tracks sin nombre, colores aleatorios, buses mal ruteados — se ataca primero.
+
+### 8. Tono profesional
+"Nunca critiques. Siempre sugiere con fundamento." Tono de ingeniero senior ayudando a un colega.
+
+### 9. Persistencia multi-sesión
+MixCoach recuerda: qué fase ibas, qué ajustes hiciste, qué referencia usaste, qué mapa de mezcla construiste.
+
+### 10. Sin puntuaciones visibles
+MixScore existe solo para consumo interno del LLM. El usuario nunca ve un score 0-100. Ve texto descriptivo: "bien encaminado", "podemos mejorar", "hay problemas críticos".
+
+### 11. Formar ingenieros, no crear dependencia
+El objetivo final no es corregir mezclas. Es formar usuarios que escuchan con criterio, organizan sesiones, entienden el flujo de señal, usan referencias y piensan como ingenieros reales.
 
 ---
 
-*Documento de visión de producto — MixCoach Project*
+## 🏗️ Mapa de Implementación
+
+### Ya existe en el código V3
+
+| Concepto | Implementación actual |
+|:---------|:----------------------|
+| **Chat interactivo** | `CoachChatComponent` + `ChatMessagesComponent` |
+| **Messenger por pista** | `MessengerPlugin` envía RAW a `SlotRegistry` + `SharedAudioMemory` |
+| **Master analyzer** | `AudioAnalyzer` (FFT, LUFS, fase, vectorscope) |
+| **Track scanning** | `forceFullSync()` + `forEachActive()` |
+| **Colores por bus** | `MixCoachTheme::busColour(BusType)` |
+| **Persistencia básica** | `SharedData` + `AI_SESSION_STATE.json` |
+| **Envelope detection** | Per-track attack/release/sustain en bg worker |
+| **Mid/Side decomposition** | midEnergyPerBand[6], sideEnergyPerBand[6] |
+| **Spectral profiling** | `SpectralProfiler` con 30-band spectrum por track |
+| **MixScore** | Interno para LLM, no visible al usuario |
+
+### Falta para llegar a la visión completa
+
+| Feature | Prioridad | Esfuerzo |
+|:--------|:---------:|:--------:|
+| **Messenger como capa de identidad** (rol, función, rango, routing explícito) | 🥇 1 | ⭐⭐⭐ |
+| **Mapa de mezcla visual** (entregable explícito de Fase 3) | 🥇 2 | ⭐⭐⭐ |
+| **TrackFeed** (mensajes por track con estado 🟢🟡🔴 en la lista) | 🥇 3 | ⭐⭐ |
+| **CoachEngine con análisis por track** (gain, compresión, EQ específicos) | 🥇 4 | ⭐⭐⭐⭐ |
+| **Reference matching** (comparación espectro + LUFS contra referencia real) | 🥇 5 | ⭐⭐⭐ |
+| **Loop de corrección** (detectar si el usuario exageró una recomendación) | 🥇 6 | ⭐⭐⭐⭐ |
+| **Fase de refinamiento** (profundidad, estéreo, automatización, impacto final) | 🥈 7 | ⭐⭐⭐ |
+| **Persistencia multi-sesión avanzada** (guardar/restaurar mapa de mezcla completo) | 🥈 8 | ⭐⭐ |
+| **Modo Mastering** (perfil separado del cerebro) | 🥉 9 | ⭐⭐⭐⭐⭐ |
+| **Informes de mezcla exportables** | 🥉 10 | ⭐ |
+
+---
+
+## 📊 Roadmap Técnico
+
+### Fase 1 — Messenger Identity Layer
+Transformar Messenger de "sensor RAW" a "capa de identidad de sonido". Que responda: ¿qué es este sonido? Rol, función, rango, bus, routing.
+
+### Fase 2 — Mapa de Mezcla
+Construir el mapa visual de la sesión a partir de los datos de Messenger. Mostrar routing completo, relaciones entre pistas, flujo hacia el master.
+
+### Fase 3 — TrackFeed
+Implementar notificaciones por track en `MessengerListComponent`. Cada Messenger muestra un indicador 🟢🟡🔴 con recomendación textual corta.
+
+### Fase 4 — CoachEngine v2
+Que el coach sea capaz de analizar cada track individualmente (gain, dinámica, EQ, envelope) y generar recomendaciones específicas con datos reales.
+
+### Fase 5 — Reference Analyzer
+Extender `ReferencePanelComponent` para analizar el audio de referencia (espectro, LUFS, balance tonal) y comparar contra cada track y el master.
+
+### Fase 6 — Loop de corrección
+Después de dar una recomendación, el coach mustrea el master a los pocos segundos para verificar que el cambio fue aplicado correctamente.
+
+### Fase 7 — Refinamiento y Veredicto
+Implementar la Fase 6 completa: profundidad estéreo, automatización, impacto final, resumen de sesión, exportación.
+
+---
+
+*Documento de visión de producto — MixCoach — 13 junio 2026*
+*Alineado con MASTER VISION v3 y AI_CONTEXT.md §8*

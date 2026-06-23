@@ -1,60 +1,144 @@
 {
-  "version": "2.1.0",
-  "last_updated": "2026-05-31",
-  "system_components": {
-    "ast_parser": {
-      "status": "ready",
-      "symbols": 138,
-      "files": 44
-    },
-    "code_embedder": {
-      "status": "ready",
-      "documents": 46,
-      "vocabulary": 2121
-    },
-    "semantic_search": {
-      "status": "ready",
-      "synonyms": 56
-    },
-    "change_impact": {
-      "status": "ready"
-    },
-    "self_summarizer": {
-      "status": "ready",
-      "layers": 4
-    },
-    "dsp_intelligence": {
-      "status": "ready",
-      "concepts": 7
-    },
-    "context_selector": {
-      "status": "ready",
-      "passes": 5
-    },
-    "ai_build_loop": {
-      "status": "ready",
-      "error_patterns": 16
-    },
-    "token_optimizer": {
-      "status": "ready",
-      "compression": "multi-layer"
-    },
-    "project_intelligence": {
-      "status": "ready",
-      "modules": 5
-    }
-  },
+  "version": "3.0.0",
+  "last_updated": "2026-06-22",
+  "_comment": "Estado de sesión para IA. Roadmap actual: Sprint 1 (Messenger Identity Layer UI).",
   "session": {
-    "current_task": null,
-    "current_files": [],
-    "current_module": null,
+    "current_task": "Sprint 1 — Messenger Identity Layer: UI de confirmación de roles + badge de progreso",
+    "current_files": [
+      "workspace_memory/ROADMAP.md",
+      "Source/MixCoach/UI/MessengerListComponent.h/.cpp",
+      "Source/MixCoach/engine/CoachEngine.cpp",
+      "Source/MixCoach/engine/CoachEngine.h",
+      "Source/MixCoach/engine/SpectralProfiler.cpp",
+      "Source/MixCoach/ai/AiCoachAdapterPrompts.cpp"
+    ],
+    "current_module": "Sprint 1 — Identity Layer",
     "accumulated_context": 0,
     "estimated_tokens": 0
   },
-  "recent_tasks": [],
-  "recent_files": [],
-  "recent_errors": [],
-  "successful_fixes": [],
+  "recent_tasks": [
+    "ROADMAP.md creado: 4 sprints definidos + north star + bugs arreglados",
+    "Bug 🟢 buildTrackSummaries(): espectro mostraba -80.0 dBFS fijo — arreglado",
+    "Bug 🟢 SpectralProfiler.isPercussive(): siempre false por orden de operaciones — arreglado",
+    "Bug 🟢 CoachEngine.cpp build: ReferenceProgress mal scoped — arreglado",
+    "Reference-Driven Mode implementado: flag + match % + LLM prompt prioritario",
+  ],
+  "recent_files": [
+    "AI_QUICKSTART.md",
+    "AI_PERSONA.md",
+    "AI_VISION.md",
+    "AI_CONTEXT.md",
+    "AI_CONTEXT_MAP.md",
+    "DECISION_LOG.md",
+    "ERROR_PATTERNS.json",
+    "AI_CHECKLIST.md"
+  ],
+  "recent_errors": [
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "COORDINATE_MATH_BUG",
+      "file": "AnalyzersPanelComponent.cpp",
+      "description": "Tick marks flotaban sobre el arco por -halfR extra en Y",
+      "fix": "Eliminado -radius*0.5f de la fórmula de coordenadas Y",
+      "prevented_by": null
+    },
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "SCALE_RANGE_MISMATCH",
+      "file": "AnalyzersPanelComponent.cpp",
+      "description": "Aguja usaba 270° pero escala solo 198°",
+      "fix": "Needle range cambiado a markRange (198°)",
+      "prevented_by": null
+    },
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "DECLARACION_MISMATCH",
+      "file": "AnalyzersPanelComponent.h",
+      "description": "drawVUMeter() no tenía parámetro peakHold en el header",
+      "fix": "Agregado float peakHold a la declaración",
+      "prevented_by": null
+    }
+  ],
+  "successful_fixes": [
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "PHANTOM_COMPONENTS",
+      "description": "AI_SESSION_STATE.json: eliminados 10 componentes fantasma que no existen en el proyecto",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "BROKEN_REFERENCES",
+      "description": "DECISION_LOG.md: actualizadas referencias a documentos que no existen",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "AI_QUICKSTART",
+      "description": "Creado AI_QUICKSTART.md para onboarding rápido de IA",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "AI_PERSONA",
+      "description": "Creado AI_PERSONA.md para definir rol del AI Assistant",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "NO_TESTS_AUDIOANALYZER",
+      "description": "TestAudioAnalyzer.cpp creado con 15 tests para componente CORE sin cobertura",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "NO_VALIDATION_AI_DOCS",
+      "description": "validate_ai_docs.ps1 creado: validación cruzada docs vs código real",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "NO_PRE_COMMIT_HOOKS",
+      "description": ".githooks/pre-commit creado: 5 reglas AI automáticas (colores, IPC, CMake, docs, V2 legacy)",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "NOT_AUDITED_COMPONENTS",
+      "description": "VirtualBusesComponent, PlaylistComponent, ProfessionalAnalyzersComponent auditados y documentados",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-13",
+      "error_code": "DOC_MATURITY_GAP",
+      "description": "AI_QUICKSTART.md, AI_PERSONA.md madurados a v1.1 + AI_COMPONENT_INDEX.yaml actualizado",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "COORDINATE_MATH_BUG",
+      "description": "VU meter tick marks corregidos: eliminado -halfR offset",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "SCALE_RANGE_MISMATCH",
+      "description": "VU meter needle range corregido: 198° en vez de 270°",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "COORDINATE_MATH_BUG",
+      "description": "Needle trayectoria elíptica (no circular) para coincidir con el arco",
+      "success": true
+    },
+    {
+      "timestamp": "2026-06-06",
+      "error_code": "DECLARACION_MISMATCH",
+      "description": "Header drawVUMeter() actualizado con parámetro peakHold",
+      "success": true
+    }
+  ],
   "build_history": [
     {
       "timestamp": "2026-05-28T14:21:43",
@@ -69,16 +153,49 @@
       "success": true,
       "duration_seconds": 4.5,
       "error_count": 0
+    },
+    {
+      "timestamp": "2026-06-06T12:00:00",
+      "config": "Release",
+      "success": true,
+      "duration_seconds": 5.2,
+      "error_count": 0,
+      "label": "VU Meters vintage + Neve colors"
+    },
+    {
+      "timestamp": "2026-06-06T12:15:00",
+      "config": "Release",
+      "success": true,
+      "duration_seconds": 5.1,
+      "error_count": 0,
+      "label": "Bug fix: coordenadas VU (3 bugs)"
+    },
+    {
+      "timestamp": "2026-06-06T12:30:00",
+      "config": "Release",
+      "success": true,
+      "duration_seconds": 5.0,
+      "error_count": 0,
+      "label": "Peak hold en VU meters"
+    },
+    {
+      "timestamp": "2026-06-06T13:00:00",
+      "config": "Release",
+      "success": true,
+      "duration_seconds": 4.8,
+      "error_count": 0,
+      "label": "Sistema IA: salvaguardas + session state"
     }
   ],
   "project_health": {
-    "total_files": 43,
+    "total_files": 46,
     "hot_files": [
       "Source/Common/types/Types.h",
       "Source/Common/memory/SharedData.h",
       "Source/Common/memory/SlotRegistry.h",
       "Source/MixCoach/core/PluginProcessor.h",
-      "Source/Messenger/core/PluginProcessor.h"
+      "Source/Messenger/core/PluginProcessor.h",
+      "Source/MixCoach/UI/AnalyzersPanelComponent.cpp"
     ],
     "dangerous_files": [
       "Source/Common/types/Types.h",
@@ -87,7 +204,8 @@
       "Source/Common/memory/SharedMemory.h",
       "Source/Common/memory/SharedData.h",
       "Source/MixCoach/UI/MixCoachTheme.h",
-      "Source/Common/types/LogHelper.h"
+      "Source/Common/types/LogHelper.h",
+      "Source/MixCoach/UI/AnalyzersPanelComponent.cpp"
     ],
     "modules": {
       "Common": {
@@ -119,6 +237,12 @@
         "critical_files": 4,
         "criticality": 7,
         "description": "CMake, build scripts, deployment"
+      },
+      "Documentación IA": {
+        "total_files": 12,
+        "critical_files": 2,
+        "criticality": 8,
+        "description": "Documentación para IA: contextos, reglas, visión, quickstart, persona"
       }
     }
   },

@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "version": 1,
+    "description": "Plugins gratuitos recomendados para sugerencias contextuales del coach"
+  },
+  "EQ": [
+    { "name": "TDR Nova", "tip": "EQ paramétrico dinámico (pasa automáticamente a compresor por banda). Excelente para cortes quirúrgicos y de-essing. Descarga: https://www.tokyodawn.net/tdr-nova/" },
+    { "name": "TDR VOS SlickEQ", "tip": "EQ de mezcla con modelado analógico (GE, M/S). Sonido vintage con control moderno. Descarga: https://www.tokyodawn.net/tdr-vos-slickeq/" },
+    { "name": "Luftikus", "tip": "EQ tipo Maag con bandas aéreas. Excelente para dar brillo a voces y agudos. Descarga: https://plugins4free.com/plugin/2859/" }
+  ],
+  "Comp": [
+    { "name": "TDR Kotelnikov", "tip": "Compresor de bus de sonido transparente. Excelente relación calidad/recursos. Modo Wide/Narrow. Descarga: https://www.tokyodawn.net/tdr-kotelnikov/" },
+    { "name": "DC1A", "tip": "Compresor simple de una perilla (threshold). Suena muy musical. Descarga: https://www.kvraudio.com/product/dc1a-by-de la-mancha" },
+    { "name": "Rough Rider 3", "tip": "Compresor versátil con caracter. Bueno para baterías y buses. Descarga: https://www.audiodamage.com/pages/rr3-info" }
+  ],
+  "Reverb": [
+    { "name": "OrilRiver", "tip": "Reverb algorítmica de sonido limpio. Muy CPU-efficient. Descarga: https://www.kvraudio.com/product/orilriver-by-denis-tihanov" },
+    { "name": "Dragonfly Reverb", "tip": "Reverb de sala/Hall con varias IRs. Sonido natural y espacioso. Descarga: https://michaelwillis.github.io/dragonfly-reverb/" },
+    { "name": "MVerb", "tip": "Reverb clásica de Martin Eastwood. Buena para efectos creativos. Descarga: https://www.kvraudio.com/product/mverb-by-martin-eastwood" }
+  ],
+  "Delay": [
+    { "name": "EchoMatic", "tip": "Delay creativo con modulación y filtro. Ideal para texturas. Descarga: https://www.kvraudio.com/product/e-chomatic-by-cableguys" },
+    { "name": "Dblue Tapestop", "tip": "Efecto de parada de cinta (tapestop). Útil para transiciones. Descarga: https://www.kvraudio.com/product/tapestop-by-dblue" }
+  ],
+  "Limiter": [
+    { "name": "Klanghelm MJUC Jr", "tip": "Compresor/limitador tipo vari-mu. Sonido vintage y cálido. Descarga: https://klanghelm.com/contents/products/MJUCjr" },
+    { "name": "Limiter No6", "tip": "Limitador todo-en-uno con control de pico, RMS y true peak. Extremadamente configurable. Descarga: https://www.kvraudio.com/product/limiter-no6-by-vladg" }
+  ],
+  "Saturation": [
+    { "name": "Softube Saturation Knob", "tip": "Saturación simple de una perilla. Suena muy bien en buses y guitarras. Descarga: https://www.softube.com/saturation-knob" },
+    { "name": "CamelCrusher", "tip": "Saturación con filtro y compresión. Clásico del EDM. Descarga: https://www.kvraudio.com/product/camelcrusher-by-camel-audio" },
+    { "name": "IVGI", "tip": "Saturación de cinta analógica. Bueno para calentar pistas. Descarga: https://www.kvraudio.com/product/ivgi-by-klanghelm" }
+  ],
+  "Meter": [
+    { "name": "Youlean Loudness Meter", "tip": "Medidor LUFS profesional con soporte para EBU R128, ATSC A/85 y más. Descarga: https://youlean.co/youlean-loudness-meter/" },
+    { "name": "TBProAudio dpMeter 5", "tip": "Medidor todo-en-uno: LUFS, True Peak, correlación, espectro. Descarga: https://www.tbproaudio.de/products/dpmeter5" }
+  ],
+  "Analyzer": [
+    { "name": "Voxengo SPAN", "tip": "Analizador de espectro FFT profesional. Múltiples modos de visualización (estéreo, M/S, promedio). Descarga: https://www.voxengo.com/product/span/" },
+    { "name": "SMART:EQ Live", "tip": "EQ con analizador de espectro y sugerencias de EQ automáticas. Descarga: https://www.sonible.com/smarteqlive/" }
+  ],
+  "Tuner": [
+    { "name": "GTune", "tip": "Afinador cromático simple y preciso. Útil para guitarras y bajos. Descarga: https://www.gvst.co.uk/gtune/" }
+  ],
+  "Stereo": [
+    { "name": "Ozone Imager", "tip": "Control de ancho estéreo con visualización. Versión gratuita limitada pero funcional. Descarga: https://www.izotope.com/en/products/ozone-imager.html" },
+    { "name": "Blue Cat's Freeware Pack", "tip": "Paquete con gain, stereo, chorus y más. Descarga: https://www.bluecataudio.com/products/freeware-pack/" }
+  ],
+  "Utility": [
+    { "name": "KiloHearts Toolbox FREE", "tip": "Paquete con 25+ efectos modulares: filter, reverb, delay, shaper. Descarga: https://kilohearts.com/products/toolbox" },
+    { "name": "MeldaProduction FreeFX Bundle", "tip": "Paquete con 36 efectos gratuitos de alta calidad. Descarga: https://www.meldaproduction.com/MFreeFXBundle" }
+  ]
+}

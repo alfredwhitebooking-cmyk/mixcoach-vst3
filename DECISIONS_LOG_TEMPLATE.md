@@ -90,10 +90,11 @@ Ejemplo:
 
 ## Referencias
 
-- `PROJECT_PRIORITIES.md` — [Prioridad que protege]
-- `APPROVED_PATTERNS.md` — [Patrón usado]
-- `RISK_MATRIX.md` — [Nivel de riesgo]
-- `KNOWN_ERRORS.md` — [Bug relacionado si aplica]
+- `AI_CONTEXT.md §4` — [Visión del fundador / prioridad que protege]
+- `AI_CONTEXT.md §11` — [Regla que aplica]
+- `AI_CONTEXT.md §2` — [Nivel de riesgo / componente CORE]
+- `ERROR_PATTERNS.json` — [Patrón de error relacionado]
+- `AI_CONTEXT.md §9` — [Comportamiento de FL Studio relacionado]
 ```
 
 ---

@@ -1,7 +1,7 @@
 # 📜 DECISION_LOG.md — Registro de Decisiones Arquitectónicas
 
 > **ADRs (Architecture Decision Records) del proyecto MixCoach.**
-> **Versión:** 1.0 | **Última actualización:** 2026-06-03
+> **Versión:** 1.1 | **Última actualización:** 2026-06-06
 
 ---
 
@@ -219,17 +219,363 @@ MixCoach (plugin master) **NO tiene entrada de audio**. Solo recibe datos de los
 
 ## 🔗 Referencias Cruzadas
 
-| ADR | Relacionado con | Documentos |
-|:---|-----------------|------------|
-| ADR-001 | `APPROVED_PATTERNS.md` P6 (Two-Phase Spinlock) | `RISK_MATRIX.md` 🔴 SharedMemory.h |
-| ADR-002 | `APPROVED_PATTERNS.md` P6 | `RISK_MATRIX.md` 🔴 SlotRegistry.h |
-| ADR-003 | `FL_STUDIO_BEHAVIORS.md` #3 (Copia Masiva) | `KNOWN_ERRORS.md` |
-| ADR-004 | `PROJECT_PRIORITIES.md` P3 (Rendimiento) | `RISK_MATRIX.md` 🟠 TelemetryCollector |
-| ADR-005 | `FL_STUDIO_BEHAVIORS.md` #1 (Sandbox) | `APPROVED_PATTERNS.md` P1 (Lazy Init) |
-| ADR-006 | `FL_STUDIO_BEHAVIORS.md` #2 (processBlock antes) | `APPROVED_PATTERNS.md` P1 |
-| ADR-007 | `KNOWN_ERRORS.md` (crash con 60+ tracks) | `RISK_MATRIX.md` 🔴 PluginEditor |
-| ADR-008 | `PRODUCT_VISION.md` (Mentor, no procesador) | `AGENTS.md` |
+| ADR | Documentos Relacionados |
+|:---|------------------------|
+| ADR-001 | `AI_CONTEXT.md` § Threading Architecture | `AI_CONTEXT_MAP.md` § 5. Flujo de Datos |
+| ADR-002 | `IPC_CONTRACT.md` § 2.1 SharedSlotEntry | `AI_CONTEXT.md` § Fuentes de Datos |
+| ADR-003 | `FL_STUDIO_BEHAVIORS.md` #3 (Copia Masiva) | `SAFE_EDIT_GUIDE.md` § 2 |
+| ADR-004 | `AI_CONTEXT.md` § DSP Throttling | `AI_CONTEXT_MAP.md` § 5. Flujo de Datos |
+| ADR-005 | `FL_STUDIO_BEHAVIORS.md` #1 (Sandbox) | `SAFE_EDIT_GUIDE.md` § 2 |
+| ADR-006 | `FL_STUDIO_BEHAVIORS.md` #2 (processBlock antes) | `SAFE_EDIT_GUIDE.md` § 3 |
+| ADR-007 | `AI_VISION.md` § UX/Sensación | `AI_RULES.md` Ley 5 (No heap en audio thread) |
+| ADR-008 | `PRODUCT_VISION.md` (Mentor, no procesador) | `AI_VISION.md` § Anti-Visión |
+| ADR-009 | `ERROR_PATTERNS.json` (COORDINATE_MATH_BUG) | `AI_CONTEXT.md` (Lecciones Sesión 4) |
+| ADR-010 | `ERROR_PATTERNS.json` (SCALE_RANGE_MISMATCH) | `AI_CONTEXT.md` (Lecciones Sesión 4) |
+| ADR-011 | `ERROR_PATTERNS.json` (HEADER_DECLARATION_MISMATCH) | `AI_CONTEXT.md` (Lecciones Sesión 4) |
 
 ---
 
-*Documento de decisiones arquitectónicas — MixCoach Project*
+## ADR-009: VU Meters Analógicos con Escala Elíptica
+
+**Fecha:** 2026-06-06 | **Estado:** Aceptado
+
+### Contexto
+Los VU meters vintage en `AnalyzersPanelComponent` usaban coordenadas circulares para una escala que era elíptica (arco comprimido verticalmente con halfR = radius * 0.5). Esto causaba que ticks, números y aguja se dibujaran fuera del arco.
+
+### Decisión
+Para cualquier punto en el arco del VU meter:
+- **X** = cx + cos(ángulo) × radius
+- **Y** = cy + sin(ángulo) × halfR (con halfR = radius × 0.5)
+- El centro del arco es (cx, cy), NO (cx, cy - halfR)
+- El rango de la aguja debe coincidir con el rango de la escala (markEndAngle - startAngle), no con el rango completo del arco
+
+### Consecuencias
+- **+** Ticks, números y aguja coinciden exactamente con el arco
+- **+** Fórmula documentada en ERROR_PATTERNS.json como COORDINATE_MATH_BUG
+- **+** Se agregó `dbToNorm()` para mapeo no-lineal VU (no es lineal como un medidor dBFS)
+- **-** Requiere verificación visual después de cualquier cambio en coordenadas de arco
+
+### Archivos afectados
+- `Source/MixCoach/UI/AnalyzersPanelComponent.cpp` — drawVUMeter() completo
+- `AI_CONTEXT.md` — Lecciones aprendidas SESIÓN 4
+- `ERROR_PATTERNS.json` — 3 nuevos patrones de error
+
+---
+
+## ADR-010: Peak Hold en VU Meters
+
+**Fecha:** 2026-06-06 | **Estado:** Aceptado
+
+### Contexto
+Los VU meters analógicos no tenían indicación de pico, lo que dificulta ver transientes rápidas (el ojo humano no puede seguir una aguja que sube y baja en milisegundos).
+
+### Decisión
+Implementar peak hold con marcador tipo diamante en el arco:
+- **Hold time**: 1.5 segundos desde el último pico
+- **Decay rate**: 30 dB/segundo después del hold
+- **Floor**: No puede caer por debajo del nivel actual (evita que el marcador se quede en -80dB en silencio)
+- **Umbral visual**: Solo se dibuja si peakHold > -19dB (evita marcadores invisibles)
+
+### Consecuencias
+- **+** Transientes visibles aunque sean demasiado rápidas para la aguja
+- **+** Timers de hold y decay independientes (no bloquean la aguja)
+- **-** Se agregó `peakHold` y `peakHoldTimer` al struct `VUChannel`
+- **-** Nueva función `dbToNorm()` para mapear dB a posición en el arco
+
+### Archivos afectados
+- `Source/MixCoach/UI/AnalyzersPanelComponent.h` — VUChannel struct
+- `Source/MixCoach/UI/AnalyzersPanelComponent.cpp` — setLevels(), advanceVisuals(), drawVUMeter()
+
+---
+
+## ADR-011: Lecciones Aprendidas como Documentación de Primer Clase
+
+**Fecha:** 2026-06-06 | **Estado:** Aceptado
+
+### Contexto
+Esta sesión tuvo 3 bugs de coordenadas que costaron 3 iteraciones de build/deploy. Las lecciones aprendidas estaban solo en la memoria de la IA, no documentadas para futuras sesiones.
+
+### Decisión
+Documentar las lecciones aprendidas en 3 lugares:
+1. **AI_CONTEXT.md** — Sección "Lecciones Aprendidas" visible para cualquier IA
+2. **ERROR_PATTERNS.json** — Patrones de error auto-aprendidos con fix strategies
+3. **AI_SESSION_STATE.json** — Errores recientes con timestamp para trazabilidad
+
+### Consecuencias
+- **+** Cualquier IA futura encontrará los bugs antes de cometerlos
+- **+** Trazabilidad completa de qué bugs ocurrieron y cómo se arreglaron
+- **-** Un paso más antes de codear (leer las lecciones)
+
+### Archivos afectados
+- `AI_CONTEXT.md` — Nueva sección "🐛 Lecciones Aprendidas"
+- `ERROR_PATTERNS.json` — 3 nuevos patrones auto-learned
+- `AI_SESSION_STATE.json` — recent_errors y successful_fixes poblados
+
+---
+
+---
+
+## ADR-012: Mentor, No Juez
+
+**Fecha:** 2026-06-13 | **Estado:** Aceptado (decisión fundacional)
+
+### Contexto
+El usuario pidió un sistema que califique mezclas. Es técnicamente posible mostrar un score 0-100, ranking de pistas, o comparativas agresivas. Sin embargo, el fundador identificó que:
+- Los ingenieros principiantes se intimidan con puntuaciones bajas
+- Los ingenieros avanzados ignoran scores simplistas
+- Un número no enseña nada — solo juzga
+
+### Decisión
+MixCoach **nunca juzga mezclas**. No hay:
+- ❌ Scores visibles 0-100 al usuario
+- ❌ Rankings de pistas
+- ❌ Frases como "tu mezcla está mal"
+- ❌ Comparativas agresivas contra referencia
+
+En su lugar:
+- ✅ Siempre sugiere con fundamento: "Prueba esto porque..."
+- ✅ Da datos objetivos (dB, frecuencias, ratios) sin etiquetarlos como "bueno/malo"
+- ✅ Enmarca todo como "podemos mejorar" no como "está mal"
+
+### Consecuencias
+- **+** El usuario nunca se siente juzgado — la tasa de retención es mayor
+- **+** El foco está en aprender, no en "ganarle al score"
+- **+** Los ingenieros avanzados respetan más las sugerencias que los números
+- **-** Más difícil de implementar (es más fácil mostrar un número que explicar un concepto)
+- **-** MixScore existe internamente para el LLM, pero NUNCA se muestra al usuario como número crudo
+
+### Alternativas descartadas
+| Alternativa | Razón |
+|-------------|-------|
+| Score visible 0-100 en la UI | El usuario optimizaría para el score, no para aprender |
+| Ranking de pistas ("peor track: Kick") | Humillante, no constructivo |
+| Semáforo rojo/verde en tracks | Útil solo si viene con explicación textual |
+
+### Documentos relacionados
+- `CHEFFX_BRAIN.md` § Core absoluto: enseñar a mejorar
+- `AI_VISION.md` § Comportamiento del Coach (nunca critiques sin fundamento)
+- `AI_EXAMPLES.md` Ejemplo 8 (usuario ignoró recomendación)
+
+---
+
+## ADR-013: La Referencia es el Norte
+
+**Fecha:** 2026-06-13 | **Estado:** Aceptado (decisión fundacional)
+
+### Contexto
+MixCoach puede funcionar sin referencia cargada (usando targets genéricos por género). Pero el fundador observó que:
+- Los mejores ingenieros SIEMPRE usan referencias
+- Los principiantes mezclan "en el vacío" — no saben a qué suena "bien"
+- Los targets genéricos son útiles pero no reemplazan una referencia real
+
+### Decisión
+La referencia es **parte fundamental del flujo de mezcla**, no un accesorio opcional:
+- MixCoach debe PEDIR una referencia al inicio de cada sesión
+- Las fases de mezcla se comparan constantemente contra la referencia
+- El coach puede trabajar sin referencia SOLO en fases de organización y ganancia
+- En fases de balance tonal, dinámica y espacial, la referencia es obligatoria
+
+### Consecuencias
+- **+** El usuario desarrolla el hábito profesional de usar referencias
+- **+** Las recomendaciones son más precisas (comparan contra algo real, no contra un target genérico)
+- **+** El usuario entiende QUÉ sonido está buscando
+- **-** Sin referencia cargada, el coach no puede dar consejos de balance tonal precisos
+- **-** Requiere que el usuario tenga o consiga una referencia (barrera de entrada)
+
+### Alternativas descartadas
+| Alternativa | Razón |
+|-------------|-------|
+| Targets genéricos siempre | No reemplazan el oído humano ni el contexto cultural de cada canción |
+| Referencia opcional siempre | El usuario procrastina y nunca carga una — mezcla a ciegas |
+| Solo referencia de LUFS | El balance tonal es igual de importante |
+
+### Documentos relacionados
+- `CHEFFX_BRAIN.md` § Propósito #5: "Comparar constantemente con referencias reales"
+- `PRODUCT_VISION.md` FASE 1: Referencia
+- `AI_EXAMPLES.md` Ejemplo 3 (referencia cargada)
+
+---
+
+## ADR-014: Sin Puntuaciones Visibles
+
+**Fecha:** 2026-06-13 | **Estado:** Aceptado (decisión fundacional)
+
+### Contexto
+MixScore calcula internamente scores 0-100 por dominio (Gain, Tonal, Dynamics, Spatial). Es tentador mostrar estos números al usuario como "dashboard de salud de la mezcla". Sin embargo:
+- Un número frío no enseña nada
+- El usuario puede sentir que "fracasó" si el score es bajo
+- El foco se desplaza de aprender a "subir el score"
+
+### Decisión
+MixScore existe **solo para consumo interno**:
+- El LLM lo usa para priorizar recomendaciones
+- El CoachEngine lo usa para decidir si avanzar de fase
+- **NUNCA se muestra al usuario como número crudo**
+
+Lo que sí se muestra:
+- ✅ Texto descriptivo: "La ganancia está bien encaminada, pero 2 tracks están cerca del clipping"
+- ✅ Recomendaciones priorizadas: "Empecemos por el Kick que necesita gain staging"
+- ✅ Progreso cualitativo: "Vamos mejor que hace 5 minutos"
+
+### Consecuencias
+- **+** El usuario no se siente juzgado por un número
+- **+** El foco está en entender QUÉ mejorar, no en CUÁNTO mejorar
+- **+** El LLM tiene datos precisos para priorizar sin exponerlos crudos
+- **-** El equipo de desarrollo pierde una métrica visible para debugging
+  (Mitigación: logs internos en `LogHelper::writeToLog()`)
+
+### Alternativas descartadas
+| Alternativa | Razón |
+|-------------|-------|
+| Score visible en la UI | Viola el principio de mentor no juez |
+| Score solo para debugging | Ya existe en logs |
+| Score con "nota" tipo escolar | Peor aún — escuela no es el tono de MixCoach |
+
+### Documentos relacionados
+- `CHEFFX_BRAIN.md` § Core absoluto: "Enseñarte a mejorar como ingeniero"
+- `MixScore.h` — Solo para uso interno del LLM
+- `AI_VISION.md` § Anti-Visión: "Nunca critiques sin fundamento"
+
+---
+
+## ADR-015: Organización Antes que Procesamiento
+
+**Fecha:** 2026-06-13 | **Estado:** Aceptado (decisión fundacional)
+
+### Contexto
+El fundador identifica el desorden como su principal obstáculo al abrir una sesión. Tracks sin nombre, colores aleatorios, buses mal ruteados. La mayoría de los plugins de audio ignoran este problema y van directo al análisis espectral.
+
+### Decisión
+La **organización de la sesión es una fase explícita del flujo de mezcla**, no un paso opcional:
+- Antes de cualquier análisis de audio, MixCoach verifica que la sesión esté ordenada
+- Si detecta desorden (tracks sin nombre, sin color, sin bus asignado), LO DICE primero
+- La fase de organización (FASE 0.5 en PRODUCT_VISION.md) es obligatoria
+- No se avanza a gain staging hasta que la sesión esté organizada
+
+### Consecuencias
+- **+** El usuario aprende que la organización es parte del proceso de mezcla
+- **+** Las recomendaciones de gain/EQ/dinámica son más precisas sobre una base ordenada
+- **+** Reduce la fricción del fundador al abrir sesiones ajenas
+- **-** Puede frustrar al usuario que quiere "ir directo al grano"
+  (Mitigación: coach puede saltar la fase si el usuario insiste, pero documenta la decisión)
+
+### Alternativas descartadas
+| Alternativa | Razón |
+|-------------|-------|
+| Ignorar el desorden | El fundador no puede ignorarlo — es parte de su identidad como ingeniero |
+| Auto-organizar la sesión | El usuario debe aprender a hacerlo, no delegarlo |
+| Organización como feature secundario | Sería inconsistente con la prioridad real del fundador |
+
+### Documentos relacionados
+- `CHEFFX_BRAIN.md` § Lo que odio: "Desorden. Sesiones sucias. Caos evitable."
+- `PRODUCT_VISION.md` FASE 0.5: Escaneo
+- `AI_EXAMPLES.md` Ejemplo 2 (sesión desordenada)
+
+---
+
+## ADR-016: Todo Depende del Género
+
+**Fecha:** 2026-06-13 | **Estado:** Aceptado (decisión fundacional)
+
+### Contexto
+La mayoría de los plugins de análisis y mentoría usan valores universales: "el RMS ideal es -6dB", "el LUFS target es -14dB", "el crest factor saludable es 8-16dB". Pero el fundador sabe que estos valores cambian drásticamente según el género.
+
+### Decisión
+Cada recomendación de MixCoach debe considerar el género primero:
+- No hay valores universales — hay valores POR GÉNERO
+- `CoachEngine::getGenreProfile()` define targets específicos (LUFS, crest, headroom, offsets espectrales)
+- El género se pregunta al inicio de la sesión (FASE 0: SETUP)
+- Si el usuario no especifica género, el coach puede inferirlo del análisis espectral o preguntar
+- Las recomendaciones explícitamente mencionan el contexto de género: "Para reggaetón, el 808 debe estar a -6dB..."
+
+### Consecuencias
+- **+** Consejos precisos y relevantes para el género que se mezcla
+- **+** El usuario aprende que CADA GÉNERO tiene sus propias reglas
+- **+** MixCoach se vuelve útil para múltiples géneros, no solo uno
+- **-** Más complejidad en el motor de perfiles (mantener N perfiles de género)
+- **-** Riesgo de perfil de género incorrecto si el usuario da un género equivocado
+  (Mitigación: el coach puede detectar inconsistencias y preguntar "¿Seguro que es reggaetón? El espectro se ve más como rock")
+
+### Alternativas descartadas
+| Alternativa | Razón |
+|-------------|-------|
+| Valores universales | Serían incorrectos para la mayoría de los géneros |
+| Detección automática de género | Tecnología no confiable, puede equivocarse y el usuario pierde confianza |
+| Sin género — solo referencia | La referencia no siempre está disponible |
+
+### Documentos relacionados
+- `CHEFFX_BRAIN.md` § Mi filosofía: "Todo depende del género"
+- `CoachEngine.h` — `getGenreProfile()`
+- `AI_EXAMPLES.md` Ejemplo 5 (consejo género-específico)
+
+---
+
+## ADR-017: Enseñar, No Automatizar
+
+**Fecha:** 2026-06-13 | **Estado:** Aceptado (decisión fundacional)
+
+### Contexto
+Es técnicamente posible que MixCoach ajuste automáticamente gains, EQ, compresión. Es la tentación de todo producto de IA musical. Sin embargo, el core absoluto de MixCoach es "enseñar al usuario a ser mejor ingeniero".
+
+### Decisión
+MixCoach **nunca automatiza decisiones de mezcla**:
+- ❌ No ajusta faders automáticamente
+- ❌ No aplica EQ automático
+- ❌ No pone compresores por el usuario
+- ❌ No tiene modo "auto-mix"
+
+En su lugar:
+- ✅ Recomienda valores exactos: "Sube 2dB en 60Hz con Q de 1.5"
+- ✅ Explica por qué: "Porque el kick y el 808 están compitiendo en esa zona"
+- ✅ Verifica el resultado: loop de corrección (recomendar → aplicar → escuchar → corregir)
+- ✅ El usuario hace el ajuste con sus propias manos y desarrolla memoria muscular
+
+### Consecuencias
+- **+** El usuario desarrolla criterio y habilidad manual — no dependencia del plugin
+- **+** Después de 10 sesiones, el usuario es NOTABLEMENTE mejor ingeniero
+- **+** MixCoach se diferencia de iZotope, Sonible, etc. — no es un "auto-mix" más
+- **-** Más lento que un auto-mix (el usuario tiene que hacer los ajustes)
+  (Pero el objetivo NO es velocidad — es aprendizaje)
+- **-** El usuario impaciente puede frustrarse
+  (Mitigación: el coach puede mostrar "en automático sería X, pero prefiero que aprendas haciéndolo")
+
+### Alternativas descartadas
+| Alternativa | Razón |
+|-------------|-------|
+| Auto-mix completo | El usuario no aprende, se vuelve dependiente |
+| Auto-mix con "explicación" | El usuario no desarrolla memoria muscular — no siente el ajuste |
+| Modo automático para avanzados | Los avanzados también necesitan practicar — y prefieren control |
+
+### Documentos relacionados
+- `CHEFFX_BRAIN.md` § Core absoluto: "Enseñarte a mejorar como ingeniero"
+- `CHEFFX_BRAIN.md` § Lo que NUNCA haría: "Auto-mix — el usuario debe aprender, no delegar"
+- `AI_VISION.md` § Anti-Visión: "Modo auto-mix es lo que NUNCA seremos"
+- `AI_EXAMPLES.md` Ejemplo 4 (loop de corrección)
+
+---
+
+## 🔗 Referencias Cruzadas — Actualizado
+
+| ADR | Documentos Relacionados |
+|:---|------------------------|
+| ADR-001 | `AI_CONTEXT.md` § Threading Architecture | `AI_CONTEXT_MAP.md` § 5. Flujo de Datos |
+| ADR-002 | `IPC_CONTRACT.md` § 2.1 SharedSlotEntry | `AI_CONTEXT.md` § Fuentes de Datos |
+| ADR-003 | `FL_STUDIO_BEHAVIORS.md` #3 (Copia Masiva) | `SAFE_EDIT_GUIDE.md` § 2 |
+| ADR-004 | `AI_CONTEXT.md` § DSP Throttling | `AI_CONTEXT_MAP.md` § 5. Flujo de Datos |
+| ADR-005 | `FL_STUDIO_BEHAVIORS.md` #1 (Sandbox) | `SAFE_EDIT_GUIDE.md` § 2 |
+| ADR-006 | `FL_STUDIO_BEHAVIORS.md` #2 (processBlock antes) | `SAFE_EDIT_GUIDE.md` § 3 |
+| ADR-007 | `AI_VISION.md` § UX/Sensación | `AI_RULES.md` Ley 5 (No heap en audio thread) |
+| ADR-008 | `PRODUCT_VISION.md` (Mentor, no procesador) | `AI_VISION.md` § Anti-Visión |
+| ADR-009 | `ERROR_PATTERNS.json` (COORDINATE_MATH_BUG) | `AI_CONTEXT.md` (Lecciones Sesión 4) |
+| ADR-010 | `ERROR_PATTERNS.json` (SCALE_RANGE_MISMATCH) | `AI_CONTEXT.md` (Lecciones Sesión 4) |
+| ADR-011 | `ERROR_PATTERNS.json` (HEADER_DECLARATION_MISMATCH) | `AI_CONTEXT.md` (Lecciones Sesión 4) |
+| ADR-012 | `CHEFFX_BRAIN.md`, `AI_VISION.md`, `AI_EXAMPLES.md` | Mentor, no juez |
+| ADR-013 | `CHEFFX_BRAIN.md`, `PRODUCT_VISION.md`, `AI_EXAMPLES.md` | Referencia es el norte |
+| ADR-014 | `CHEFFX_BRAIN.md`, `MixScore.h`, `AI_VISION.md` | Sin puntuaciones visibles |
+| ADR-015 | `CHEFFX_BRAIN.md`, `PRODUCT_VISION.md`, `AI_EXAMPLES.md` | Organización primero |
+| ADR-016 | `CHEFFX_BRAIN.md`, `CoachEngine.h`, `AI_EXAMPLES.md` | Todo depende del género |
+| ADR-017 | `CHEFFX_BRAIN.md`, `AI_VISION.md`, `AI_EXAMPLES.md` | Enseñar, no automatizar |
+
+---
+
+*Documento de decisiones arquitectónicas — MixCoach Project — Actualizado 2026-06-13*

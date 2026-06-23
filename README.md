@@ -1,76 +1,23 @@
-# MixCoach 🎚️🤖
+# ⚡ MixCoach 🎚️🤖 — AI Mixing Mentor (VST3)
 
-**Sistema Inteligente de Mentoría para Mezcla**
+**MixCoach no es un procesador de audio. Es un Mentor Profesional que te guía a través del proceso de mezcla, convirtiéndote en un ingeniero de audio más capaz, organizado y seguro de tus decisiones.**
 
-MixCoach no es un procesador de audio — es un **Mentor Profesional** que te guía a través del proceso de mezcla, convirtiéndote en un ingeniero de audio más capaz, organizado y seguro de tus decisiones.
+Arquitectura **Sensor-Cerebro V3**: `Messenger` (uno por pista, solo pasa audio RAW + identidad) → `MixCoach` (en el Master, analiza TODO y mentorea). Ningún plugin toca tu audio.
 
-## Filosofía
+## Build
 
-- 🧠 **Mentor, no Juez** — La IA guía, enseña y motiva. No altera tu audio.
-- 🎯 **Enfoque 80/20** — Excelencia profesional sin parálisis por perfeccionismo.
-- 🏆 **Gamificación** — Logros y validación positiva para retención.
-- 🤝 **Relación Equipo** — "Ingeniero + MixCoach". Tú decides, la IA provee criterio.
-
-## Arquitectura
-
-### Messenger (Los Oídos)
-Plugin VST3 distribuido en pistas individuales. Consumo de CPU ultrabajo (<0.05%).
-Captura: Picos, RMS, FFT y Fase.
-
-### MixCoach (El Cerebro)
-Plugin VST3 en el canal Master. Hub central que recibe la telemetría, aloja la IA,
-el chat de mentoría y los analizadores visuales.
-
-## RoadMap de Mentoría
-
-| Fase | Enfoque | Descripción |
-|------|---------|-------------|
-| 0 | Setup | Saludo profesional y configuración de género |
-| 1 | Gain Staging | Limpieza de clipping y headroom |
-| 2 | Organización | Colores y agrupación en Buses Virtuales |
-| 3 | Balance Tonal | Análisis comparativo con referencias |
-| 4 | Dinámica | Estabilización de picos |
-| 5 | Espacialidad | Profundidad y toques finales |
-
-## Requisitos
-
-- **Windows 10/11** (macOS próximamente)
-- **FL Studio** (otros DAWs compatibles con VST3)
-- **Visual Studio 2022** con carga de trabajo "Desarrollo de escritorio con C++"
-- **JUCE 8** ([descargar](https://juce.com/get-juce/))
-- **CMake 3.22+**
-
-## Compilación
-
-```bash
-cd MixCoach
-cmake -B Builds -DJUCE_ROOT="C:/JUCE"
-cmake --build Builds --config Release
+```powershell
+.\build.ps1                    # Build + deploy automático (Release)
+.\build.ps1 -NoDeploy          # Solo compilar
+cmake --build build --config Release --target MixCoach_VST3
 ```
 
-Los plugins compilados estarán en `Builds/MixCoach_artefacts/Release/` y
-`Builds/Messenger_artefacts/Release/`.
+Los VST3 se despliegan a `C:\Program Files\Common Files\VST3\`. Requiere: **Windows 10/11**, **VS 2022**, **JUCE 8**, **CMake 3.22+**.
 
-## Stack Tecnológico
+## Stack
 
-- **Framework:** JUCE 8 (C++20)
-- **IA:** LLM vía API (OpenAI/Claude) o local (Ollama)
-- **Comunicación:** SharedResourcePointer + memoria compartida
-- **Analizadores:** FFT, Correlación de Fase, RMS, Picos
+C++20 · JUCE 8 · Visual Studio 17 2022 · CMake · Windows VST3 · FL Studio (DAW primario)
 
-## Para agentes IA
+---
 
-Si trabajas con Codex, Antigravity, Freebuff u otro agente, empieza por
-[`AGENTS.md`](AGENTS.md). Ese archivo resume la vision del producto, las
-referencias UI canonicas, los comandos de build/test y los archivos de alto
-riesgo antes de tocar codigo.
-
-## Seguridad y despliegue
-
-- `.\build.ps1` compila y despliega los VST3 a `C:\Program Files\Common Files\VST3\`.
-- `.\DeployVST3.ps1 -Config Release` despliega manualmente y guarda copia del VST3 anterior en `workspace_backups/vst3_deploy/`.
-- `.\DeployVST3.ps1 -Action ListBackups` muestra versiones VST3 desplegadas anteriormente.
-- `.\DeployVST3.ps1 -Action Restore -Backup latest -Force` restaura la ultima version VST3 respaldada.
-- `.\scripts\ProjectCheckpoint.ps1 -Action Save -Name "antes_del_cambio"` crea una copia ZIP restaurable del proyecto, incluyendo archivos no trackeados importantes.
-- `.\scripts\ProjectCheckpoint.ps1 -Action List` muestra checkpoints disponibles.
-- `.\scripts\ProjectCheckpoint.ps1 -Action Restore -Checkpoint "<ruta>" -Force` restaura un checkpoint sobre el workspace actual.
+**Para agentes IA**: Toda la documentación del proyecto está en [`AI_CONTEXT.md`](AI_CONTEXT.md). Léelo — ahí está TODO lo que necesitas saber.

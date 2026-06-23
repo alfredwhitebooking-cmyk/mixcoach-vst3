@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "version": 1,
+    "description": "Plugins de pago recomendados para sugerencias contextuales del coach"
+  },
+  "EQ": [
+    { "name": "FabFilter Pro-Q 3", "price": "€169", "tip": "El estándar de la industria. EQ paramétrico con analizador de espectro integrado, M/S, Dynamic EQ y Linear Phase. Curva de aprendizaje baja para lo potente que es." },
+    { "name": "iZotope Neutron 4 EQ", "price": "~$149 (parte de Neutron)", "tip": "EQ con asistente inteligente (Masking Meter, Learn). Sugiere cortes automáticos basados en el análisis del track." },
+    { "name": "Waves SSL G-Channel", "price": "~$49", "tip": "EQ y compresor tipo SSL en un solo plugin. Sonido clásico de consola." },
+    { "name": "Sonible Smart:EQ 4", "price": "~€199", "tip": "EQ inteligente que aprende del audio. Ajusta frecuencias automáticamente. Ideal para flujos rápidos." },
+    { "name": "Tokyo Dawn Records SlickEQ M", "price": "~€50", "tip": "EQ de mezcla con modelado M/S y transformada de Walsh. Sonido analógico de alta gama." }
+  ],
+  "Comp": [
+    { "name": "FabFilter Pro-C 2", "price": "€169", "tip": "Compresor versátil con 8 estilos (Clean, Classic, Opto, etc.). Sidechain interno, M/S, lookahead. Visualizaciones impecables." },
+    { "name": "Waves CLA-76", "price": "~$49", "tip": "Emulación del clásico 1176. Rápido y agresivo. Ideal para baterías, voces y guitarras." },
+    { "name": "Waves CLA-2A", "price": "~$49", "tip": "Emulación del clásico LA-2A optocompresor. Suave y musical. Perfecto para voces y bajos." },
+    { "name": "iZotope Neutron 4 Compressor", "price": "~$149 (parte de Neutron)", "tip": "Compresor con asistente inteligente. Detecta transientes y sugiere parámetros." },
+    { "name": "Klanghelm MJUC", "price": "~€40 (precio sugerido)", "tip": "Compresor vari-mu con personalidades múltiples. Sonido vintage de alta calidad a precio accesible." }
+  ],
+  "Reverb": [
+    { "name": "Valhalla VintageVerb", "price": "$50", "tip": "La mejor relación calidad/precio en reverb. 22 modos, desde salas sutiles hasta ambientes masivos. Imprescindible." },
+    { "name": "Valhalla Room", "price": "$50", "tip": "Reverb de sala algorítmica. Sonido más natural que VintageVerb. Excelente para mezclas acústicas." },
+    { "name": "FabFilter Pro-R", "price": "€219", "tip": "Reverb con control visual por frecuencias. Ver exactamente dónde actúa la reverb. Transparente y versátil." },
+    { "name": "Eventide Blackhole", "price": "~$49", "tip": "Reverb masiva no convencional. Ideal para transiciones, pads y ambientes espaciales." }
+  ],
+  "Delay": [
+    { "name": "FabFilter Timeless 3", "price": "€149", "tip": "Delay con filtro, modulación, ping-pong y hasta 4 taps. Tape y digital modes con sonido vintage." },
+    { "name": "Soundtoys EchoBoy", "price": "~$199", "tip": "El delay más versátil del mercado. 30 emulaciones de delay vintage (tape, digital, analog). Imprescindible para creatividad." }
+  ],
+  "Limiter": [
+    { "name": "FabFilter Pro-L 2", "price": "€169", "tip": "Limitador transparente con 4 estilos, true peak limiting, oversampling y analizador de dinámica." },
+    { "name": "iZotope Ozone Maximizer", "price": "~$249 (parte de Ozone)", "tip": "Limitador inteligente con IRC (Intelligent Release Control). Ajusta el release automáticamente según el programa." },
+    { "name": "Waves L2 Ultramaximizer", "price": "~$49", "tip": "Limitador clásico con dithering y modelado de ruido. Sonido transparente para mastering." }
+  ],
+  "Saturation": [
+    { "name": "FabFilter Saturn 2", "price": "€159", "tip": "Saturación multibanda con 28 estilos de distorsión. Feedback, M/S y modulación interna. El más completo." },
+    { "name": "Soundtoys Decapitator", "price": "~$199", "tip": "Saturación analógica con 5 modos (A, E, N, T, P). Punch, drive y tono. Imprescindible para calentar pistas." },
+    { "name": "iZotope Trash 2", "price": "~$149", "tip": "Distorsión multibanda con convolución. Ideal para efectos creativos extremos o saturación sutil." }
+  ],
+  "MultiFX": [
+    { "name": "Soundtoys 5 Bundle", "price": "~$499", "tip": "Paquete con EchoBoy, Decapitator, FilterFreak, PhaseMistress, Crystallizer, LittlePlate, y más. La navaja suiza del audio." },
+    { "name": "iZotope Neutron 4", "price": "~$149", "tip": "Suite completa: EQ, compresor, transient shaper, exciter, limiter. Masking Meter y asistente inteligente integrados." }
+  ],
+  "Meter": [
+    { "name": "iZotope Insight 2", "price": "~$249", "tip": "Suite de medición completa: LUFS, True Peak, espectro, estéreo, histograma. Estándar para mastering." },
+    { "name": "Waves WLM Plus", "price": "~$49", "tip": "Medidor de loudness con soporte para ITU-R BS.1770, ATSC A/85 y EBU R128." }
+  ],
+  "Reverb_Vocals": [
+    { "name": "Waves H-Reverb", "price": "~$49", "tip": "Reverb híbrida con modelado de IR. Sonido limpio y ajustable para voces." }
+  ],
+  "Tape": [
+    { "name": "Waves J37 Tape", "price": "~$49", "tip": "Emulación de la máquina de cinta Studer J37. Saturación armónica y compresión sutil." },
+    { "name": "Magnetic Studio II", "price": "~€99", "tip": "Emulación de cinta de bobina abierta de alto nivel. Saturación, wobble y compresión suave." }
+  ]
+}
