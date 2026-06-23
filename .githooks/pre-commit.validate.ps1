@@ -55,6 +55,7 @@ foreach ($file in $StagedFiles) {
     if ($file -notmatch '\.(cpp|h)$') { continue }
     if ($file -match 'MixCoachTheme\.h') { continue }  # Excepción: propia definición
     if ($file -match 'Constants\.h') { continue }       # Excepción: kBusColourARGB
+            if ($file -match 'ReferenceDrivenEngine\.cpp') { continue }  # Excepción: Ley 6 — engine no debe depender de UI (MixCoachTheme)
 
     $fullPath = Join-Path $ProjectRoot $file
     if (-not (Test-Path $fullPath)) { continue }

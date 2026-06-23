@@ -132,7 +132,7 @@ namespace mixcoach {
                 int btnSize        = bannerArea.getHeight() - MixCoachTheme::spacingSM;
                 bannerCollapseBtn_ = {btnX, btnY, btnSize, btnSize};
 
-                g.setColour(juce::Colour(0xFF8B8FA3).withAlpha(0.50f));
+                g.setColour(textDim().withAlpha(0.50f));
                 g.setFont(interFont(9.0f));
                 g.drawFittedText(bannerCollapsed_ ? "▶" : "▼", bannerCollapseBtn_, juce::Justification::centred, 1);
             }
@@ -187,8 +187,8 @@ namespace mixcoach {
                     if (evMsg.length() > 28) evMsg = evMsg.substring(0, 26) + "…";
 
                     g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)));
-                    auto textCol = (clickedEventIdx_ == ei) ? juce::Colour(0xFFF1F1F6).withAlpha(1.0f)
-                                                            : juce::Colour(0xFF8B8FA3).withAlpha(0.80f);
+                    auto textCol = (clickedEventIdx_ == ei) ? textBright().withAlpha(1.0f)
+                                                            : textDim().withAlpha(0.80f);
                     g.setColour(textCol);
                     int textW = juce::GlyphArrangement::getStringWidthInt(
                                     juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)), evMsg)
@@ -200,7 +200,7 @@ namespace mixcoach {
 
                     // Selected highlight bg
                     if (clickedEventIdx_ == ei) {
-                        g.setColour(juce::Colour(0xFF2E2F3E).withAlpha(0.50f));
+                        g.setColour(MixCoachTheme::tooltipBorder().withAlpha(0.50f));
                         g.fillRoundedRectangle(textArea.toFloat(), 3.0f);
                     }
 
@@ -226,7 +226,7 @@ namespace mixcoach {
             }
             else if (!bannerCollapsed_) {
                 g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)));
-                g.setColour(juce::Colour(0xFF5C5F73).withAlpha(0.60f));
+                g.setColour(textMuted().withAlpha(0.60f));
                 auto emptyArea = juce::Rectangle<int>(
                     bannerCollapseBtn_.getRight() + 76, bannerArea.getY() + 3, 200, bannerArea.getHeight() - 6);
                 g.drawFittedText("No recent events", emptyArea, juce::Justification::centredLeft, 1);
@@ -237,7 +237,7 @@ namespace mixcoach {
                     int nEvents           = (int)topEvents_.size();
                     juce::String countStr = juce::String(nEvents) + " event" + (nEvents > 1 ? "s" : "");
                     g.setFont(interFont(8.0f).boldened());
-                    g.setColour(juce::Colour(0xFF8B8FA3).withAlpha(0.50f));
+                    g.setColour(textDim().withAlpha(0.50f));
 
                     int countX = bannerCollapseBtn_.getRight() + 76;
                     auto countArea =
@@ -308,7 +308,7 @@ namespace mixcoach {
                         if (evMsg.length() > 32) evMsg = evMsg.substring(0, 30) + "…";
 
                         g.setFont(juce::Font(juce::FontOptions(8.0f)));
-                        g.setColour(juce::Colour(0xFFD1D1E0));
+                        g.setColour(textBright());
                         auto textArea = juce::Rectangle<int>(tipX + 14, ty, tooltipW - 20, 14);
                         g.drawFittedText(evMsg, textArea, juce::Justification::centredLeft, 1);
 
@@ -371,7 +371,7 @@ namespace mixcoach {
             auto popupBounds = juce::Rectangle<int>(popupX, popupY, popupW, popupH);
             g.setColour(juce::Colours::black.withAlpha(0.35f));
             g.fillRoundedRectangle(popupBounds.expanded(2.0f).toFloat(), 8.0f);
-            g.setColour(juce::Colour(0xFF1A1A2E).withAlpha(0.97f));
+            g.setColour(MixCoachTheme::tooltipBg().withAlpha(0.97f));
             g.fillRoundedRectangle(popupBounds.toFloat(), 6.0f);
             g.setColour(sevCol.withAlpha(0.50f));
             g.drawRoundedRectangle(popupBounds.toFloat(), MixCoachTheme::cornerRadius_medium, 1.2f);
@@ -395,14 +395,14 @@ namespace mixcoach {
             // Divider
             {
                 auto divArea = juce::Rectangle<int>(popupX + 8, py, popupW - 16, 1);
-                g.setColour(juce::Colour(0xFF2E2F3E).withAlpha(0.60f));
+                g.setColour(MixCoachTheme::tooltipBorder().withAlpha(0.60f));
                 g.fillRect(divArea.toFloat());
                 py += 4;
             }
             // Track name
             if (trackName.isNotEmpty()) {
                 g.setFont(interFont(11.0f).boldened());
-                g.setColour(juce::Colour(0xFFF1F1F6));
+                g.setColour(textBright());
                 auto nameArea = juce::Rectangle<int>(popupX + 8, py, popupW - 16, lineH);
                 g.drawFittedText(trackName, nameArea, juce::Justification::centredLeft, 1);
                 py += lineH;
@@ -410,7 +410,7 @@ namespace mixcoach {
             // Full message
             {
                 g.setFont(interFont(8.5f));
-                g.setColour(juce::Colour(0xFFD1D1E0));
+                g.setColour(textBright());
                 auto msgArea = juce::Rectangle<int>(popupX + 8, py, popupW - 16, lineH * 3);
                 g.drawFittedText(ev.message, msgArea, juce::Justification::centredLeft, 3);
                 py += lineH * 3;
@@ -423,7 +423,7 @@ namespace mixcoach {
                     metricsStr +=
                         " | " + juce::String(ev.deviation > 0 ? "+" : "") + juce::String(ev.deviation, 1) + " dB";
                 g.setFont(interFont(8.0f));
-                g.setColour(juce::Colour(0xFF8B8FA3));
+                g.setColour(textDim());
                 auto metricsArea = juce::Rectangle<int>(popupX + 8, py, popupW - 16, lineH);
                 g.drawFittedText(metricsStr, metricsArea, juce::Justification::centredLeft, 1);
                 py += lineH;
@@ -431,7 +431,7 @@ namespace mixcoach {
             // Dismiss hint
             {
                 g.setFont(interFont(7.0f));
-                g.setColour(juce::Colour(0xFF5C5F73).withAlpha(0.60f));
+                g.setColour(textMuted().withAlpha(0.60f));
                 auto hintArea = juce::Rectangle<int>(popupX + 8, py, popupW - 16, lineH);
                 g.drawFittedText("Click outside to dismiss", hintArea, juce::Justification::centredRight, 1);
             }
@@ -537,7 +537,7 @@ namespace mixcoach {
         g.setColour(juce::Colours::black.withAlpha(0.15f * fade));
         g.fillRoundedRectangle(shadowMid, corner + 1.0f);
 
-        g.setColour(juce::Colour(0xFF141420).withAlpha(fade));
+        g.setColour(MixCoachTheme::bgCanvas().withAlpha(fade));
         g.fillRoundedRectangle(cardBounds, corner);
 
         if (isSelected) {
@@ -556,7 +556,7 @@ namespace mixcoach {
             g.drawRoundedRectangle(cardBounds, corner, 1.0f);
         }
         else {
-            g.setColour(juce::Colour(0xFF2E2F3E).withAlpha(fade * 0.5f));
+            g.setColour(MixCoachTheme::tooltipBorder().withAlpha(fade * 0.5f));
             g.drawRoundedRectangle(cardBounds, corner, 0.8f);
         }
 
@@ -732,9 +732,9 @@ namespace mixcoach {
 
         auto drawStereoBar = [&](float level, juce::Colour colour, float mx, float peakHoldLevel) {
             auto bgBounds = juce::Rectangle<float>(mx, barTop, barW, barH);
-            g.setColour(juce::Colour(0xFF0E0F18).withAlpha(fade));
+            g.setColour(MixCoachTheme::bgDarker().withAlpha(fade));
             g.fillRoundedRectangle(bgBounds, 2.0f);
-            g.setColour(juce::Colour(0xFF25262E).withAlpha(fade * 0.5f));
+            g.setColour(MixCoachTheme::bgDark().withAlpha(fade * 0.5f));
             g.drawRoundedRectangle(bgBounds, 2.0f, 0.5f);
 
             float norm = juce::jlimit(0.01f, 1.0f, (level - kMeterMinDb) / (kMeterMaxDb - kMeterMinDb));
@@ -759,7 +759,7 @@ namespace mixcoach {
                 float pkY    = barBot - barH * pkNorm;
                 g.setColour(juce::Colours::white.withAlpha(0.08f * fade));
                 g.fillEllipse(mx + barW * 0.5f - 3.0f, pkY - 3.0f, 6.0f, 6.0f);
-                g.setColour(juce::Colour(0xFFFFF6E0).withAlpha(0.85f * fade));
+                g.setColour(MixCoachTheme::warning().withAlpha(0.15f).withAlpha(0.85f * fade));
                 g.fillEllipse(mx + barW * 0.5f - 1.5f, pkY - 1.5f, 3.0f, 3.0f);
             }
         };
@@ -876,7 +876,7 @@ namespace mixcoach {
             int attBarW = 3;
 
             // Background
-            g.setColour(juce::Colour(0xFF0E0F18).withAlpha(fade));
+            g.setColour(MixCoachTheme::bgDarker().withAlpha(fade));
             g.fillRoundedRectangle((float)attBarX, (float)attBarY, (float)attBarW, (float)attBarH, 1.5f);
 
             // Fill
@@ -1037,14 +1037,14 @@ namespace mixcoach {
             float swFill  = swNorm * (float)swBarW;
 
             // Background
-            g.setColour(juce::Colour(0xFF0E0F18).withAlpha(fade));
+            g.setColour(MixCoachTheme::bgDarker().withAlpha(fade));
             g.fillRect((float)swBarX, (float)swBarY, (float)swBarW, (float)swBarH);
 
             // Fill — color según zona
             juce::Colour swColour;
             if (entry.correlation < 0.0f) swColour = MixCoachTheme::error().withAlpha(fade * 0.70f);
             else if (swNorm < 0.2f)
-                swColour = juce::Colour(0xFF94A3B8).withAlpha(fade * 0.50f);
+                swColour = MixCoachTheme::textDim().withAlpha(fade * 0.50f);
             else if (swNorm < 0.4f)
                 swColour = MixCoachTheme::accentCyan().withAlpha(fade * 0.65f);
             else

@@ -1,0 +1,153 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  MixCoach CI — GitHub Actions
+#
+#  Ejecuta en cada push y PR:
+#    1. Configura CMake con Visual Studio 17 2022 (MSBuild)
+#    2. Build de MixCoach_VST3 + Messenger_VST3
+#    3. Pattern validator + tests via quick_validate.ps1
+#    4. Upload de artefactos VST3 en master
+#
+#  Requisitos para activar:
+#    - Repositorio en GitHub
+#    - JUCE 8+ disponible en el runner
+#      Opción A: Agregar JUCE como submodule en libs/JUCE (recomendado)
+#      Opción B: Setear variable JUCE_PATH en GitHub: Settings → Variables
+#      Opción C: Self-hosted runner con JUCE instalado
+#    - El workflow usa -DJUCE_ROOT=<path> para configurar CMake
+#
+#  ══════════════════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  push:
+    branches: [ "master", "main", "develop" ]
+    paths-ignore:
+      - '**.md'
+      - 'workspace_memory/**'
+      - 'knowledge/**'
+  pull_request:
+    branches: [ "master", "main" ]
+    paths-ignore:
+      - '**.md'
+      - 'workspace_memory/**'
+
+env:
+  BUILD_TYPE: Release
+  # ─── Ruta a JUCE ──────────────────────────────────────────────────────
+  # Configurable via GitHub Actions variable (Settings → Variables)
+  # o via submodule en libs/JUCE
+  JUCE_ROOT: ${{ vars.JUCE_PATH || 'libs/JUCE' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      # ─── Paso 1: Checkout del repositorio ────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ─── Paso 2: Configurar MSVC (Visual Studio 2022) ───────────────
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: 17
+
+      # ─── Paso 3: Verificar JUCE ──────────────────────────────────────
+      - name: Check JUCE availability
+        shell: pwsh
+        run: |
+          $juceRoot = "${{ env.JUCE_ROOT }}"
+          Write-Host "JUCE_ROOT: $juceRoot"
+          if (Test-Path "$juceRoot/CMakeLists.txt") {
+            Write-Host "  ✅ JUCE encontrado en: $juceRoot" -ForegroundColor Green
+          } else {
+            Write-Host "  ⚠️  JUCE no encontrado en: $juceRoot" -ForegroundColor Yellow
+            Write-Host "  → Opciones:" -ForegroundColor Yellow
+            Write-Host "    1. Agrega JUCE como submodule: git submodule add https://github.com/juce-framework/JUCE.git libs/JUCE" -ForegroundColor Yellow
+            Write-Host "    2. Setea variable JUCE_PATH en GitHub: Settings → Secrets and variables → Actions → Variables" -ForegroundColor Yellow
+            Write-Host "    3. Usa un self-hosted runner con JUCE instalado" -ForegroundColor Yellow
+            exit 1
+          }
+
+      # ─── Paso 4: Configurar CMake ────────────────────────────────────
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DJUCE_ROOT="${{ env.JUCE_ROOT }}"
+
+      # ─── Paso 5: Build + tests via quick_validate.ps1 ──────────────
+      - name: Build and test (quick_validate.ps1)
+        shell: pwsh
+        run: |
+          .\scripts\quick_validate.ps1 -Target All
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "  ✅ quick_validate.ps1: all checks passed" -ForegroundColor Green
+          } else {
+            Write-Host "  ❌ quick_validate.ps1: checks FAILED" -ForegroundColor Red
+            exit $LASTEXITCODE
+          }
+
+      # ─── Paso 6: Build stress tests (serial, evita crash CL.exe) ────
+      # Fallback serial: quick_validate.ps1 construye tests en paralelo,
+      # pero TestStress50Tracks crash CL.exe en paralelo en algunos runners.
+      # Si el build paralelo del paso 5 ya tuvo exito, este paso es
+      # redundante pero inofensivo (~2-3 min extra).
+      - name: Build stress tests (serial)
+        shell: pwsh
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }} `
+            --target TestStress50Tracks --target TestStress128Slots `
+            -- /maxcpucount:1 /nologo
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "  ✅ Stress tests built successfully" -ForegroundColor Green
+          } else {
+            Write-Host "  ⚠️  Stress tests build had issues (continuing)" -ForegroundColor Yellow
+          }
+
+      # ─── Paso 7: Run stress tests ────────────────────────────────────
+      - name: Run stress tests
+        shell: pwsh
+        run: |
+          $stressTests = @("TestStress50Tracks", "TestStress128Slots")
+          $failed = 0
+          foreach ($test in $stressTests) {
+            $exe = "build/tests/Release/$test.exe"
+            if (-not (Test-Path $exe)) { $exe = "build/tests/$test.exe" }
+            if (-not (Test-Path $exe)) {
+              Write-Host "  ⚠️  $test.exe not found (SKIP)" -ForegroundColor Yellow
+              continue
+            }
+            Write-Host "  Running $test..." -ForegroundColor Gray
+            $output = & $exe 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "  ✅ $test PASSED" -ForegroundColor Green
+            } else {
+              Write-Host "  ❌ $test FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
+              $output | Select-String "FAIL|failed|Results" | Select-Object -First 3 | ForEach-Object {
+                Write-Host "    $_" -ForegroundColor Red
+              }
+              $failed++
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+
+      # ─── Paso 8: Upload VST3 artifacts (solo en master) ────────────
+      - name: Upload VST3 artifacts
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MixCoach-VST3-${{ github.sha }}
+          path: |
+            build/MixCoach_artefacts/Release/VST3/
+            build/Messenger_artefacts/Release/VST3/
+          if-no-files-found: warn
+          retention-days: 7

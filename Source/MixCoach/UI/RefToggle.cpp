@@ -13,7 +13,7 @@ namespace mixcoach {
 
         auto bgCol  = on ? juce::Colour(0x44FFD700) : juce::Colour(0x1A888888);
         auto fgCol  = on ? juce::Colour(0xCCFFD700) : juce::Colour(0x55999999);
-        auto dotCol = on ? juce::Colour(0xFFFFD700) : juce::Colour(0x66999999);
+        auto dotCol = on ? MixCoachTheme::warning() : juce::Colour(0x66999999);
 
         if (hover) {
             bgCol  = bgCol.brighter(0.6f);

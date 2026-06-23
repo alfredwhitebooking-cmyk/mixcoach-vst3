@@ -1,10 +1,11 @@
 # 🗺️ ROADMAP — MixCoach Product Sprint Plan
 
-> **LEER PRIMERO.** Este documento define el norte del producto y los sprints completados/activos.
-> Cualquier feature, UI o cambio debe contrastarse contra este roadmap.
+> **LEER SEGUNDO** (después de `workspace_memory/PLAN_10_10.md`).
+> Este documento define el norte del producto y los sprints completados/activos.
+> Cualquier feature, UI o cambio debe contrastarse contra este roadmap y el plan 10/10.
 >
-> **Última actualización:** 22 junio 2026
-> **Versión:** 2.0
+> **Última actualización:** 23 junio 2026
+> **Versión:** 2.1
 
 ---
 
@@ -423,19 +424,39 @@ Vocal:
 
 ---
 
+## 🏆 Plan 10/10
+
+El plan para llevar MixCoach de 7.9 a 10/10 está definido en:
+👉 `workspace_memory/PLAN_10_10.md`
+
+Resumen de fases:
+| Fase | Nombre | Prioridad | Estado |
+|:-----|:-------|:---------:|:------:|
+| 0 | Sprint 7 + DevOps | 🔴 INMEDIATA | 🟡 En progreso |
+| 1 | Core de Inteligencia (MixPriorityEngine) | 🔴 INMEDIATA | ❌ Pendiente |
+| 2 | Loop de Aprendizaje (MixHistory) | 🔴 INMEDIATA | ❌ Pendiente |
+| 3 | Consciencia de Género | 🟡 IMPORTANTE | ❌ Pendiente |
+| 4 | Pulido UX | 🟡 IMPORTANTE | ❌ Pendiente |
+| 5 | Cobertura de Tests | 🟡 IMPORTANTE | ❌ Pendiente |
+| 6 | Mastering Mode | 🔵 FUTURO | ❌ Pendiente |
+| 7 | Modelo Local | 🔵 FUTURO | ❌ Pendiente |
+
+---
+
 ## ❌ Lo que NO construir (en el próximo mes)
 
 | Feature | Razón |
 |:--------|:------|
-| ❌ Mastering Mode | No acerca a la visión |
-| ❌ User Profiles | No acerca a la visión |
-| ❌ Cloud / Mac | Windows + offline primero |
+| ❌ Cloud Sync | No acerca a la visión, viola privacidad |
+| ❌ User Profiles | No crítica para 10/10 |
+| ❌ Mac/Linux | Windows + offline primero |
 | ❌ Reportes PDF | Sin valor para el core loop |
 | ❌ Gamificación | Distrae del aprendizaje real |
 | ❌ Más analizadores | Ya hay suficientes |
 | ❌ Más medidores | Ya hay suficientes |
+| ❌ Bundle de plugins (EQ Coach, Compressor Coach) | Después de 10/10 |
 
 ---
 
-*Roadmap de producto — MixCoach — 22 junio 2026*
-*Documento para IA — leer al inicio de cada sesión*
+*Roadmap de producto — MixCoach — 23 junio 2026*
+*Documento para IA — leer al inicio de cada sesión (después de PLAN_10_10.md)*

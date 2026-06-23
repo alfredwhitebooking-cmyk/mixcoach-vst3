@@ -6,14 +6,14 @@ namespace mixcoach {
 
     // ─── Colores predefinidos para el color picker ───────────────────────────
     static const juce::Colour kPresetColours[8] = {
-        juce::Colour(0xFFEF4444), // Rojo    - Bateria
-        juce::Colour(0xFFF97316), // Naranja - Percusion
-        juce::Colour(0xFFEAB308), // Amarillo - Voz
-        juce::Colour(0xFF22C55E), // Verde   - Melodia
-        juce::Colour(0xFF3B82F6), // Azul    - Bajo
-        juce::Colour(0xFFA78BFA), // Morado  - FX
-        juce::Colour(0xFFEC4899), // Rosa    - Vocals
-        juce::Colour(0xFF14B8A6), // Teal    - Ambientes
+        MixCoachTheme::error(),       // Rojo    - Bateria
+        MixCoachTheme::roleGuitars(), // Naranja - Percusion
+        MixCoachTheme::warning(),     // Amarillo - Voz
+        MixCoachTheme::success(),     // Verde   - Melodia
+        MixCoachTheme::info(),        // Azul    - Bajo
+        MixCoachTheme::roleMelody(),  // Morado  - FX
+        MixCoachTheme::roleVocals(),  // Rosa    - Vocals
+        MixCoachTheme::roleFX(),      // Teal    - Ambientes
     };
 
     static const char* kColourNames[8] = {
@@ -458,7 +458,7 @@ namespace mixcoach {
             int y                = titleDividerBounds_.getBottom() + 4;
             auto iconBounds      = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
             float hA             = iconHoverAlpha_[0].getCurrent();
-            juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+            juce::Colour iconCol = MixCoachTheme::textDim().interpolatedWith(MixCoachTheme::accent(), hA);
             drawIconCircle(g, iconBounds);
             drawPencilIcon(g, iconBounds, iconCol.withAlpha(0.65f + 0.35f * hA));
 
@@ -474,7 +474,7 @@ namespace mixcoach {
             int y                = nameDividerBounds_.getBottom() + 4;
             auto iconBounds      = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
             float hA             = iconHoverAlpha_[1].getCurrent();
-            juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+            juce::Colour iconCol = MixCoachTheme::textDim().interpolatedWith(MixCoachTheme::accent(), hA);
             drawIconCircle(g, iconBounds);
             drawPaletteIcon(g, iconBounds, iconCol.withAlpha(0.65f + 0.35f * hA));
 
@@ -509,7 +509,7 @@ namespace mixcoach {
             g.drawText(juce::CharPointer_UTF8("\xE2\x96\xBE"), arrowArea, juce::Justification::centred);
 
             // Border around dropdown area (animated on hover)
-            g.setColour(juce::Colour(0xFF25263A)
+            g.setColour(MixCoachTheme::bgDark()
                             .interpolatedWith(MixCoachTheme::accentCyan(), cHover * 0.4f)
                             .withAlpha(0.5f + 0.3f * cHover));
             g.drawRoundedRectangle(colourDropdownBounds_, 4.0f, 1.0f);
@@ -520,7 +520,7 @@ namespace mixcoach {
             int y                = colourDividerBounds_.getBottom() + 4;
             auto iconBounds      = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
             float hA             = iconHoverAlpha_[2].getCurrent();
-            juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+            juce::Colour iconCol = MixCoachTheme::textDim().interpolatedWith(MixCoachTheme::accent(), hA);
             drawIconCircle(g, iconBounds);
             drawBoxIcon(g, iconBounds, iconCol.withAlpha(0.65f + 0.35f * hA));
 
@@ -581,7 +581,7 @@ namespace mixcoach {
             int y                = estadoDividerBounds_.getBottom() + 4;
             auto iconBounds      = juce::Rectangle<float>(12.0f, (float)y + 5.0f, 18.0f, 18.0f);
             float hA             = iconHoverAlpha_[4].getCurrent();
-            juce::Colour iconCol = juce::Colour(0xFFAAB4C0).interpolatedWith(MixCoachTheme::accent(), hA);
+            juce::Colour iconCol = MixCoachTheme::textDim().interpolatedWith(MixCoachTheme::accent(), hA);
             drawIconCircle(g, iconBounds);
 
             g.setFont(juce::Font(juce::FontOptions(7.5f)).boldened());
@@ -599,14 +599,14 @@ namespace mixcoach {
                 bool hover = (hoveredEstado_ == 0);
 
                 // Background: red when muted, dark gray when not
-                juce::Colour bgCol = muted ? juce::Colour(0xFFDC2626).withAlpha(0.25f)
+                juce::Colour bgCol = muted ? MixCoachTheme::error().withAlpha(0.25f)
                                            : MixCoachTheme::bgInput().brighter(0.05f);
                 if (hover) bgCol = bgCol.brighter(0.15f);
                 g.setColour(bgCol);
                 g.fillRoundedRectangle(mb, 4.0f);
 
                 // Border
-                juce::Colour borderCol = muted ? juce::Colour(0xFFDC2626).withAlpha(0.6f)
+                juce::Colour borderCol = muted ? MixCoachTheme::error().withAlpha(0.6f)
                                                : MixCoachTheme::borderCard().withAlpha(0.3f);
                 if (hover) borderCol = borderCol.brighter(0.3f);
                 g.setColour(borderCol);
@@ -616,12 +616,12 @@ namespace mixcoach {
                 float iconSize = mb.getHeight() * 0.5f;
                 auto iconRect =
                     juce::Rectangle<float>(mb.getX() + 8.0f, mb.getCentreY() - iconSize / 2.0f, iconSize, iconSize);
-                juce::Colour speakerCol = muted ? juce::Colour(0xFFFF6B6B) : juce::Colour(0xFFAAB4C0);
+                juce::Colour speakerCol = muted ? MixCoachTheme::error().withAlpha(0.7f) : MixCoachTheme::textDim();
                 drawSpeakerIcon(g, iconRect, speakerCol, muted);
 
                 // Text label
                 g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-                g.setColour(muted ? juce::Colour(0xFFFF6B6B) : MixCoachTheme::textMuted());
+                g.setColour(muted ? MixCoachTheme::error().withAlpha(0.7f) : MixCoachTheme::textMuted());
                 g.drawText(muted ? "SILENCIADO" : "MUTE", mb.translated(0, 0), juce::Justification::centred);
             }
 
@@ -639,14 +639,14 @@ namespace mixcoach {
                 bool hover = (hoveredEstado_ == 1);
 
                 // Background: amber when soloed, dark gray when not
-                juce::Colour bgCol = soloed ? juce::Colour(0xFFF59E0B).withAlpha(0.25f)
+                juce::Colour bgCol = soloed ? MixCoachTheme::warning().withAlpha(0.25f)
                                             : MixCoachTheme::bgInput().brighter(0.05f);
                 if (hover) bgCol = bgCol.brighter(0.15f);
                 g.setColour(bgCol);
                 g.fillRoundedRectangle(sb, 4.0f);
 
                 // Border
-                juce::Colour borderCol = soloed ? juce::Colour(0xFFF59E0B).withAlpha(0.6f)
+                juce::Colour borderCol = soloed ? MixCoachTheme::warning().withAlpha(0.6f)
                                                 : MixCoachTheme::borderCard().withAlpha(0.3f);
                 if (hover) borderCol = borderCol.brighter(0.3f);
                 g.setColour(borderCol);
@@ -656,12 +656,12 @@ namespace mixcoach {
                 float iconSize = sb.getHeight() * 0.5f;
                 auto iconRect =
                     juce::Rectangle<float>(sb.getX() + 8.0f, sb.getCentreY() - iconSize / 2.0f, iconSize, iconSize);
-                juce::Colour hpCol = soloed ? juce::Colour(0xFFFCD34D) : juce::Colour(0xFFAAB4C0);
+                juce::Colour hpCol = soloed ? MixCoachTheme::warning() : MixCoachTheme::textDim();
                 drawHeadphoneIcon(g, iconRect, hpCol, soloed);
 
                 // Text label
                 g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-                g.setColour(soloed ? juce::Colour(0xFFFCD34D) : MixCoachTheme::textMuted());
+                g.setColour(soloed ? MixCoachTheme::warning() : MixCoachTheme::textMuted());
                 g.drawText(soloed ? "EN SOLO" : "SOLO", sb.translated(0, 0), juce::Justification::centred);
             }
         }

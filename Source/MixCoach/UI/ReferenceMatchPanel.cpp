@@ -150,12 +150,12 @@ namespace mixcoach {
     {
         static const char* kRegionLabels[]         = {"Sub", "Bass", "LoMid", "HiMid", "Pres", "Air"};
         static const juce::Colour kRegionColours[] = {
-            juce::Colour(0xFF6B5B95), // Sub - violeta
-            juce::Colour(0xFFE57373), // Bass - rojo
-            juce::Colour(0xFFFFB74D), // LoMid - naranja
-            juce::Colour(0xFF4DB6AC), // HiMid - teal
-            juce::Colour(0xFF64B5F6), // Pres - azul
-            juce::Colour(0xFFBA68C8)  // Air - lavanda
+            MixCoachTheme::specSub(), // Sub - violeta
+            MixCoachTheme::specAir(), // Bass - rojo
+            MixCoachTheme::specPres(), // LoMid - naranja
+            MixCoachTheme::specLoMid(), // HiMid - teal
+            MixCoachTheme::specBass(), // Pres - azul
+            MixCoachTheme::specSub()  // Air - lavanda
         };
 
         // Layout: 6 columns, each column has mix bar (left half) + ref bar (right half)

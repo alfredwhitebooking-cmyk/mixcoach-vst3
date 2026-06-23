@@ -119,7 +119,7 @@ namespace mixcoach {
 
         MixCoachTheme::fillGlassPanel(g, getLocalBounds().toFloat(), 6.0f);
 
-        g.setColour(juce::Colour(0xFF1A2A44).withAlpha(0.3f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.3f));
         g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 6.0f, 1.0f);
 
         auto headerArea = getLocalBounds().reduced(8, 6).removeFromTop(18);

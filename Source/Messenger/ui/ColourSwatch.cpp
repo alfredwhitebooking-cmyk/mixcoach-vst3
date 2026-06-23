@@ -1,4 +1,5 @@
 #include "ColourSwatch.h"
+#include "../../MixCoach/UI/MixCoachTheme.h"
 
 namespace mixcoach {
 
@@ -41,7 +42,7 @@ namespace mixcoach {
             g.fillRoundedRectangle(bounds.reduced(2.0f), 2.0f);
         }
 
-        g.setColour(juce::Colour(0xFF2C2C3E));
+        g.setColour(MixCoachTheme::bgDark());
         g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 
         if (isMouseOver()) {

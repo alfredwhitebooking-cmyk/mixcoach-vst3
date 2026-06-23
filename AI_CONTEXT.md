@@ -24,7 +24,8 @@
 | [§12 ✅ Checklist Pre-Cambio](#-12-checklist-pre-cambio) | Checklist obligatorio antes de modificar | 5 min |
 
 **Documentos complementarios (standalone):**
-- `workspace_memory/ROADMAP.md` — 🎯 Roadmap de producto y sprints activos (**leer primero**)
+- `workspace_memory/PLAN_10_10.md` — 🏆 **PLAN MAESTRO a 10/10 (leer PRIMERO)**
+- `workspace_memory/ROADMAP.md` — 🎯 Roadmap de producto y sprints activos
 - `AI_COMPONENT_INDEX.yaml` — Índice semántico de componentes
 - `SAFE_EDIT_GUIDE.md` — Guía de edición segura
 - `PRODUCT_VISION.md` — Experiencia de usuario definitiva
@@ -69,11 +70,12 @@
 ### Orden de Lectura para IA
 
 ```
-1. workspace_memory/ROADMAP.md  ← 🎯 SPRINTS ACTIVOS + PRÓXIMA TAREA (leer PRIMERO)
-2. AI_CONTEXT.md                ← TODO EL CONTEXTO DEL SISTEMA (10 secciones)
-3. AI_COMPONENT_INDEX.yaml      ← Índice semántico de componentes
-4. SAFE_EDIT_GUIDE.md           ← Guía de modificación segura
-5. PRODUCT_VISION.md            ← Experiencia de usuario definitiva
+1. workspace_memory/PLAN_10_10.md  ← PLAN MAESTRO a 10/10 (leer PRIMERO)
+2. workspace_memory/ROADMAP.md    ← SPRINTS ACTIVOS + estado actual
+3. AI_CONTEXT.md                  ← TODO EL CONTEXTO DEL SISTEMA (12 secciones)
+4. AI_COMPONENT_INDEX.yaml        ← Indice semantico de componentes
+5. SAFE_EDIT_GUIDE.md             ← Guia de modificacion segura
+6. PRODUCT_VISION.md              ← Experiencia de usuario definitiva
 ```
 
 ### Cómo Hacer tu Primer Cambio

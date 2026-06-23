@@ -691,9 +691,9 @@ namespace mixcoach {
         const float cr = 2.0f;
 
         // ─── Background (glass) ─────────────────────────────────────────────
-        g.setColour(juce::Colour(0xFF0E0F18).withAlpha(0.6f));
+        g.setColour(MixCoachTheme::bgDarker().withAlpha(0.6f));
         g.fillRoundedRectangle(rect, cr);
-        g.setColour(juce::Colour(0xFF25262E).withAlpha(0.35f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.35f));
         g.drawRoundedRectangle(rect, cr, 0.5f);
 
         // ─── Normalize level: -60dB → 0.0, 0dB → 1.0 ───────────────────────
@@ -744,7 +744,7 @@ namespace mixcoach {
                 float dotY = fillBounds.getCentreY();
                 g.setColour(barColour.withAlpha(0.60f));
                 g.fillEllipse(dotX - 1.5f, dotY - 1.5f, 3.0f, 3.0f);
-                g.setColour(juce::Colour(0xFFFFF6E0).withAlpha(0.70f));
+                g.setColour(MixCoachTheme::textPrimary().withAlpha(0.70f));
                 g.fillEllipse(dotX - 0.8f, dotY - 0.8f, 1.6f, 1.6f);
             }
         }
@@ -936,17 +936,17 @@ namespace mixcoach {
     {
         switch (pos) {
             case StereoPos::Mono:
-                return juce::Colour(0xFF94A3B8); // gray
+                return MixCoachTheme::textDim(); // gray
             case StereoPos::Center:
-                return juce::Colour(0xFF10B981); // green
+                return MixCoachTheme::success(); // green
             case StereoPos::Narrow:
-                return juce::Colour(0xFF3B82F6); // blue
+                return MixCoachTheme::info(); // blue
             case StereoPos::Wide:
-                return juce::Colour(0xFFF59E0B); // amber
+                return MixCoachTheme::warning(); // amber
             case StereoPos::Spread:
-                return juce::Colour(0xFF8B5CF6); // purple
+                return MixCoachTheme::roleDrums(); // purple
             case StereoPos::PhaseIssue:
-                return juce::Colour(0xFFEF4444); // red
+                return MixCoachTheme::error(); // red
         }
         return juce::Colours::grey;
     }
@@ -976,19 +976,19 @@ namespace mixcoach {
     {
         switch (range) {
             case FreqRange::SubBass:
-                return juce::Colour(0xFF8B5CF6); // violet
+                return MixCoachTheme::roleDrums(); // violet
             case FreqRange::BassMid:
-                return juce::Colour(0xFF3B82F6); // blue
+                return MixCoachTheme::info(); // blue
             case FreqRange::Mid:
-                return juce::Colour(0xFF10B981); // green
+                return MixCoachTheme::success(); // green
             case FreqRange::MidHigh:
-                return juce::Colour(0xFFF59E0B); // amber
+                return MixCoachTheme::warning(); // amber
             case FreqRange::High:
-                return juce::Colour(0xFFF97316); // orange
+                return MixCoachTheme::roleGuitars(); // orange
             case FreqRange::Full:
-                return juce::Colour(0xFFEC4899); // pink
+                return MixCoachTheme::roleVocals(); // pink
             case FreqRange::Silent:
-                return juce::Colour(0xFF6B7280); // gray
+                return MixCoachTheme::textDim(); // gray
         }
         return juce::Colours::grey;
     }
@@ -1154,7 +1154,7 @@ namespace mixcoach {
         g.fillRoundedRectangle(tipBounds.translated(2.0f, 2.0f), 6.0f);
 
         // Dark glass background
-        g.setColour(juce::Colour(0xFF1A1B26).withAlpha(0.95f));
+        g.setColour(MixCoachTheme::bgDark().withAlpha(0.95f));
         g.fillRoundedRectangle(tipBounds, 6.0f);
 
         // Border

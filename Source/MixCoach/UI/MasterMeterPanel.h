@@ -134,10 +134,10 @@ namespace mixcoach {
         juce::Colour getLUFScolour(float value, float target) const noexcept
         {
             float delta = getTargetDelta(value, target);
-            if (delta > 1.0f) return juce::Colour(0xFFFF5C74);  // Red/pink (too loud)
-            if (delta > -1.0f) return juce::Colour(0xFFFFD93D); // Yellow (near target)
-            if (delta > -4.0f) return juce::Colour(0xFF4ADE80); // Green (in range)
-            return juce::Colour(0xFF888888);                    // Gray (too quiet)
+            if (delta > 1.0f) return MixCoachTheme::error();  // Red/pink (too loud)
+            if (delta > -1.0f) return MixCoachTheme::warning(); // Yellow (near target)
+            if (delta > -4.0f) return MixCoachTheme::success(); // Green (in range)
+            return MixCoachTheme::textMuted();                    // Gray (too quiet)
         }
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MasterMeterPanel)

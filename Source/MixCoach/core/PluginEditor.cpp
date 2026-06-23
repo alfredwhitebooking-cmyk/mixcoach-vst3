@@ -573,7 +573,7 @@ namespace mixcoach {
             int headerW       = headerBounds.getWidth();
 
             // Shadow line (oscura, debajo)
-            g.setColour(juce::Colour(0xFF000000).withAlpha(0.30f));
+            g.setColour(juce::Colours::black.withAlpha(0.30f));
             g.drawHorizontalLine((int)accentLineY + 1, 0.0f, (float)headerW);
 
             // Glow line sutil

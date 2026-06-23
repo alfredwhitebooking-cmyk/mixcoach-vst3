@@ -2,10 +2,19 @@
 #include "CoachEngine.h"
 #include "../../Common/types/Constants.h"
 #include "../../Common/types/LogHelper.h"
+
 #include <algorithm>
 #include <cmath>
 
 namespace mixcoach {
+
+    // Colores para severityColour() - constantes locales para evitar dependencia engine→UI (Ley 6)
+    static const juce::Colour kMatchColours[4] = {
+        juce::Colour(0xFFFF5252), // Red   - Critical
+        juce::Colour(0xFFFFC107), // Amber - Warning
+        juce::Colour(0xFF00B7FF), // Cyan  - Info
+        juce::Colour(0xFF4CAF50), // Green - Praise
+    };
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  Formats
@@ -173,13 +182,13 @@ namespace mixcoach {
     {
         switch (s) {
             case GapSeverity::Critical:
-                return juce::Colour(0xFFFF5252); // Red
+                return kMatchColours[0]; // Red
             case GapSeverity::Warning:
-                return juce::Colour(0xFFFFC107); // Yellow
+                return kMatchColours[1]; // Yellow
             case GapSeverity::Info:
-                return juce::Colour(0xFF00B7FF); // Cyan
+                return kMatchColours[2]; // Cyan
             case GapSeverity::Praise:
-                return juce::Colour(0xFF4CAF50); // Green
+                return kMatchColours[3]; // Green
         }
         return juce::Colours::grey;
     }

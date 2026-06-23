@@ -36,10 +36,10 @@ namespace mixcoach {
 
     void SpectrographComponent::drawPlotBackground(juce::Graphics& g, juce::Rectangle<float> plot) const
     {
-        g.setColour(juce::Colour(0xFF0A0E1A));
+        g.setColour(MixCoachTheme::bgCanvas());
         g.fillRoundedRectangle(plot, 4.0f);
 
-        g.setColour(juce::Colour(0xFF1A2A44).withAlpha(0.5f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.5f));
         g.drawRoundedRectangle(plot, 4.0f, 1.0f);
 
         auto topShadow = plot.withHeight(plot.getHeight() * 0.12f);
@@ -86,23 +86,23 @@ namespace mixcoach {
             const float y    = plot.getBottom() - norm * plot.getHeight();
 
             if (db == 0) {
-                g.setColour(juce::Colour(0xFFCCDDFF).withAlpha(0.35f));
+                g.setColour(MixCoachTheme::textBright().withAlpha(0.35f));
                 g.drawHorizontalLine(juce::roundToInt(y), plot.getX(), plot.getRight());
-                g.setColour(juce::Colour(0xFFCCDDFF).withAlpha(0.15f));
+                g.setColour(MixCoachTheme::textBright().withAlpha(0.15f));
                 g.drawHorizontalLine(juce::roundToInt(y) - 1, plot.getX(), plot.getRight());
             }
             else if (db == -5) {
-                g.setColour(juce::Colour(0xFF8899BB).withAlpha(0.18f));
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.18f));
                 g.drawHorizontalLine(juce::roundToInt(y), plot.getX(), plot.getRight());
-                g.setColour(juce::Colour(0xFF8899BB).withAlpha(0.12f));
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.12f));
                 g.drawHorizontalLine(juce::roundToInt(y), plot.getX(), plot.getX() + 4.0f);
             }
             else if (db % 10 == 0) {
-                g.setColour(juce::Colour(0xFF8899BB).withAlpha(0.12f));
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.12f));
                 g.drawHorizontalLine(juce::roundToInt(y), plot.getX(), plot.getRight());
             }
             else {
-                g.setColour(juce::Colour(0xFF8899BB).withAlpha(0.04f));
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.04f));
                 g.drawHorizontalLine(juce::roundToInt(y), plot.getX(), plot.getRight());
             }
         }
@@ -113,7 +113,7 @@ namespace mixcoach {
             const float x    = freqToX(freq, plot);
 
             bool isMajor = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f);
-            g.setColour(juce::Colour(0xFF8899BB).withAlpha(isMajor ? 0.10f : 0.05f));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.10f : 0.05f));
             g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
         }
 
@@ -122,7 +122,7 @@ namespace mixcoach {
             25.0f, 30.0f, 35.0f, 40.0f, 45.0f, 50.0f, 55.0f, 60.0f, 65.0f, 70.0f, 75.0f, 80.0f, 85.0f, 90.0f, 95.0f};
         for (float freq : subFreqs) {
             const float x = freqToX(freq, plot);
-            g.setColour(juce::Colour(0xFF8899BB).withAlpha(0.025f));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(0.025f));
             g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
         }
     }
@@ -135,10 +135,10 @@ namespace mixcoach {
     {
         if (bands_.empty()) return;
 
-        const auto colLow      = juce::Colour(0xFF00CC66);
-        const auto colMid      = juce::Colour(0xFFFFCC00);
-        const auto colHigh     = juce::Colour(0xFFFF5555);
-        const auto colPeakHold = juce::Colour(0xFFFFF0CC);
+        const auto colLow      = MixCoachTheme::success();
+        const auto colMid      = MixCoachTheme::warning();
+        const auto colHigh     = MixCoachTheme::error();
+        const auto colPeakHold = MixCoachTheme::vuFace();
         juce::ignoreUnused(colPeakHold);
 
         struct BarDim
@@ -254,10 +254,10 @@ namespace mixcoach {
                     const auto& bar   = bars[static_cast<size_t>(i)];
                     const float peakY = plot.getBottom() - peak * plot.getHeight();
 
-                    g.setColour(juce::Colour(0xFFFFF0CC).withAlpha(0.20f));
+                    g.setColour(MixCoachTheme::vuFace().withAlpha(0.20f));
                     g.fillRect(bar.x, peakY - 1.0f, bar.w, 3.0f);
 
-                    g.setColour(juce::Colour(0xFFFFF0CC).withAlpha(0.92f));
+                    g.setColour(MixCoachTheme::vuFace().withAlpha(0.92f));
                     g.fillRect(bar.x + 1.0f, peakY - 0.5f, bar.w - 2.0f, 1.5f);
                 }
             }
@@ -276,19 +276,19 @@ namespace mixcoach {
 
             if (db == 0) {
                 g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTiny)).boldened());
-                g.setColour(juce::Colour(0xFFE0E8F0).withAlpha(0.95f));
+                g.setColour(MixCoachTheme::textBright().withAlpha(0.7f).withAlpha(0.95f));
                 g.drawText("0",
                            juce::Rectangle<float>(labelCol.getX(), y - 5.0f, labelCol.getWidth(), 10.0f),
                            juce::Justification::centredRight);
             }
             else {
                 g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)));
-                g.setColour(juce::Colour(0xFFCCD0D6).withAlpha(0.75f));
+                g.setColour(MixCoachTheme::textDim().withAlpha(0.75f));
                 g.drawText(juce::String(db),
                            juce::Rectangle<float>(labelCol.getX(), y - 5.0f, labelCol.getWidth(), 10.0f),
                            juce::Justification::centredRight);
 
-                g.setColour(juce::Colour(0xFFCCD0D6).withAlpha(0.20f));
+                g.setColour(MixCoachTheme::textDim().withAlpha(0.20f));
                 g.drawHorizontalLine(juce::roundToInt(y), labelCol.getRight() - 0.5f, labelCol.getRight() + 3.0f);
             }
         }
@@ -322,25 +322,25 @@ namespace mixcoach {
         const float labelY = (float)getHeight() - labelH - 2.0f;
         auto labelRow      = juce::Rectangle<float>(0.0f, labelY, (float)getWidth(), labelH);
 
-        g.setColour(juce::Colour(0xFF0A0E1A).withAlpha(0.95f));
+        g.setColour(MixCoachTheme::bgCanvas().withAlpha(0.95f));
         g.fillRect(labelRow);
 
         auto edgeGlow = labelRow.withHeight(1.0f);
-        juce::ColourGradient edgeGrad(juce::Colour(0xFF8899BB).withAlpha(0.20f),
+        juce::ColourGradient edgeGrad(MixCoachTheme::textMuted().withAlpha(0.20f),
                                       edgeGlow.getX(),
                                       edgeGlow.getY(),
-                                      juce::Colour(0xFF8899BB).withAlpha(0.0f),
+                                      MixCoachTheme::textMuted().withAlpha(0.0f),
                                       edgeGlow.getRight(),
                                       edgeGlow.getY(),
                                       false);
-        edgeGrad.addColour(0.5f, juce::Colour(0xFF8899BB).withAlpha(0.10f));
+        edgeGrad.addColour(0.5f, MixCoachTheme::textMuted().withAlpha(0.10f));
         g.setGradientFill(edgeGrad);
         g.fillRect(edgeGlow);
 
         for (float freq : kLabelFreqsHz) {
             const float x = freqToX(freq, plot);
             bool isMajor  = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f);
-            g.setColour(juce::Colour(0xFF8899BB).withAlpha(isMajor ? 0.25f : 0.12f));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.25f : 0.12f));
             g.drawVerticalLine(juce::roundToInt(x), labelRow.getY(), labelRow.getBottom());
         }
 
@@ -360,7 +360,7 @@ namespace mixcoach {
             }
             else {
                 g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)));
-                g.setColour(juce::Colour(0xFFCCD0D6).withAlpha(0.80f));
+                g.setColour(MixCoachTheme::textDim().withAlpha(0.80f));
             }
             g.drawText(formatFreqLabel(freq),
                        juce::Rectangle<float>(x - w * 0.5f, labelRow.getY(), w, labelRow.getHeight()),
@@ -380,7 +380,7 @@ namespace mixcoach {
         auto c   = btn.getCentre();
 
         const float iconAlpha = (waterfallEnabled_ || referenceEnabled_) ? 0.40f : 0.20f;
-        g.setColour(juce::Colour(0xFFCCCCCC).withAlpha(iconAlpha));
+        g.setColour(MixCoachTheme::textSecondary().withAlpha(iconAlpha));
         g.drawEllipse(btn, 0.8f);
 
         float outerR = 5.0f;
@@ -396,11 +396,11 @@ namespace mixcoach {
         }
 
         if (waterfallEnabled_) {
-            g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.70f));
+            g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.70f));
             g.fillEllipse(c.x - 1.5f, c.y - 1.5f, 3.0f, 3.0f);
         }
         else {
-            g.setColour(juce::Colour(0xFF888888).withAlpha(0.25f));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(0.25f));
             g.drawEllipse(c.x - 1.5f, c.y - 1.5f, 3.0f, 3.0f, 0.8f);
         }
 
@@ -408,23 +408,23 @@ namespace mixcoach {
         auto slopeInd         = btn.translated(0, 28).withHeight(8);
         juce::String slopeStr = "S" + juce::String(kSlopePresets[slopePresetIndex_], 1);
         g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizePico)).boldened());
-        g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.50f));
+        g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.50f));
         g.drawText(slopeStr, slopeInd, juce::Justification::centred);
-        g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.08f));
+        g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.08f));
         g.fillRoundedRectangle(slopeInd.expanded(2.0f, 1.0f).withHeight(8), 2.0f);
 
         // Tilt indicator
         auto tiltInd = btn.translated(0, 46).withHeight(7);
         if (pinkNoiseEnabled_) {
-            g.setColour(juce::Colour(0xFFFFDD44).withAlpha(0.55f));
+            g.setColour(MixCoachTheme::meterYellow().withAlpha(0.55f));
             g.setFont(juce::Font(juce::FontOptions(5.5f)).boldened());
             g.drawText("T", tiltInd, juce::Justification::centred);
             auto tiltPill = tiltInd.expanded(3.0f, 1.0f).withHeight(7);
-            g.setColour(juce::Colour(0xFFFFDD44).withAlpha(0.08f));
+            g.setColour(MixCoachTheme::meterYellow().withAlpha(0.08f));
             g.fillRoundedRectangle(tiltPill, 2.0f);
         }
         else {
-            g.setColour(juce::Colour(0xFF888888).withAlpha(0.15f));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(0.15f));
             g.setFont(juce::Font(juce::FontOptions(5.0f)));
             g.drawText("T", tiltInd, juce::Justification::centred);
         }
@@ -432,15 +432,15 @@ namespace mixcoach {
         // Peak hold indicator "H"
         auto holdInd = btn.translated(0, 55).withHeight(7);
         if (peakHoldEnabled_) {
-            g.setColour(juce::Colour(0xFFFFDD44).withAlpha(0.55f));
+            g.setColour(MixCoachTheme::meterYellow().withAlpha(0.55f));
             g.setFont(juce::Font(juce::FontOptions(5.5f)).boldened());
             g.drawText("H", holdInd, juce::Justification::centred);
             auto holdPill = holdInd.expanded(3.0f, 1.0f).withHeight(7);
-            g.setColour(juce::Colour(0xFFFFDD44).withAlpha(0.08f));
+            g.setColour(MixCoachTheme::meterYellow().withAlpha(0.08f));
             g.fillRoundedRectangle(holdPill, 2.0f);
         }
         else {
-            g.setColour(juce::Colour(0xFF888888).withAlpha(0.15f));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(0.15f));
             g.setFont(juce::Font(juce::FontOptions(5.0f)));
             g.drawText("H", holdInd, juce::Justification::centred);
         }
@@ -449,7 +449,7 @@ namespace mixcoach {
         auto modeInd                               = btn.translated(0, 37).withHeight(7);
         static constexpr const char* kModeLabels[] = {"P", "R", "H"};
         static const juce::Colour kModeColours[]   = {
-            juce::Colour(0xFFFFDD44), juce::Colour(0xFF44BBFF), juce::Colour(0xFF77DDFF)};
+            MixCoachTheme::meterYellow(), MixCoachTheme::accentCyanBright(), MixCoachTheme::accentCyanBright().withAlpha(0.7f)};
         int modeIdx          = (int)displayMode_;
         juce::Colour modeCol = kModeColours[modeIdx].withAlpha(0.55f);
         g.setFont(juce::Font(juce::FontOptions(5.5f)).boldened());
@@ -468,7 +468,7 @@ namespace mixcoach {
 
         auto bgCol  = on ? juce::Colour(0x44FFD700) : juce::Colour(0x1A888888);
         auto fgCol  = on ? juce::Colour(0xCCFFD700) : juce::Colour(0x55999999);
-        auto dotCol = on ? juce::Colour(0xFFFFD700) : juce::Colour(0x66999999);
+        auto dotCol = on ? MixCoachTheme::meterYellow() : juce::Colour(0x66999999);
 
         if (hover) {
             bgCol  = bgCol.brighter(0.6f);
@@ -531,7 +531,7 @@ namespace mixcoach {
         const float sliceH = plot.getHeight() / (float)kWaterfallRows;
         if (sliceH < 0.5f) return;
 
-        const auto cyanTop = juce::Colour(0xFF44BBFF);
+        const auto cyanTop = MixCoachTheme::accentCyanBright();
 
         struct BandRect
         {
@@ -714,7 +714,7 @@ namespace mixcoach {
                 float labelW   = juce::jmin((float)label.length() * 5.0f + 6.0f, bandRect.getWidth());
                 auto labelRect = juce::Rectangle<float>(x0 + 2.0f, plot.getY() + 2.0f, labelW, 12.0f);
 
-                g.setColour(juce::Colour(0xFF0A0E1A).withAlpha(0.75f));
+                g.setColour(MixCoachTheme::bgCanvas().withAlpha(0.75f));
                 g.fillRoundedRectangle(labelRect.expanded(2.0f, 1.0f), 2.0f);
                 g.setColour(diagCol.withAlpha(0.30f));
                 g.drawRoundedRectangle(labelRect.expanded(2.0f, 1.0f), 2.0f, 0.5f);
@@ -745,13 +745,13 @@ namespace mixcoach {
             if (x < plot.getX() || x > plot.getRight()) continue;
 
             juce::Colour markerCol;
-            if (marker.isPraise) markerCol = juce::Colour(0xFF10B981);
+            if (marker.isPraise) markerCol = MixCoachTheme::success();
             else if (marker.isCritical)
-                markerCol = juce::Colour(0xFFEF4444);
+                markerCol = MixCoachTheme::error();
             else if (marker.severity > 0.6f)
-                markerCol = juce::Colour(0xFFF97316);
+                markerCol = MixCoachTheme::meterOrange();
             else
-                markerCol = juce::Colour(0xFF44BBFF);
+                markerCol = MixCoachTheme::accentCyanBright();
 
             float glowRadius = marker.isCritical ? 20.0f : 14.0f;
             g.setColour(markerCol.withAlpha(0.08f * alpha));
@@ -820,18 +820,18 @@ namespace mixcoach {
         const float y = mousePos_.y;
         juce::ignoreUnused(y);
 
-        g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.08f));
+        g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.08f));
         g.fillRect(x - 2.0f, plot.getY(), 5.0f, plot.getHeight());
 
-        g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.40f));
+        g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.40f));
         g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
 
         float bandY = plot.getBottom() - hoverBandLevel_ * plot.getHeight();
         if (bandY >= plot.getY() && bandY <= plot.getBottom()) {
-            g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.80f));
+            g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.80f));
             g.fillEllipse(x - 2.5f, bandY - 2.5f, 5.0f, 5.0f);
 
-            g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.15f));
+            g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.15f));
             g.fillEllipse(x - 5.0f, bandY - 5.0f, 10.0f, 10.0f);
         }
 
@@ -863,7 +863,7 @@ namespace mixcoach {
 
         g.setColour(juce::Colour(0xDD0A0E1A));
         g.fillRoundedRectangle(tooltipRect, 3.0f);
-        g.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.25f));
+        g.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.25f));
         g.drawRoundedRectangle(tooltipRect, 3.0f, 0.8f);
 
         g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall - 1.0f)).boldened());
@@ -871,7 +871,7 @@ namespace mixcoach {
         g.drawText(freqStr, tooltipRect.reduced(5, 0).withHeight(16.0f), juce::Justification::centredLeft);
 
         g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTiny)));
-        juce::Colour dbCol = (hoverDbLevel_ > -6.0f) ? juce::Colour(0xFFFFCC44) : juce::Colour(0xFF8899BB);
+        juce::Colour dbCol = (hoverDbLevel_ > -6.0f) ? MixCoachTheme::meterYellow() : MixCoachTheme::textMuted();
         g.setColour(dbCol.withAlpha(0.90f));
         g.drawText(dbStr, tooltipRect.reduced(5, 0).withTrimmedTop(16.0f), juce::Justification::centredLeft);
     }
@@ -887,8 +887,8 @@ namespace mixcoach {
         const float actualX   = freqToX(centroidInfo_.actualHz, plot);
         const float expectedX = freqToX(centroidInfo_.expectedHz, plot);
 
-        const auto cyan = juce::Colour(0xFF44BBFF);
-        const auto gold = juce::Colour(0xFFFFD700);
+        const auto cyan = MixCoachTheme::accentCyanBright();
+        const auto gold = MixCoachTheme::meterYellow();
 
         {
             constexpr float kDashLen = 6.0f;

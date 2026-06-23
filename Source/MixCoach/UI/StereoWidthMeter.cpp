@@ -199,7 +199,7 @@ namespace mixcoach {
         g.drawVerticalLine((int)markerX, area.getY() + 2, area.getBottom() - 2);
 
         // ─── Borde ──────────────────────────────────────────────────────────
-        g.setColour(juce::Colour(0xFF2A3344).withAlpha(0.25f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.25f));
         g.drawRoundedRectangle(area, 3.0f, 0.5f);
 
         // ─── Labels de escala (0% y 100%) ───────────────────────────────────
@@ -281,13 +281,13 @@ namespace mixcoach {
                 auto fillArea = bandArea.withTop(bandArea.getBottom() - fillH);
 
                 juce::Colour bandCol;
-                if (val < 0.15f) bandCol = juce::Colour(0xFF6B7280); // gris (mono)
+                if (val < 0.15f) bandCol = MixCoachTheme::textDim(); // gris (mono)
                 else if (val < 0.40f)
-                    bandCol = juce::Colour(0xFF22C55E); // verde (natural)
+                    bandCol = MixCoachTheme::success(); // verde (natural)
                 else if (val < 0.70f)
-                    bandCol = juce::Colour(0xFF3B82F6); // azul (amplio)
+                    bandCol = MixCoachTheme::info(); // azul (amplio)
                 else
-                    bandCol = juce::Colour(0xFFF97316); // naranja (exceso)
+                    bandCol = MixCoachTheme::meterOrange(); // naranja (exceso)
 
                 g.setColour(bandCol.withAlpha(0.65f));
                 g.fillRoundedRectangle(fillArea, 1.5f);
@@ -306,7 +306,7 @@ namespace mixcoach {
             g.drawText(juce::String(kBandLabels[b]), bandLabelArea, juce::Justification::centred);
 
             // ─── Borde sutil ──────────────────────────────────────────────
-            g.setColour(juce::Colour(0xFF2A3344).withAlpha(0.15f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.15f));
             g.drawRoundedRectangle(bandArea, 2.0f, 0.3f);
         }
     }

@@ -343,6 +343,11 @@ tests:
 # ─── DOCUMENTACIÓN IA ─────────────────────────────────────
 
 documentation:
+  - name: PLAN_10_10
+    path: workspace_memory/PLAN_10_10.md
+    priority: 0
+    description: 🏆 PLAN MAESTRO a 10/10. Define fases, criterios, prioridades. LEER PRIMERO antes de cualquier cambio.
+
   - name: AI_CONTEXT
     path: AI_CONTEXT.md
     priority: 1

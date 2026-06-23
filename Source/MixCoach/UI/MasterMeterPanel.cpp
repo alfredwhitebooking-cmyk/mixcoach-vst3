@@ -171,20 +171,20 @@ namespace mixcoach {
         // Columna 1: Short-Term (yellow #FFD93D)
         {
             auto cell = juce::Rectangle<float>((float)x0, (float)y0, (float)colW, (float)bounds.getHeight());
-            drawBigValue(g, cell, "SHORT-TERM", shortVal, "LUFS", juce::Colour(0xFFFFD93D), false);
+            drawBigValue(g, cell, "SHORT-TERM", shortVal, "LUFS", MixCoachTheme::warning(), false);
         }
 
         // Columna 2: Integrated — DOMINANTE (red/pink #FF5C74, 70px font)
         {
             auto cell = juce::Rectangle<float>((float)(x0 + colW), (float)y0, (float)colW, (float)bounds.getHeight());
-            drawBigValue(g, cell, "INTEGRATED", intVal, "LUFS", juce::Colour(0xFFFF5C74), true);
+            drawBigValue(g, cell, "INTEGRATED", intVal, "LUFS", MixCoachTheme::error(), true);
         }
 
         // Columna 3: Momentary (green #4ADE80)
         {
             auto cell =
                 juce::Rectangle<float>((float)(x0 + colW * 2), (float)y0, (float)colW, (float)bounds.getHeight());
-            drawBigValue(g, cell, "MOMENTARY", momVal, "LUFS", juce::Colour(0xFF4ADE80), false);
+            drawBigValue(g, cell, "MOMENTARY", momVal, "LUFS", MixCoachTheme::success(), false);
         }
 
         // ─── Vertical separators between columns ──────────────────────────
@@ -284,9 +284,9 @@ namespace mixcoach {
         auto tpArea = bounds.reduced(6, 0);
         // Colour según nivel: red > -1dBTP, yellow > -3dBTP, else gray
         juce::Colour tpColour = MixCoachTheme::textDim();
-        if (tp > -1.0f) tpColour = juce::Colour(0xFFFF5C74); // Red
+        if (tp > -1.0f) tpColour = MixCoachTheme::error(); // Red
         else if (tp > -3.0f)
-            tpColour = juce::Colour(0xFFFFD93D); // Yellow
+            tpColour = MixCoachTheme::warning(); // Yellow
 
         g.setFont(interFont(9.0f).boldened());
         g.setColour(tpColour);
@@ -302,15 +302,15 @@ namespace mixcoach {
 
             if (delta > 1.0f) {
                 deltaStr    = "+" + juce::String(delta, 1);
-                deltaColour = juce::Colour(0xFFFF5C74);
+                deltaColour = MixCoachTheme::error();
             }
             else if (delta < -1.0f) {
                 deltaStr    = juce::String(delta, 1);
-                deltaColour = juce::Colour(0xFF4ADE80);
+                deltaColour = MixCoachTheme::success();
             }
             else {
                 deltaStr    = "\u0394" + juce::String(delta, 1);
-                deltaColour = juce::Colour(0xFFFFD93D);
+                deltaColour = MixCoachTheme::warning();
             }
 
             g.setFont(interFont(MixCoachTheme::fontSizeExtraTiny));
@@ -385,7 +385,7 @@ namespace mixcoach {
         g.drawText("Loud:", lufsTargetArea_.reduced(4, 0), juce::Justification::centredLeft);
 
         g.setFont(interFont(MixCoachTheme::fontSizeTiny).boldened());
-        auto loudTargetColour = juce::Colour(0xFF4ADE80);
+        auto loudTargetColour = MixCoachTheme::success();
         g.setColour(loudTargetColour);
         g.drawText(juce::String((int)loudnessTarget_) + " LUFS", lufsTargetArea_, juce::Justification::centredRight);
 
@@ -437,10 +437,10 @@ namespace mixcoach {
 
         // ─── Dark theme colours via LookAndFeel ─────────────────────────────
         auto& laf = juce::LookAndFeel::getDefaultLookAndFeel();
-        laf.setColour(juce::PopupMenu::backgroundColourId, juce::Colour(0xFF1A1A2A));
-        laf.setColour(juce::PopupMenu::textColourId, juce::Colour(0xFFCCCCCC));
-        laf.setColour(juce::PopupMenu::highlightedBackgroundColourId, juce::Colour(0xFF2A2A4A));
-        laf.setColour(juce::PopupMenu::highlightedTextColourId, juce::Colour(0xFFFFD93D));
+        laf.setColour(juce::PopupMenu::backgroundColourId, MixCoachTheme::bgDark());
+        laf.setColour(juce::PopupMenu::textColourId, MixCoachTheme::textSecondary());
+        laf.setColour(juce::PopupMenu::highlightedBackgroundColourId, MixCoachTheme::bgPanel());
+        laf.setColour(juce::PopupMenu::highlightedTextColourId, MixCoachTheme::warning());
 
         // ─── Show at preset button position (JUCE 8 async API) ─────────────
         auto screenRect = localAreaToGlobal(presetHitArea_);

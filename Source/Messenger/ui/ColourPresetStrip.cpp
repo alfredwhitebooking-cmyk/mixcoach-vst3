@@ -1,16 +1,17 @@
 #include "ColourPresetStrip.h"
+#include "../../MixCoach/UI/MixCoachTheme.h"
 
 namespace mixcoach {
 
     const juce::Colour ColourPresetStrip::presetColours_[8] = {
-        juce::Colour(0xFFE74C3C), // Rojo     — Drums
-        juce::Colour(0xFFE67E22), // Naranja  — Percusión
-        juce::Colour(0xFFF1C40F), // Amarillo — Teclados
-        juce::Colour(0xFF2ECC71), // Verde    — Guitarras
-        juce::Colour(0xFF1ABC9C), // Turquesa — FX
-        juce::Colour(0xFF3498DB), // Azul     — Bass
-        juce::Colour(0xFF9B59B6), // Púrpura  — Voces
-        juce::Colour(0xFFE91E63), // Rosa     — Coros
+        MixCoachTheme::error(), // Rojo     — Drums
+        MixCoachTheme::warning(), // Naranja  — Percusión
+        MixCoachTheme::warning(), // Amarillo — Teclados
+        MixCoachTheme::success(), // Verde    — Guitarras
+        MixCoachTheme::roleFX(), // Turquesa — FX
+        MixCoachTheme::info(), // Azul     — Bass
+        MixCoachTheme::accent(), // Púrpura  — Voces
+        MixCoachTheme::roleVocals(), // Rosa     — Coros
     };
 
     ColourPresetStrip::ColourPresetStrip()
@@ -90,7 +91,7 @@ namespace mixcoach {
             g.fillEllipse(shineBounds);
 
             // Borde más definido
-            g.setColour(juce::Colour(0xFF2C2C3E).withAlpha(isActive ? 0.9f : 0.5f));
+            g.setColour(MixCoachTheme::bgDark().withAlpha(isActive ? 0.9f : 0.5f));
             g.drawEllipse(dotBounds.reduced(isActive ? 1.0f : 2.0f), 1.0f);
         }
     }

@@ -132,7 +132,7 @@ namespace mixcoach {
             labelArea.removeFromLeft(barGap);
             auto rLabel = labelArea;
             g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
-            g.setColour(juce::Colour(0xFFCCD0D6));
+            g.setColour(MixCoachTheme::textSecondary());
             g.drawText("L", lLabel, juce::Justification::centred);
             g.drawText("R", rLabel, juce::Justification::centred);
         }
@@ -156,9 +156,9 @@ namespace mixcoach {
         g.setFont(juce::Font(juce::FontOptions(15.0f)).boldened());
 
         auto zoneColor = [](float val) -> juce::Colour {
-            if (val >= 0.0f) return juce::Colour(0xFFFF3333);
-            if (val >= -6.0f) return juce::Colour(0xFFFFCC00);
-            return juce::Colour(0xFF00CC66);
+            if (val >= 0.0f) return MixCoachTheme::error();
+            if (val >= -6.0f) return MixCoachTheme::warning();
+            return MixCoachTheme::meterGreen();
         };
 
         float lVal        = leftPeak_.getCurrent();
@@ -168,9 +168,9 @@ namespace mixcoach {
 
         for (auto* dig : {&lDigArea, &rDigArea}) {
             auto pill = dig->toFloat();
-            g.setColour(juce::Colour(0xFF0A0E14).withAlpha(0.75f));
+            g.setColour(MixCoachTheme::bgDarker().withAlpha(0.75f));
             g.fillRoundedRectangle(pill, 3.0f);
-            g.setColour(juce::Colour(0xFF2A3344).withAlpha(0.25f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.25f));
             g.drawRoundedRectangle(pill, 3.0f, 0.5f);
         }
 
@@ -230,7 +230,7 @@ namespace mixcoach {
         auto col        = bounds.toFloat();
         auto headerArea = col.removeFromTop(14);
         g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
-        g.setColour(juce::Colour(0xFFCCD0D6));
+        g.setColour(MixCoachTheme::textSecondary());
         g.drawText("LUFS S/M", headerArea, juce::Justification::centred);
 
         auto scaleArea     = col.removeFromLeft(26);
@@ -245,7 +245,7 @@ namespace mixcoach {
             labelArea.removeFromLeft(barGap);
             auto rLabel = labelArea;
             g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-            g.setColour(juce::Colour(0xFF8899AA));
+            g.setColour(MixCoachTheme::textDim());
             g.drawText("S", lLabel, juce::Justification::centred);
             g.drawText("M", rLabel, juce::Justification::centred);
         }
@@ -306,7 +306,7 @@ namespace mixcoach {
         }
 
         g.setFont(juce::Font(juce::FontOptions(15.0f)).boldened());
-        juce::Colour digCol = juce::Colour(0xFF55CCFF);
+        juce::Colour digCol = MixCoachTheme::accentCyan();
 
         float lLufs = static_cast<float>(shortTermLUFS_.getCurrent());
         float rLufs = static_cast<float>(momentaryLUFS_.getCurrent());
@@ -316,9 +316,9 @@ namespace mixcoach {
 
         for (auto* dig : {&lDigArea, &rDigArea}) {
             auto pill = dig->toFloat();
-            g.setColour(juce::Colour(0xFF0A0E14).withAlpha(0.75f));
+            g.setColour(MixCoachTheme::bgDarker().withAlpha(0.75f));
             g.fillRoundedRectangle(pill, 3.0f);
-            g.setColour(juce::Colour(0xFF2A4455).withAlpha(0.25f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.25f));
             g.drawRoundedRectangle(pill, 3.0f, 0.5f);
         }
 
@@ -333,9 +333,9 @@ namespace mixcoach {
 
     void MeterPanel::drawPeakBar(juce::Graphics& g, juce::Rectangle<float> bounds, float level, float peakHold)
     {
-        const auto colGreen  = juce::Colour(0xFF00CC66);
-        const auto colYellow = juce::Colour(0xFFFFCC00);
-        const auto colRed    = juce::Colour(0xFFFF3333);
+        const auto colGreen  = MixCoachTheme::meterGreen();
+        const auto colYellow = MixCoachTheme::warning();
+        const auto colRed    = MixCoachTheme::error();
 
         g.setColour(MixCoachTheme::bgInput().withAlpha(0.9f));
         g.fillRoundedRectangle(bounds, 2.0f);
@@ -390,14 +390,14 @@ namespace mixcoach {
             float holdNorm = juce::jlimit(0.0f, 1.0f, (peakHold + 60.0f) / range);
             float holdY    = bounds.getBottom() - bounds.getHeight() * holdNorm;
 
-            g.setColour(juce::Colour(0xFFFF6B35).withAlpha(0.15f));
+            g.setColour(MixCoachTheme::meterOrange().brighter(0.1f).withAlpha(0.15f));
             g.fillRect(bounds.getX() + 1, holdY - 1.5f, bounds.getWidth() - 2, 3.0f);
 
-            g.setColour(juce::Colour(0xFFFF8C42));
+            g.setColour(MixCoachTheme::meterOrange());
             g.fillRect(bounds.getX() + 1, holdY - 0.5f, bounds.getWidth() - 2, 1.5f);
         }
 
-        g.setColour(juce::Colour(0xFF2A3344).withAlpha(0.25f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.25f));
         g.drawRoundedRectangle(bounds, 2.0f, 0.5f);
     }
 
@@ -413,13 +413,13 @@ namespace mixcoach {
         if (norm > 0.01f) {
             auto fillBounds = bounds.withTop(bounds.getBottom() - bounds.getHeight() * norm);
 
-            juce::ColourGradient grad(juce::Colour(0xFF44BBFF),
+            juce::ColourGradient grad(MixCoachTheme::accentCyanBright(),
                                       juce::Point<float>(fillBounds.getCentreX(), fillBounds.getY()),
-                                      juce::Colour(0xFF005599),
+                                      MixCoachTheme::info().darker(0.3f),
                                       juce::Point<float>(fillBounds.getCentreX(), fillBounds.getBottom()),
                                       false);
-            grad.addColour(0.3f, juce::Colour(0xFF22AAEE));
-            grad.addColour(0.6f, juce::Colour(0xFF0088CC));
+            grad.addColour(0.3f, MixCoachTheme::accentCyan());
+            grad.addColour(0.6f, MixCoachTheme::accentCyanDim());
             g.setGradientFill(grad);
             g.fillRoundedRectangle(fillBounds, 2.0f);
 
@@ -433,7 +433,7 @@ namespace mixcoach {
             g.fillRect(capGlow);
         }
 
-        g.setColour(juce::Colour(0xFF2A4455).withAlpha(0.25f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.25f));
         g.drawRoundedRectangle(bounds, 2.0f, 0.5f);
     }
 
@@ -553,11 +553,11 @@ namespace mixcoach {
                 tickW = 4.0f;
             }
 
-            g.setColour(juce::Colour(0xFFCCD0D6).withAlpha(isLufsScale ? alpha * 0.7f : alpha));
+            g.setColour(MixCoachTheme::textSecondary().withAlpha(isLufsScale ? alpha * 0.7f : alpha));
             g.drawHorizontalLine((int)y, bounds.getRight() - tickW, bounds.getRight());
 
             juce::String label = juce::String((int)db);
-            g.setColour(juce::Colour(0xFF8899AA).withAlpha(isLufsScale ? alpha * 0.8f : alpha));
+            g.setColour(MixCoachTheme::textDim().withAlpha(isLufsScale ? alpha * 0.8f : alpha));
             g.drawText(label,
                        juce::Rectangle<float>(bounds.getX() + 1, y - 4.0f, bounds.getWidth() - 4, 8.0f),
                        juce::Justification::centredRight);

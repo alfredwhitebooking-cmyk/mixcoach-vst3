@@ -37,9 +37,9 @@ namespace mixcoach {
         MixCoachTheme::fillGlassPanel(g, bounds.toFloat(), 6.0f);
 
         // ─── Borde del panel con glow ─────────────────────────────────────────
-        g.setColour(juce::Colour(0xFF1A2A44).withAlpha(0.30f));
+        g.setColour(MixCoachTheme::bgSurface().withAlpha(0.30f));
         g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), 6.0f, 1.0f);
-        g.setColour(juce::Colour(0xFFA855F7).withAlpha(0.04f));
+        g.setColour(MixCoachTheme::accentGlow().withAlpha(0.04f));
         g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), 6.0f, 2.0f);
 
         auto area = bounds.reduced(5, 3);
@@ -48,18 +48,18 @@ namespace mixcoach {
         {
             auto headerArea = area.removeFromTop(18);
             g.setFont(juce::Font(juce::FontOptions(10.0f)).boldened());
-            g.setColour(juce::Colour(0xFFC084FC));
+            g.setColour(MixCoachTheme::accentGlow());
             g.drawText("CREST FACTOR", headerArea, juce::Justification::centred);
 
             auto underline = headerArea.withTop(headerArea.getBottom() - 1).toFloat();
-            juce::ColourGradient glow(juce::Colour(0xFFC084FC).withAlpha(0.25f),
+            juce::ColourGradient glow(MixCoachTheme::accentGlow().withAlpha(0.25f),
                                       underline.getX(),
                                       underline.getY(),
-                                      juce::Colour(0xFFC084FC).withAlpha(0.01f),
+                                      MixCoachTheme::accentGlow().withAlpha(0.01f),
                                       underline.getRight(),
                                       underline.getY(),
                                       false);
-            glow.addColour(0.35f, juce::Colour(0xFFC084FC).withAlpha(0.10f));
+            glow.addColour(0.35f, MixCoachTheme::accentGlow().withAlpha(0.10f));
             g.setGradientFill(glow);
             g.fillRect(underline.withHeight(1.0f));
         }
@@ -77,14 +77,14 @@ namespace mixcoach {
         auto sepArea = area.removeFromTop(juce::jmax(6, area.getHeight() * 3 / 100));
         {
             float sy = sepArea.getCentreY();
-            juce::ColourGradient sepGrad(juce::Colour(0xFFA855F7).withAlpha(0.15f),
+            juce::ColourGradient sepGrad(MixCoachTheme::accentGlow().withAlpha(0.15f),
                                          (float)sepArea.getX(),
                                          sy,
-                                         juce::Colour(0xFFA855F7).withAlpha(0.02f),
+                                         MixCoachTheme::accentGlow().withAlpha(0.02f),
                                          (float)sepArea.getRight(),
                                          sy,
                                          false);
-            sepGrad.addColour(0.35f, juce::Colour(0xFFA855F7).withAlpha(0.06f));
+            sepGrad.addColour(0.35f, MixCoachTheme::accentGlow().withAlpha(0.06f));
             g.setGradientFill(sepGrad);
             g.drawHorizontalLine((int)sy, sepArea.getX() + 10, sepArea.getRight() - 10);
 
@@ -106,19 +106,19 @@ namespace mixcoach {
         // ─── Fondo del gauge con gradiente radial ────────────────────────────
         {
             auto gaugeBg = bounds;
-            juce::ColourGradient radialBg(juce::Colour(0xFF0E1520),
+            juce::ColourGradient radialBg(MixCoachTheme::bgDark(),
                                           gaugeBg.getCentreX(),
                                           gaugeBg.getCentreY(),
-                                          juce::Colour(0xFF06080E),
+                                          MixCoachTheme::bgDarker(),
                                           gaugeBg.getX(),
                                           gaugeBg.getY(),
                                           true);
-            radialBg.addColour(0.6f, juce::Colour(0xFF0A0E18));
+            radialBg.addColour(0.6f, MixCoachTheme::bgDarker());
             g.setGradientFill(radialBg);
             g.fillRoundedRectangle(gaugeBg, 5.0f);
 
             // Inner glow subtle
-            g.setColour(juce::Colour(0xFF1A2A44).withAlpha(0.08f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.08f));
             g.fillRoundedRectangle(gaugeBg.reduced(2.0f), 4.0f);
         }
 
@@ -135,13 +135,13 @@ namespace mixcoach {
             juce::Path bgArc;
             bgArc.addArc(cx - radius, cy - halfR, radius * 2.0f, halfR * 2.0f, kGaugeStart, kGaugeEnd, true);
             // Outer glow
-            g.setColour(juce::Colour(0xFF1A2A44).withAlpha(0.08f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.08f));
             g.strokePath(bgArc, juce::PathStrokeType(10.0f));
             // Track
-            g.setColour(juce::Colour(0xFF1A2A44).withAlpha(0.40f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.40f));
             g.strokePath(bgArc, juce::PathStrokeType(7.0f));
             // Inner highlight
-            g.setColour(juce::Colour(0xFF2A3A55).withAlpha(0.15f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.5f).withAlpha(0.15f));
             g.strokePath(bgArc, juce::PathStrokeType(3.0f));
         }
 
@@ -159,22 +159,22 @@ namespace mixcoach {
             juce::Colour segCol;
             if (t1 < 0.30f) {
                 // Verde puro (#44CC66)
-                segCol = juce::Colour(0xFF44CC66);
+                segCol = MixCoachTheme::success();
             }
             else if (t1 < 0.50f) {
                 // Transición Verde → Amarillo
                 float mix = (t1 - 0.30f) / 0.20f;
-                segCol    = juce::Colour(0xFF44CC66).interpolatedWith(juce::Colour(0xFFFFCC44), mix);
+                segCol    = MixCoachTheme::success().interpolatedWith(MixCoachTheme::meterYellow(), mix);
             }
             else if (t1 < 0.70f) {
                 // Transición Amarillo → Naranja
                 float mix = (t1 - 0.50f) / 0.20f;
-                segCol    = juce::Colour(0xFFFFCC44).interpolatedWith(juce::Colour(0xFFFF8833), mix);
+                segCol    = MixCoachTheme::meterYellow().interpolatedWith(MixCoachTheme::meterOrange(), mix);
             }
             else {
                 // Transición Naranja → Rojo
                 float mix = (t1 - 0.70f) / 0.30f;
-                segCol    = juce::Colour(0xFFFF8833).interpolatedWith(juce::Colour(0xFFEE3333), juce::jmin(1.0f, mix));
+                segCol    = MixCoachTheme::meterOrange().interpolatedWith(MixCoachTheme::error(), juce::jmin(1.0f, mix));
             }
 
             juce::Path segArc;
@@ -201,16 +201,16 @@ namespace mixcoach {
 
             // Color dinámico con transición suave
             juce::Colour fillCol;
-            if (crestNorm < 0.30f) fillCol = juce::Colour(0xFF44CC66);
+            if (crestNorm < 0.30f) fillCol = MixCoachTheme::success();
             else if (crestNorm < 0.50f)
                 fillCol =
-                    juce::Colour(0xFF44CC66).interpolatedWith(juce::Colour(0xFFFFCC44), (crestNorm - 0.30f) / 0.20f);
+                    MixCoachTheme::success().interpolatedWith(MixCoachTheme::meterYellow(), (crestNorm - 0.30f) / 0.20f);
             else if (crestNorm < 0.70f)
                 fillCol =
-                    juce::Colour(0xFFFFCC44).interpolatedWith(juce::Colour(0xFFFF8833), (crestNorm - 0.50f) / 0.20f);
+                    MixCoachTheme::meterYellow().interpolatedWith(MixCoachTheme::meterOrange(), (crestNorm - 0.50f) / 0.20f);
             else
                 fillCol =
-                    juce::Colour(0xFFFF8833).interpolatedWith(juce::Colour(0xFFEE3333), (crestNorm - 0.70f) / 0.30f);
+                    MixCoachTheme::meterOrange().interpolatedWith(MixCoachTheme::error(), (crestNorm - 0.70f) / 0.30f);
 
             // Fill glow exterior
             g.setColour(fillCol.withAlpha(0.25f));
@@ -263,18 +263,18 @@ namespace mixcoach {
             float ty2     = cy + sa * (halfR + tickLen * 0.5f);
 
             float alpha = (m.val == 0.0f || m.val == 24.0f) ? 0.85f : 0.70f;
-            g.setColour(juce::Colour(0xFFE0E4E8).withAlpha(alpha));
+            g.setColour(MixCoachTheme::textBright().withAlpha(alpha));
             g.drawLine(tx1, ty1, tx2, ty2, 1.8f);
 
             // Tick glow más visible
-            g.setColour(juce::Colour(0xFFA855F7).withAlpha(0.06f));
+            g.setColour(MixCoachTheme::accentGlow().withAlpha(0.06f));
             g.drawLine(tx1, ty1, tx2, ty2, 4.0f);
 
             // Texto más grande
             float lx = cx + ca * (radius + 15.0f);
             float ly = cy + sa * (halfR + 8.0f);
             g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
-            g.setColour(juce::Colour(0xFFE0E4E8));
+            g.setColour(MixCoachTheme::textBright());
             g.drawText(
                 juce::String(m.text), juce::Rectangle<float>(lx - 11, ly - 5, 22, 10), juce::Justification::centred);
         }
@@ -305,7 +305,7 @@ namespace mixcoach {
                 float tx2 = cx + ca * (radius + 4.0f);
                 float ty2 = cy + sa * (halfR + 2.0f);
 
-                g.setColour(juce::Colour(0xFF888888).withAlpha(0.40f));
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.40f));
                 g.drawLine(tx1, ty1, tx2, ty2, 1.0f);
             }
         }
@@ -313,7 +313,7 @@ namespace mixcoach {
         // ─── "dB" label centrada debajo del arco ─────────────────────────────
         float labelY = cy + halfR + 20.0f;
         g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)).boldened());
-        g.setColour(juce::Colour(0xFF8899AA).withAlpha(0.55f));
+        g.setColour(MixCoachTheme::textDim().withAlpha(0.55f));
         g.drawText("dB", juce::Rectangle<float>(cx - 12, labelY, 24, 9), juce::Justification::centred);
     }
 
@@ -384,14 +384,14 @@ namespace mixcoach {
             needlePath.lineTo(cx - perpX * baseW * 0.5f, cy - perpY * baseW * 0.5f);
             needlePath.closeSubPath();
 
-            juce::ColourGradient needleGrad(juce::Colour(0xFF8A9AAA),
+            juce::ColourGradient needleGrad(MixCoachTheme::textDim(),
                                             nx,
                                             ny, // gris claro brillante (punta)
-                                            juce::Colour(0xFF1A2233),
+                                            MixCoachTheme::bgPanel().darker(0.3f),
                                             cx,
                                             cy, // gris oscuro profundo (base)
                                             true);
-            needleGrad.addColour(0.4f, juce::Colour(0xFF5A6A7A));
+            needleGrad.addColour(0.4f, MixCoachTheme::textMuted());
             g.setGradientFill(needleGrad);
             g.fillPath(needlePath);
         }
@@ -408,7 +408,7 @@ namespace mixcoach {
             highlightPath.lineTo(nx + hOffX - perpX * hlTip * 0.5f, ny + hOffY - perpY * hlTip * 0.5f);
             highlightPath.lineTo(cx + hOffX - perpX * hlBase * 0.5f, cy + hOffY - perpY * hlBase * 0.5f);
             highlightPath.closeSubPath();
-            g.setColour(juce::Colour(0xFFCCDDEE).withAlpha(0.20f));
+            g.setColour(MixCoachTheme::textSecondary().withAlpha(0.20f));
             g.fillPath(highlightPath);
         }
 
@@ -422,28 +422,28 @@ namespace mixcoach {
             cwPath.lineTo(cwx - perpX * cwTip * 0.5f, cwy - perpY * cwTip * 0.5f);
             cwPath.lineTo(cx - perpX * cwBase * 0.5f, cy - perpY * cwBase * 0.5f);
             cwPath.closeSubPath();
-            g.setColour(juce::Colour(0xFF3A4A5A).withAlpha(0.50f));
+            g.setColour(MixCoachTheme::bgSurface().withAlpha(0.3f).withAlpha(0.50f));
             g.fillPath(cwPath);
         }
 
         // ─── Pivote mecánico premium ─────────────────────────────────────────
         {
             // Anillo exterior más grande
-            g.setColour(juce::Colour(0xFF0A0E14));
+            g.setColour(MixCoachTheme::bgDarker());
             g.fillEllipse(cx - 5.5f, cy - 5.5f, 11.0f, 11.0f);
 
             // Anillo metálico intermedio
             juce::ColourGradient pivotGrad(
-                juce::Colour(0xFF6A7A8A), cx - 4.0f, cy - 4.0f, juce::Colour(0xFF2A3344), cx + 4.0f, cy + 4.0f, true);
+                MixCoachTheme::textDim(), cx - 4.0f, cy - 4.0f, MixCoachTheme::bgPanel().darker(0.15f), cx + 4.0f, cy + 4.0f, true);
             g.setGradientFill(pivotGrad);
             g.fillEllipse(cx - 4.0f, cy - 4.0f, 8.0f, 8.0f);
 
             // Anillo fino
-            g.setColour(juce::Colour(0xFF8A9AAA).withAlpha(0.5f));
+            g.setColour(MixCoachTheme::textDim().withAlpha(0.5f));
             g.drawEllipse(cx - 4.0f, cy - 4.0f, 8.0f, 8.0f, 0.6f);
 
             // Centro oscuro
-            g.setColour(juce::Colour(0xFF05080D));
+            g.setColour(MixCoachTheme::bgCanvas());
             g.fillEllipse(cx - 1.8f, cy - 1.8f, 3.6f, 3.6f);
 
             // Punto de luz
@@ -466,26 +466,26 @@ namespace mixcoach {
         juce::Colour valCol;
         float glowAlpha;
         if (crest > 24.0f) {
-            valCol    = juce::Colour(0xFFEE3333);
+            valCol    = MixCoachTheme::error();
             glowAlpha = 0.12f;
         }
         else if (crest > 18.0f) {
             float t   = (crest - 18.0f) / 6.0f;
-            valCol    = juce::Colour(0xFFFF8833).interpolatedWith(juce::Colour(0xFFEE3333), t);
+            valCol    = MixCoachTheme::meterOrange().interpolatedWith(MixCoachTheme::error(), t);
             glowAlpha = 0.06f + t * 0.06f;
         }
         else if (crest > 12.0f) {
             float t   = (crest - 12.0f) / 6.0f;
-            valCol    = juce::Colour(0xFFFFCC44).interpolatedWith(juce::Colour(0xFFFF8833), t);
+            valCol    = MixCoachTheme::meterYellow().interpolatedWith(MixCoachTheme::meterOrange(), t);
             glowAlpha = 0.03f + t * 0.03f;
         }
         else if (crest > 6.0f) {
             float t   = (crest - 6.0f) / 6.0f;
-            valCol    = juce::Colour(0xFF44CC66).interpolatedWith(juce::Colour(0xFFFFCC44), t);
+            valCol    = MixCoachTheme::success().interpolatedWith(MixCoachTheme::meterYellow(), t);
             glowAlpha = 0.02f;
         }
         else {
-            valCol    = juce::Colour(0xFF44CC66);
+            valCol    = MixCoachTheme::success();
             glowAlpha = 0.0f;
         }
 
@@ -535,17 +535,17 @@ namespace mixcoach {
 
         // CREST color dinámico según valor
         juce::Colour crestCol;
-        if (cval > 24.0f) crestCol = juce::Colour(0xFFEE3333);
+        if (cval > 24.0f) crestCol = MixCoachTheme::error();
         else if (cval > 18.0f)
-            crestCol = juce::Colour(0xFFFF8833);
+            crestCol = MixCoachTheme::meterOrange();
         else if (cval > 12.0f)
-            crestCol = juce::Colour(0xFFFFCC44);
+            crestCol = MixCoachTheme::meterYellow();
         else
-            crestCol = juce::Colour(0xFF44CC66);
+            crestCol = MixCoachTheme::success();
 
         MetricRow rows[] = {
-            {"PEAK", rawPeak_, "dBFS", juce::Colour(0xFFFFCC44), false},
-            {"RMS", rawRms_, "dBFS", juce::Colour(0xFF44BBFF), false},
+            {"PEAK", rawPeak_, "dBFS", MixCoachTheme::meterYellow(), false},
+            {"RMS", rawRms_, "dBFS", MixCoachTheme::accentCyanBright(), false},
             {"CREST", cval, "dB", crestCol, true},
         };
 
@@ -604,14 +604,14 @@ namespace mixcoach {
             g.drawText(valStr, numArea.translated(1, 1), juce::Justification::centredRight);
 
             // Valor con color dinámico
-            juce::Colour valCol = rows[i].highlight ? rows[i].accent : juce::Colour(0xFFF0F4F8);
+            juce::Colour valCol = rows[i].highlight ? rows[i].accent : MixCoachTheme::textPrimary();
             g.setColour(valCol);
             g.drawText(valStr, numArea, juce::Justification::centredRight);
 
             // Unit (small text)
             auto unitArea = valueArea;
             g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)));
-            g.setColour(juce::Colour(0xFF8899AA).withAlpha(0.7f));
+            g.setColour(MixCoachTheme::textDim().withAlpha(0.7f));
             g.drawText(unitStr, unitArea, juce::Justification::centredLeft);
 
             // ─── Línea separadora entre filas ────────────────────────────────

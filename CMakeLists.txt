@@ -230,6 +230,11 @@ target_link_libraries(Messenger PRIVATE
     ${MIXCOACH_JUCE_MODULES}
 )
 
+target_sources(Messenger PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Messenger/ui/ColourPresetStrip.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Messenger/ui/ColourSwatch.cpp
+)
+
 target_include_directories(Messenger PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source
 )

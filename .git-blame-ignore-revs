@@ -1,0 +1,17 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  Git Blame Ignore Revisions
+#
+#  Commits listados aquí son SALTADOS por `git blame`.
+#  Útil para commits masivos de formateo que ensucian el blame.
+#
+#  Uso:
+#    git blame --ignore-revs-file .git-blame-ignore-revs archivo.cpp
+#
+#  O configurar globalmente:
+#    git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+#  ══════════════════════════════════════════════════════════════════════════
+
+# Baseline: clang-format aplicado a todos los archivos Source/ + CoachEngine split
+# Mezcla formateo (172 archivos) con cambios semánticos (split, validación, scripts)
+072acecf48451f6a07331a57a69fcc76aa30c1d7

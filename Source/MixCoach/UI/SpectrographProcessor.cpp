@@ -129,7 +129,7 @@ namespace mixcoach {
         drawGrid(cg, layout_.plot);
 
         cg.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)).boldened());
-        cg.setColour(juce::Colour(0xFF44BBFF).withAlpha(0.60f));
+        cg.setColour(MixCoachTheme::accentCyanBright().withAlpha(0.60f));
         cg.drawText(juce::CharPointer_UTF8("RTA"),
                     juce::Rectangle<float>(layout_.plot.getX() + 4.0f, layout_.plot.getY() + 2.0f, 28.0f, 10.0f),
                     juce::Justification::centredLeft);
