@@ -18,6 +18,7 @@
 #include "AnalyzerInterpreter.h"
 #include "PlanManager.h"
 #include "TrackFeedCore.h"
+#include "MixPriorityEngine.h"
 #include "ReferenceDrivenEngine.h"
 #include "WorkflowDetector.h"
 #include "DifferenceProfile.h"
@@ -1373,6 +1374,13 @@ namespace mixcoach {
         int64_t lastProactiveLlmTipTimeUs_{0};
         int64_t lastCelebrationTimeUs_{0};
         int previousClippingCount_{0}; // ← para detectar "antes había clipping, ahora no = mejora"
+
+        // ═══ MixPriorityEngine — Score multidimensional para priorizar issues ═══
+        /** Retorna los issues priorizados por MixPriorityEngine (severity × roleWeight × domainWeight × genreModifier).
+            Útil para que el LLM ataque lo más importante primero.
+            @param maxIssues  Máximo número de issues a retornar (default = 10)
+            @return Vector con los top issues, ordenados por score descendente */
+        [[nodiscard]] std::vector<PriorityScore> getTopPriorityIssues(int maxIssues = 10);
 
         // ═══ TrackFeedCore — Estado unificado de pistas + event bus + priority ═══
         /** Envía un tip proactivo al LLM basado en los eventos más severos del TrackFeedCore.

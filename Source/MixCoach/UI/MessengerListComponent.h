@@ -74,6 +74,10 @@ namespace mixcoach {
         float attentionScore    = 0.0f;
         /**Últimos eventos de TrackFeedCore para tooltip.*/
 
+        // ═══ Sprint 7: Consolidated health from TrackAdvice::Status ═══════
+        // Mapeo: OnTarget→Green, NearTarget→Yellow, OffTarget→Red, NoSignal→White
+        SuggestionStatus consolidatedHealth = SuggestionStatus::None;
+
         // ═══ TrackRole asignado por el usuario (para análisis semántico) ═════
         TrackRole trackRole  = TrackRole::Unknown;
         float roleConfidence = 0.0f; // 0.0-1.0, qué tan seguro estamos del rol

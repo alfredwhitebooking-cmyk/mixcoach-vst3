@@ -293,6 +293,19 @@ namespace mixcoach {
                 entry.coachAdviceText   = entry.aiSuggestion;
                 entry.coachAdviceStatus = entry.suggestionStatus;
             }
+
+            // ═══ SPRINT 7: Consolidated health from TrackAdvice ═══════════
+            {
+                auto ta = coach.getTrackAdvice(idx);
+                using TS = CoachEngine::TrackAdvice::Status;
+                switch (ta.status) {
+                    case TS::OnTarget:   entry.consolidatedHealth = SuggestionStatus::Green;  break;
+                    case TS::NearTarget: entry.consolidatedHealth = SuggestionStatus::Yellow; break;
+                    case TS::OffTarget:  entry.consolidatedHealth = SuggestionStatus::Red;    break;
+                    case TS::NoSignal:   entry.consolidatedHealth = SuggestionStatus::White;  break;
+                    default:             entry.consolidatedHealth = SuggestionStatus::None;   break;
+                }
+            }
         }
 
         // SPRINT 5: Actualizar top events para el banner

@@ -42,37 +42,42 @@ namespace mixcoach {
         }
         emptyLabel_.setVisible(false);
 
-        // ═══ Health summary bar ═══════════════════════════════════════════════
+        // ═══ Health summary bar (dual: detailed TrackHealth + consolidated TrackAdvice Status) ═══
         {
+            // Row 1: Detailed TrackHealth counts (legacy)
             int clean = 0, warn = 0, crit = 0, silent = 0, unknown = 0;
+            // Row 2: Consolidated TrackAdvice::Status counts (Sprint 7)
+            int consOnTarget = 0, consNearTarget = 0, consOffTarget = 0, consNoSignal = 0;
+
             for (int idx = 0; idx < SlotRegistry::kMaxSlots; ++idx) {
                 if (!messengers_[idx].info.active) continue;
+
+                // Detailed health from TrackFeedCore
                 if (!messengers_[idx].hasSignal) {
                     silent++;
-                    continue;
+                } else {
+                    switch (messengers_[idx].trackHealth) {
+                        case TrackHealth::Clean:          clean++;   break;
+                        case TrackHealth::NeedsEQ:
+                        case TrackHealth::NeedsCompression:
+                        case TrackHealth::MaskingIssue:
+                        case TrackHealth::PhaseIssue:     warn++;   break;
+                        case TrackHealth::Overcompressed:
+                        case TrackHealth::ClippingRisk:
+                        case TrackHealth::StereoCollapse: crit++;   break;
+                        case TrackHealth::LowSignal:
+                        case TrackHealth::Silent:         silent++; break;
+                        default:                          unknown++; break;
+                    }
                 }
-                switch (messengers_[idx].trackHealth) {
-                    case TrackHealth::Clean:
-                        clean++;
-                        break;
-                    case TrackHealth::NeedsEQ:
-                    case TrackHealth::NeedsCompression:
-                    case TrackHealth::MaskingIssue:
-                    case TrackHealth::PhaseIssue:
-                        warn++;
-                        break;
-                    case TrackHealth::Overcompressed:
-                    case TrackHealth::ClippingRisk:
-                    case TrackHealth::StereoCollapse:
-                        crit++;
-                        break;
-                    case TrackHealth::LowSignal:
-                    case TrackHealth::Silent:
-                        silent++;
-                        break;
-                    default:
-                        unknown++;
-                        break;
+
+                // Consolidated health from TrackAdvice::Status (Sprint 7)
+                switch (messengers_[idx].consolidatedHealth) {
+                    case SuggestionStatus::Green:  consOnTarget++;   break;
+                    case SuggestionStatus::Yellow: consNearTarget++; break;
+                    case SuggestionStatus::Red:    consOffTarget++;  break;
+                    case SuggestionStatus::White:  consNoSignal++;   break;
+                    default: break;
                 }
             }
 
@@ -96,10 +101,27 @@ namespace mixcoach {
                 };
 
                 int xOff = healthBar.getX();
+
+                // Row 1: Detailed TrackHealth pills (legacy)
                 drawPill(crit, MixCoachTheme::error(), "\xE2\x9D\x97", xOff);
                 drawPill(warn, MixCoachTheme::warning(), "\xE2\x9A\xA0", xOff);
                 drawPill(clean, MixCoachTheme::success(), "\xE2\x9C\x93", xOff);
                 drawPill(silent, textMuted(), "\xE2\x9C\xB0", xOff);
+
+                // Separator before consolidated pills
+                if (consOnTarget + consNearTarget + consOffTarget > 0) {
+                    g.setColour(textMuted().withAlpha(0.25f));
+                    int sepX = xOff;
+                    auto sep = juce::Rectangle<int>(sepX, healthBar.getY() + 4, 8, healthBar.getHeight() - 8);
+                    g.setFont(interFont(9.0f));
+                    g.drawFittedText("|", sep, juce::Justification::centred, 1);
+                    xOff += 10;
+
+                    // Row 2: Consolidated TrackAdvice status pills
+                    drawPill(consOffTarget,  MixCoachTheme::error(),   "\xE2\x97\x8B", xOff);
+                    drawPill(consNearTarget, MixCoachTheme::warning(), "\xE2\x97\xAF", xOff);
+                    drawPill(consOnTarget,   MixCoachTheme::success(), "\xE2\x97\x89", xOff);
+                }
 
                 // Sprint 1: Identity progress badge 🎯 X/Y (confirmed / identified)
                 if (coachEngine_ != nullptr) {
@@ -820,27 +842,21 @@ namespace mixcoach {
             }
         }
 
-        // ═══ Health dot (🟢🟡🔴⚪) — al lado del color circle ═════════════════
+        // ═══ Health dot (🟢🟡🔴⚪) — Sprint 7: consolidated from TrackAdvice::Status ═════
         int nameX = circleX + circleSize + 8; // se ajusta si hay health dot
         {
             juce::Colour healthColour;
-            switch (entry.trackHealth) {
-                case TrackHealth::Clean:
+            switch (entry.consolidatedHealth) {
+                case SuggestionStatus::Green:
                     healthColour = MixCoachTheme::success();
                     break;
-                case TrackHealth::NeedsEQ:
-                case TrackHealth::NeedsCompression:
-                case TrackHealth::MaskingIssue:
-                case TrackHealth::PhaseIssue:
+                case SuggestionStatus::Yellow:
                     healthColour = MixCoachTheme::warning();
                     break;
-                case TrackHealth::Overcompressed:
-                case TrackHealth::ClippingRisk:
-                case TrackHealth::StereoCollapse:
+                case SuggestionStatus::Red:
                     healthColour = MixCoachTheme::error();
                     break;
-                case TrackHealth::LowSignal:
-                case TrackHealth::Silent:
+                case SuggestionStatus::White:
                     healthColour = textMuted();
                     break;
                 default:
@@ -848,7 +864,7 @@ namespace mixcoach {
                     break;
             }
 
-            if (entry.hasSignal && entry.trackHealth != TrackHealth::Unknown) {
+            if (entry.hasSignal && entry.consolidatedHealth != SuggestionStatus::None) {
                 int hDotSize = 8;
                 int hDotX    = nameX;
                 int hDotY    = y0 + (h - hDotSize) / 2;

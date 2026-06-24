@@ -147,6 +147,8 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/engine/DifferenceProfile.cpp
     Source/MixCoach/engine/CorrectionLearner.h
     Source/MixCoach/engine/CorrectionLearner.cpp
+    Source/MixCoach/engine/MixPriorityEngine.h
+    Source/MixCoach/engine/MixPriorityEngine.cpp
     Source/MixCoach/engine/PlanManager.h
     Source/MixCoach/engine/PlanManager.cpp
     Source/MixCoach/engine/MixScore.h
@@ -344,6 +346,8 @@ add_executable(TestCoachEngine
     Source/MixCoach/engine/TrackState.h
     Source/MixCoach/engine/AnalyzerInterpreter.h
     Source/MixCoach/engine/AnalyzerInterpreter.cpp
+    Source/MixCoach/engine/MixPriorityEngine.h
+    Source/MixCoach/engine/MixPriorityEngine.cpp
     Source/MixCoach/engine/SessionMap.cpp
     Source/MixCoach/engine/DifferenceProfile.h
     Source/MixCoach/engine/DifferenceProfile.cpp
@@ -728,6 +732,8 @@ add_executable(TestExperienceLevel
     Source/MixCoach/engine/TrackState.h
     Source/MixCoach/engine/AnalyzerInterpreter.h
     Source/MixCoach/engine/AnalyzerInterpreter.cpp
+    Source/MixCoach/engine/MixPriorityEngine.h
+    Source/MixCoach/engine/MixPriorityEngine.cpp
     Source/MixCoach/engine/SessionMap.cpp
     Source/MixCoach/engine/DifferenceProfile.h
     Source/MixCoach/engine/DifferenceProfile.cpp
@@ -1013,6 +1019,29 @@ set_target_properties(TestExpectedProfiles PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: MixPriorityEngine — score multidimensional (severity × role × domain × genre) ──
+add_executable(TestMixPriorityEngine
+    tests/TestMixPriorityEngine.cpp
+    Source/MixCoach/engine/MixPriorityEngine.h
+    Source/MixCoach/engine/MixPriorityEngine.cpp
+    Source/MixCoach/engine/TrackRole.h
+)
+target_include_directories(TestMixPriorityEngine PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestMixPriorityEngine PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestMixPriorityEngine PRIVATE /W4)
+set_target_properties(TestMixPriorityEngine PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Target: build + run all tests ──────────────────────────────────────────
 add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestSmoothValue>
@@ -1034,6 +1063,7 @@ add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestTrackFeedCore>
     COMMAND $<TARGET_FILE:TestSemanticComparator>
     COMMAND $<TARGET_FILE:TestExpectedProfiles>
+    COMMAND $<TARGET_FILE:TestMixPriorityEngine>
 
     DEPENDS TestSmoothValue TestPhaseManager TestCoachEngine TestIPCIntegration
             TestSharedMemory TestSlotRegistry TestStress50Tracks TestStress128Slots
@@ -1046,6 +1076,7 @@ add_custom_target(run_tests
             TestTrackFeedCore
             TestSemanticComparator
             TestExpectedProfiles
+            TestMixPriorityEngine
 
     COMMENT "Running all unit tests..."
     VERBATIM

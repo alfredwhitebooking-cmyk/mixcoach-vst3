@@ -1,4 +1,5 @@
 #include "CoachEngine.h"
+#include "MixPriorityEngine.h"
 #include "../../Common/types/Constants.h"
 #include "../../Common/types/LogHelper.h"
 #include <algorithm>
@@ -315,10 +316,29 @@ namespace mixcoach {
             }
         });
 
-        // Sort by severity descending
-        std::sort(issues.begin(), issues.end(), [](const TrackIssue& a, const TrackIssue& b) {
-            return a.severity > b.severity;
-        });
+        // Sort by multidimensional priority score (severity × roleWeight × domainWeight × genreModifier)
+        // MixPriorityEngine asegura que issues críticos en roles importantes (Vocal Lead, Kick)
+        // aparezcan antes que issues menores en roles secundarios (HiHat, FX).
+        // Los scores se computan inline en el comparador — sin vectores intermedios, O(n log n).
+        {
+            std::sort(issues.begin(), issues.end(), [&](const TrackIssue& a, const TrackIssue& b) {
+                auto sa = MixPriorityEngine::computeScore(
+                    a.severity,
+                    trackRoles_[static_cast<size_t>(a.slotIndex)],
+                    a.domain,
+                    a.issueType,
+                    a.trackName,
+                    setupGenre_);
+                auto sb = MixPriorityEngine::computeScore(
+                    b.severity,
+                    trackRoles_[static_cast<size_t>(b.slotIndex)],
+                    b.domain,
+                    b.issueType,
+                    b.trackName,
+                    setupGenre_);
+                return sa.finalScore > sb.finalScore;
+            });
+        }
 
         return issues;
     }
@@ -415,6 +435,42 @@ namespace mixcoach {
         lastCelebrationTimeUs_        = 0;
         lastConsolidatedAnalysisUs_   = 0;
         lastSemanticAnalysisUs_       = 0;
+    }    // ═══════════════════════════════════════════════════════════════════════════
+    //  getTopPriorityIssues — Retorna issues priorizados via MixPriorityEngine
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    std::vector<PriorityScore> CoachEngine::getTopPriorityIssues(int maxIssues)
+    {
+        std::vector<PriorityScore> result;
+
+        auto& registry = sharedData_.getSlotRegistry();
+        if (registry.activeCount() == 0) return result;
+
+        // Collect issues using the existing method
+        auto issues = collectAllIssues();
+        if (issues.empty()) return result;
+
+        // Score each issue with MixPriorityEngine
+        result.reserve(issues.size());
+        for (const auto& issue : issues) {
+            auto ps = MixPriorityEngine::computeScore(
+                issue.severity,
+                trackRoles_[static_cast<size_t>(issue.slotIndex)],
+                issue.domain,
+                issue.issueType,
+                issue.trackName,
+                setupGenre_);
+            ps.slotIndex = issue.slotIndex;
+            result.push_back(ps);
+        }
+
+        MixPriorityEngine::sortByPriority(result);
+
+        // Trim to requested count
+        if (static_cast<int>(result.size()) > maxIssues)
+            result.resize(maxIssues);
+
+        return result;
     }
 
 } // namespace mixcoach
