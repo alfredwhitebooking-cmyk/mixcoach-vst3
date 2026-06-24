@@ -72,33 +72,57 @@ jobs:
             exit 1
           }
 
-      # ─── Paso 4: Configurar + Build CMake (mismo shell cmd) ─────
-      # IMPORTANTE: Configuramos Y construimos en el MISMO shell cmd
-      # para que vcvarsall.bat cubra tanto cmake -S como cmake --build.
-      # pwsh no preserva las variables de vcvarsall entre steps.
-      # quick_validate.ps1 se encarga solo de los tests.
-      - name: Configure + Build CMake
+      # ─── Paso 4: Configure + Build ALL targets (mismo shell cmd) ──
+      # vcvarsall.bat preservado para que MSBuild funcione.
+      # Construimos VST3 + todos los test targets aquí.
+      - name: Configure + Build all
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DJUCE_ROOT=%JUCE_ROOT%
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-          cmake --build build --config %BUILD_TYPE% --target MixCoach_VST3 -- /nologo /maxcpucount:4
+          cmake --build build --config %BUILD_TYPE% -- /nologo /maxcpucount:2
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
-      # ─── Paso 5: Build test targets + run tests via quick_validate.ps1 ──
-      # Nota: MixCoach_VST3 ya se construyó en el paso 4 (mismo shell cmd).
-      - name: Test (quick_validate.ps1)
+      # ─── Paso 5: Run tests (build ya completo desde paso 4) ─────
+      - name: Run tests
         shell: pwsh
         run: |
-          .\scripts\quick_validate.ps1 -Target All
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "  ✅ quick_validate.ps1: all checks passed" -ForegroundColor Green
-          } else {
-            Write-Host "  ❌ quick_validate.ps1: checks FAILED" -ForegroundColor Red
-            exit $LASTEXITCODE
+          $testExeDir = "build/tests/Release"
+          if (-not (Test-Path $testExeDir)) { $testExeDir = "build/tests" }
+          $tests = @(
+            "TestCoachEngine","TestPhaseManager","TestSemanticComparator",
+            "TestTrackFeedCore","TestSmoothValue","TestExperienceLevel",
+            "TestAudioAnalyzer","TestAudioDescriptors","TestSlotRegistry",
+            "TestSharedMemory","TestIPCIntegration","TestLUFSMeter",
+            "TestSpectrographComponent","TestVectorscopeComponent",
+            "TestPhaseCorrelationMeter","TestStereoWidthMeter",
+            "TestReferenceAudioPlayer","TestMixPriorityEngine"
+          )
+          $pass = 0; $fail = 0; $skip = 0
+          foreach ($test in $tests) {
+            $exe = Join-Path $testExeDir "$test.exe"
+            if (-not (Test-Path $exe)) {
+              Write-Host "  [?] $test.exe not found (SKIP)" -ForegroundColor Yellow
+              $skip++
+              continue
+            }
+            Write-Host "  Running $test..." -ForegroundColor Gray
+            $output = & $exe 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "  [PASS] $test" -ForegroundColor Green
+              $pass++
+            } else {
+              Write-Host "  [FAIL] $test" -ForegroundColor Red
+              $output | Select-String "FAIL|failed|Error|Results" | Select-Object -First 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+              $fail++
+            }
           }
+          Write-Host ""
+          Write-Host "  Pass: $pass  |  Fail: $fail  |  Skip: $skip" -ForegroundColor $(if($fail -gt 0){"Red"}else{"Green"})
+          if ($fail -gt 0) { exit 1 }
+
 
       # ─── Paso 6: Build stress tests (serial, evita crash CL.exe) ────
       # Fallback serial: quick_validate.ps1 construye tests en paralelo,
