@@ -2,13 +2,17 @@
 #  MixCoach CI — GitHub Actions
 #
 #  Ejecuta en cada push y PR:
-#    1. Configura CMake con Ninja + MSVC
+#    1. Configura CMake con Visual Studio 17 2022
 #    2. Build de MixCoach_VST3 + Messenger_VST3
 #    3. Pattern validator + tests via quick_validate.ps1
 #    4. Upload de artefactos VST3 en master
 #
 #  Requisitos:
 #    - JUCE 8+ como submodule en libs/JUCE (o vía variable JUCE_PATH en GitHub Settings → Variables)
+#
+#  Nota: Se usa -G "Visual Studio 17 2022" en lugar de Ninja porque
+#  el runner windows-latest ya tiene Visual Studio pre-instalado.
+#  No se necesita setup-msbuild ni msvc-dev-cmd.
 #
 #  ══════════════════════════════════════════════════════════════════════════
 
@@ -46,9 +50,9 @@ jobs:
         with:
           submodules: recursive
 
-      # ─── Paso 2: Configurar MSVC compiler environment ─────────────
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      # ─── Paso 2: (no-op) Visual Studio viene pre-instalado en windows-latest ──
+      # El runner ya tiene Visual Studio 2022. CMake lo detecta automáticamente
+      # con -G "Visual Studio 17 2022". No se necesita setup-msbuild ni msvc-dev-cmd.
 
       # ─── Paso 3: Verificar JUCE ──────────────────────────────────────
       - name: Check JUCE availability
@@ -67,12 +71,13 @@ jobs:
             exit 1
           }
 
-      # ─── Paso 4: Configurar CMake (Ninja + MSVC) ────────────────────
+      # ─── Paso 4: Configurar CMake (Visual Studio 17 2022) ──────────
       - name: Configure CMake
         shell: pwsh
         run: |
           cmake -S . -B build `
-            -G Ninja `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
             -DJUCE_ROOT="${{ env.JUCE_ROOT }}"
 
@@ -88,12 +93,15 @@ jobs:
             exit $LASTEXITCODE
           }
 
-      # ─── Paso 6: Build stress tests ─────────────────────────────────
-      - name: Build stress tests
+      # ─── Paso 6: Build stress tests (serial, evita crash CL.exe) ────
+      # Fallback serial: quick_validate.ps1 construye tests en paralelo,
+      # pero TestStress50Tracks crash CL.exe en paralelo en algunos runners.
+      - name: Build stress tests (serial)
         shell: pwsh
         run: |
           cmake --build build --config ${{ env.BUILD_TYPE }} `
-            --target TestStress50Tracks --target TestStress128Slots
+            --target TestStress50Tracks --target TestStress128Slots `
+            -- /maxcpucount:1 /nologo
           if ($LASTEXITCODE -eq 0) {
             Write-Host "  ✅ Stress tests built successfully" -ForegroundColor Green
           } else {
