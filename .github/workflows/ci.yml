@@ -79,7 +79,9 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DJUCE_ROOT=%JUCE_ROOT%
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
       # ─── Paso 5: Build + tests via quick_validate.ps1 ──────────────
       - name: Build and test (quick_validate.ps1)
