@@ -50,9 +50,14 @@ jobs:
         with:
           submodules: recursive
 
-      # ─── Paso 2: (no-op) Visual Studio viene pre-instalado en windows-latest ──
+      # ─── Paso 2: Visual Studio viene pre-instalado en windows-latest ──
       # El runner ya tiene Visual Studio 2022. CMake lo detecta automáticamente
       # con -G "Visual Studio 17 2022". No se necesita setup-msbuild ni msvc-dev-cmd.
+      - name: Check Visual Studio
+        shell: pwsh
+        run: |
+          Write-Host "  windows-latest runner (Visual Studio pre-instalado)" -ForegroundColor Green
+          Write-Host "  CMake detectará VS automáticamente con -G \"Visual Studio 17 2022\"" -ForegroundColor Gray
 
       # ─── Paso 3: Verificar JUCE ──────────────────────────────────────
       - name: Check JUCE availability
