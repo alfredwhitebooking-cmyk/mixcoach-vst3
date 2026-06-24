@@ -271,6 +271,21 @@ namespace mixcoach {
                 if (trackChangeCallback_)
                     trackChangeCallback_(i, rec.trackName, rec.action, rec.verifyInitial, currentValue);
 
+                // Registrar en MixHistory
+                {
+                    MixHistoryEntry mh;
+                    mh.timestampUs = now;
+                    mh.slotIndex   = i;
+                    mh.trackName   = rec.trackName;
+                    mh.domain      = TrackRecommendation::domainName(rec.domain);
+                    mh.description = "Corrección " + rec.action.substring(0, 60);
+                    mh.beforeValue = rec.verifyInitial;
+                    mh.afterValue  = currentValue;
+                    mh.delta       = actualApplied;
+                    mh.source      = MixHistoryEntry::Source::Correction;
+                    pushMixHistory(mh);
+                }
+
                 LogHelper::writeToLog("[CoachEngine] Recomendacion APLICADA: " + rec.trackName + " \""
                                       + rec.action.substring(0, 60) + "\" (ratio=" + juce::String(appliedRatio, 2)
                                       + ", delta=" + juce::String(actualApplied, 1) + " dB)");
@@ -796,6 +811,21 @@ namespace mixcoach {
             // Actualizar cooldown y enviar
             state.lastWarningUs = now;
             state.lastPeakDb    = currentPeak;
+
+            // Registrar en MixHistory
+            {
+                MixHistoryEntry mh;
+                mh.timestampUs = now;
+                mh.slotIndex   = idx;
+                mh.trackName   = trackName;
+                mh.domain      = "gain";
+                mh.description = "Cambio manual: " + direction + " " + juce::String(absChange, 1) + " dB";
+                mh.beforeValue = previousPeak;
+                mh.afterValue  = currentPeak;
+                mh.delta       = changeDb;
+                mh.source      = MixHistoryEntry::Source::UserAction;
+                pushMixHistory(mh);
+            }
 
             respondWithCorrectionFeedback(observation);
 

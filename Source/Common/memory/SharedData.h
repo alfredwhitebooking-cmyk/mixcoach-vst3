@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_core/juce_core.h>
 #include "../types/Types.h"
+#include "../types/LogHelper.h"
 #include "SlotRegistry.h"
 #include "SharedMemory.h"
 #include "SharedAudioMemoryV2.h"
@@ -74,6 +75,7 @@ namespace mixcoach {
                 return nullptr;
             }
             catch (...) {
+                MIXCOACH_LOG_CATCH("SharedData::safeGetInstance");
                 return nullptr;
             }
         }

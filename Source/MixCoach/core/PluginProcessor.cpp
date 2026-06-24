@@ -84,7 +84,7 @@ namespace mixcoach {
             }
         }
         catch (...) {
-            // No podemos hacer nada, silencio total
+            // writeCrashLog no puede usar LogHelper (crash path), silencio intencional
         }
     }
 
@@ -124,6 +124,7 @@ namespace mixcoach {
         }
         catch (...) {
             // No lanzar excepciones desde destructor
+            MIXCOACH_LOG_CATCH("MixCoach dtor save");
         }
     }
 
@@ -690,10 +691,15 @@ namespace mixcoach {
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             // SEH capturado (AV, heap corrupto, etc.)
-            // ⚠ SOLO atomic store — NO llamar stop() ni clear() porque
-            // juce::String::clear() desasigna heap y podría AV si el heap
-            // está corrupto, causando un nested SEH que mata el proceso.
+            // Diagnóstico: registrar el código de excepción exacto.
+            // ⚠ SOLO earlyCrashLog (C puro, sin heap) — NO llamar stop() ni clear()
+            // porque juce::String desasigna heap y podría AV si está corrupto,
+            // causando un nested SEH que mata el proceso.
             // pause() solo setea isPlaying_=false (atomic, sin heap).
+            DWORD code = GetExceptionCode();
+            char buf[128];
+            snprintf(buf, sizeof(buf), "SEH 0x%08lX (code=%lu)", (unsigned long)code, (unsigned long)code);
+            earlyCrashLog("AUDIO_SEH", buf);
             proc.getRefPlayer().pause();
         }
     }
@@ -738,6 +744,7 @@ namespace mixcoach {
             }
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("MixCoach logMessage");
         }
     }
 

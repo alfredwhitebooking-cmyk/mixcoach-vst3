@@ -69,4 +69,27 @@ namespace mixcoach {
         JUCE_DECLARE_NON_COPYABLE(LogHelper)
     };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  MIXCOACH_LOG_CATCH — Diagnóstico para bloques catch(...) silenciosos
+    //
+    //  Reemplaza los catch(...) vacíos que tragaban excepciones sin dejar rastro.
+    //  Registra el contexto, archivo y línea donde se capturó la excepción, para
+    //  que los crashes/inestabilidad sean diagnosticables desde el log.
+    //
+    //  Es noexcept-safe: no puede lanzar (no extrae std::current_exception()).
+    //
+    //  Uso:
+    //    try { ... }
+    //    catch (const std::exception& e) {
+    //        LogHelper::writeToLog("[Contexto] " + juce::String(e.what()));
+    //    }
+    //    catch (...) {
+    //        MIXCOACH_LOG_CATCH("Contexto");  // era: catch (...) {}
+    //    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    #define MIXCOACH_LOG_CATCH(context)                                                       \
+        ::mixcoach::LogHelper::writeToLog(                                                    \
+            "[EXC] " context " @ " __FILE__ ":" + juce::String(__LINE__)                      \
+            + " (unknown exception swallowed)")
+
 } // namespace mixcoach

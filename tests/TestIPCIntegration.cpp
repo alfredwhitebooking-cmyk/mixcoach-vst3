@@ -55,11 +55,11 @@ static void test_slot_registry_basic()
 
     // Register slots
     int s0 = registry->registerSlot("Bateria",
-        juce::Colour(0xFFE74C3C), mixcoach::BusType::Drums);
+        juce::Colours::red, mixcoach::BusType::Drums);
     int s1 = registry->registerSlot("Bajo",
-        juce::Colour(0xFF3498DB), mixcoach::BusType::Bass);
+        juce::Colours::blue, mixcoach::BusType::Bass);
     int s2 = registry->registerSlot("Guitarra",
-        juce::Colour(0xFF2ECC71), mixcoach::BusType::Guitars);
+        juce::Colours::greenyellow, mixcoach::BusType::Guitars);
 
     TEST("registerSlot returns valid indices", s0 >= 0 && s1 >= 0 && s2 >= 0);
     TEST("activeCount = 3 after registration", registry->activeCount() == 3);
@@ -68,7 +68,7 @@ static void test_slot_registry_basic()
     auto i0 = registry->getSlotInfo(0);
     TEST("Slot 0 name: Bateria", juce::String(i0.trackName).trim() == "Bateria");
     TEST("Slot 0 bus: Drums", i0.bus == mixcoach::BusType::Drums);
-    TEST("Slot 0 colour matches", i0.colour.getARGB() == juce::Colour(0xFFE74C3C).getARGB());
+    TEST("Slot 0 colour matches", i0.colour.getARGB() == juce::Colours::red.getARGB());
     TEST("Slot 0 is active", i0.active);
 
     auto i1 = registry->getSlotInfo(1);
@@ -81,7 +81,7 @@ static void test_slot_registry_basic()
 
     // Update properties
     registry->updateSlotName(1, "Bajo Electrico");
-    registry->updateSlotColour(1, juce::Colour(0xFF1F618D));
+    registry->updateSlotColour(1, juce::Colours::blue.darker(0.6f));
     registry->updateSlotBus(1, mixcoach::BusType::Keys);
 
     auto u1 = registry->getSlotInfo(1);
@@ -90,7 +90,7 @@ static void test_slot_registry_basic()
     TEST("Updated slot bus: Keys",
          u1.bus == mixcoach::BusType::Keys);
     TEST("Updated slot colour matches",
-         u1.colour.getARGB() == juce::Colour(0xFF1F618D).getARGB());
+         u1.colour.getARGB() == juce::Colours::blue.darker(0.6f).getARGB());
 
     // Release slot
     registry->releaseSlot(2);
@@ -111,9 +111,9 @@ static void test_slot_registry_for_each()
 
     auto registry = std::make_unique<mixcoach::SlotRegistry>();
 
-    registry->registerSlot("Vocal", juce::Colour(0xFF9B59B6), mixcoach::BusType::Vocals);
-    registry->registerSlot("Bateria", juce::Colour(0xFFE74C3C), mixcoach::BusType::Drums);
-    registry->registerSlot("Bajo", juce::Colour(0xFF3498DB), mixcoach::BusType::Bass);
+    registry->registerSlot("Vocal", juce::Colours::purple, mixcoach::BusType::Vocals);
+    registry->registerSlot("Bateria", juce::Colours::red, mixcoach::BusType::Drums);
+    registry->registerSlot("Bajo", juce::Colours::blue, mixcoach::BusType::Bass);
 
     int count = 0;
     juce::String names;
@@ -168,15 +168,15 @@ static void test_shared_memory_basic()
     TEST("Header initialized flag set", block->header.initialized == 1);
     TEST("Struct version is V6",
          block->header.structVersion == mixcoach::SharedMemoryHeader::kCurrentStructVersion);
-    TEST("kCurrentStructVersion = 7",
-         mixcoach::SharedMemoryHeader::kCurrentStructVersion == 7);
+    TEST("kCurrentStructVersion = 9",
+         mixcoach::SharedMemoryHeader::kCurrentStructVersion == 9);
     TEST("Change count starts at 0", shm.getChangeCount() == 0);
 
     // Register a slot (identity only — V6)
     mixcoach::SharedSlotEntry entry;
     entry.active = 1;
     entry.bus = static_cast<int>(mixcoach::BusType::Guitars);
-    entry.colourARGB = 0xFF2ECC71;
+    entry.colourARGB = juce::Colours::greenyellow.getARGB();
     std::strncpy(entry.trackName, "Guitarra", sizeof(entry.trackName) - 1);
 
     int assignedSlot = shm.registerSlot(entry);
@@ -195,7 +195,7 @@ static void test_shared_memory_basic()
         TEST("Read bus matches (Guitars)",
              readBack.bus == static_cast<int>(mixcoach::BusType::Guitars));
         TEST("Read colour matches",
-             readBack.colourARGB == 0xFF2ECC71);
+             readBack.colourARGB == juce::Colours::greenyellow.getARGB());
     }
 
     // Release
@@ -236,9 +236,9 @@ static void test_registry_with_shared_memory()
 
     // Register slots (should auto-sync to shared memory)
     int s0 = registry->registerSlot("Vocal",
-        juce::Colour(0xFF9B59B6), mixcoach::BusType::Vocals);
+        juce::Colours::purple, mixcoach::BusType::Vocals);
     int s1 = registry->registerSlot("Bateria",
-        juce::Colour(0xFFE74C3C), mixcoach::BusType::Drums);
+        juce::Colours::red, mixcoach::BusType::Drums);
     TEST("registerSlot with shared memory returns valid indices",
          s0 >= 0 && s1 >= 0);
 
@@ -253,7 +253,7 @@ static void test_registry_with_shared_memory()
              shmEntry.bus == static_cast<int>(mixcoach::BusType::Vocals));
         TEST("Slot 0 in shared memory is active", shmEntry.active == 1);
         TEST("Slot 0 colour matches",
-             shmEntry.colourARGB == 0xFF9B59B6);
+             shmEntry.colourARGB == juce::Colours::purple.getARGB());
     }
 
     // Verify slot 1 identity
@@ -265,13 +265,13 @@ static void test_registry_with_shared_memory()
 
     // Update slot properties and verify they propagate to shared memory
     registry->updateSlotName(0, "Vocal Lead");
-    registry->updateSlotColour(0, juce::Colour(0xFF8E44AD));
+    registry->updateSlotColour(0, juce::Colours::purple.darker(0.3f));
 
     shm->readSlot(0, shmEntry);
     TEST("Updated name propagates to shared memory: Vocal Lead",
          std::strncmp(shmEntry.trackName, "Vocal Lead", 64) == 0);
     TEST("Updated colour propagates to shared memory",
-         shmEntry.colourARGB == 0xFF8E44AD);
+         shmEntry.colourARGB == juce::Colours::purple.darker(0.3f).getARGB());
 
     // Second registry (simulating MixCoach) attaches to same shared memory
     auto shm2 = std::make_unique<mixcoach::SharedMemoryManager>();
@@ -287,7 +287,7 @@ static void test_registry_with_shared_memory()
         TEST("Second registry sees updated name: Vocal Lead",
              juce::String(info0.trackName).trim() == "Vocal Lead");
         TEST("Second registry sees updated colour",
-             info0.colour.getARGB() == 0xFF8E44AD);
+             info0.colour.getARGB() == juce::Colours::purple.darker(0.3f).getARGB());
 
         // Already did forceFullSync above
 
@@ -325,6 +325,7 @@ static void test_concurrent_slot_registration()
         entry.bus = i % 6;
         entry.colourARGB = juce::Colour::fromHSV(
             static_cast<float>(i) / static_cast<float>(numSlots), 0.8f, 0.7f, 1.0f).getARGB();
+        // Nota: fromHSV no tiene un nombre fijo, pero no es Colour(0xFF...) literal
         std::string name = "Track_" + std::to_string(i);
         std::strncpy(entry.trackName, name.c_str(), sizeof(entry.trackName) - 1);
         shm.registerSlot(entry);
@@ -393,11 +394,11 @@ static void test_feedback_loop_track_type_propagation()
     registryWriter->setSharedMemory(shm.get());
 
     int slot0 = registryWriter->registerSlot("Kick",
-        juce::Colour(0xFFEF4444), mixcoach::BusType::Drums);
+        juce::Colours::red, mixcoach::BusType::Drums);
     TEST("registerSlot returns valid index", slot0 >= 0);
 
     int slot1 = registryWriter->registerSlot("Bass 808",
-        juce::Colour(0xFF3B82F6), mixcoach::BusType::Bass);
+        juce::Colours::blue, mixcoach::BusType::Bass);
     TEST("registerSlot returns valid index for slot 1", slot1 >= 0);
 
     // Verify initial trackType is -1 (None) after registration
@@ -477,7 +478,7 @@ static void test_feedback_loop_track_type_propagation()
         TEST("Slot 0 bus still Drums after update",
              reReadInfo0.bus == mixcoach::BusType::Drums);
         TEST("Slot 0 colour preserved after update",
-             reReadInfo0.colour.getARGB() == 0xFFEF4444);
+             reReadInfo0.colour.getARGB() == juce::Colours::red.getARGB());
 
         registryReader.reset();
     }

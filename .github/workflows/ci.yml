@@ -81,7 +81,7 @@ jobs:
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DJUCE_ROOT=%JUCE_ROOT%
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-          cmake --build build --config %BUILD_TYPE% --target MixCoach_VST3 --target TestCoachEngine --target TestPhaseManager --target TestSemanticComparator --target TestTrackFeedCore --target TestSmoothValue --target TestExperienceLevel --target TestAudioAnalyzer --target TestAudioDescriptors --target TestSlotRegistry --target TestSharedMemory --target TestIPCIntegration --target TestLUFSMeter --target TestSpectrographComponent --target TestVectorscopeComponent --target TestPhaseCorrelationMeter --target TestStereoWidthMeter --target TestReferenceAudioPlayer --target TestMixPriorityEngine --target TestStress50Tracks --target TestStress128Slots -- /nologo /maxcpucount:2
+          cmake --build build --config %BUILD_TYPE% --target MixCoach_VST3 --target TestCoachEngine --target TestPhaseManager --target TestSemanticComparator --target TestTrackFeedCore --target TestSmoothValue --target TestExperienceLevel --target TestAudioAnalyzer --target TestAudioDescriptors --target TestSlotRegistry --target TestSharedMemory --target TestIPCIntegration --target TestLUFSMeter --target TestSpectralBands --target TestSpectrographComponent --target TestVectorscopeComponent --target TestPhaseCorrelationMeter --target TestStereoWidthMeter --target TestReferenceAudioPlayer --target TestMixPriorityEngine --target TestExpectedProfiles --target TestGenreProfiles --target TestChatBubbleHeight --target TestDifferenceProfile --target TestMixScore --target TestStress50Tracks --target TestStress128Slots -- /nologo /maxcpucount:2
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
       # ─── Paso 5: Run tests ─────────────────────────────────────────
@@ -95,9 +95,10 @@ jobs:
             "TestTrackFeedCore","TestSmoothValue","TestExperienceLevel",
             "TestAudioAnalyzer","TestAudioDescriptors","TestSlotRegistry",
             "TestSharedMemory","TestIPCIntegration","TestLUFSMeter",
-            "TestSpectrographComponent","TestVectorscopeComponent",
+            "TestSpectralBands","TestSpectrographComponent","TestVectorscopeComponent",
             "TestPhaseCorrelationMeter","TestStereoWidthMeter",
-            "TestReferenceAudioPlayer","TestMixPriorityEngine"
+            "TestReferenceAudioPlayer","TestMixPriorityEngine",
+            "TestExpectedProfiles","TestGenreProfiles","TestChatBubbleHeight","TestDifferenceProfile","TestMixScore"
           )
           $pass = 0; $fail = 0; $skip = 0
           foreach ($test in $tests) {

@@ -164,8 +164,8 @@ components:
     path: Source/MixCoach/UI/ReferencePanelComponent.h/.cpp
     type: ui
     criticality: MED
-    status: PENDING
-    description: Pistas de referencia A/B. TODO: Play audio reference.
+    status: AUDITED
+    description: Pistas de referencia A/B con drag & drop reorder, playback, section selector, Reference-Driven Mode toggle con progress bar animada.
 
   - name: VirtualBusesComponent
     path: Source/MixCoach/UI/VirtualBusesComponent.h/.cpp
@@ -269,7 +269,7 @@ components:
     path: Source/Common/types/LogHelper.h
     type: utility
     criticality: LOW
-    description: Logger por archivo para diagnóstico.
+    description: Logger por archivo para diagnóstico. Incluye macro MIXCOACH_LOG_CATCH para catch(...) silenciosos.
 
 # ─── TESTS ─────────────────────────────────────────────────
 
@@ -337,6 +337,23 @@ tests:
   - name: TestLUFSMeter
     path: tests/TestLUFSMeter.cpp
     scope: Medidor LUFS
+
+  - name: TestSpectralBands
+    path: tests/TestSpectralBands.cpp
+    scope: computeSpectralBands + validateSpectralBands44100
+    trigger: Al modificar Constants.h
+
+  - name: TestGenreProfiles
+    path: tests/TestGenreProfiles.cpp
+    count: 126
+    scope: getGenreProfileDelta + getExpectedProfile(role, genre) para 6 géneros
+    trigger: Al modificar TrackRole.h
+
+  - name: TestMixScore
+    path: tests/TestMixScore.cpp
+    count: 102
+    scope: MixScore::compute() estructural + integración con CoachEngine
+    trigger: Al modificar MixScore.cpp o CoachEngine
 
   # ✂️ TestTelemetryDSP ELIMINADO: era V2 legacy, no compilaba
 

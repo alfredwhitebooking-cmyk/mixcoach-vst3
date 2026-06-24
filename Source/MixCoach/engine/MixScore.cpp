@@ -509,11 +509,23 @@ namespace mixcoach {
         s.spatial   = computeSpatialScore(engine, analyzer, s);
         s.reference = computeReferenceScore(engine);
 
-        // ═══ Overall: weighted average ═══════════════════════════════════════
+        // ═══ Overall: weighted average con α-blending dinámico ═══════════════
+        // Cuando hay referencia, α = sigmoid(matchScore) determina cuánto peso darle.
+        // α ≈ 0 (matchScore bajo): la referencia influye poco, predomina el perfil de género.
+        // α ≈ 1 (matchScore alto): la referencia es el norte absoluto.
+        // Sin referencia: pesos fijos 30/30/20/20 (gain/tonal/dynamics/spatial).
         bool hasRef = (s.reference > 0);
 
         if (hasRef) {
-            s.overall = (s.gain * 25 + s.tonal * 25 + s.dynamics * 20 + s.spatial * 15 + s.reference * 15) / 100;
+            float alpha = engine.computeBlendAlpha();
+
+            // Blend entre "con referencia" (25/25/20/15/15) y "sin referencia" (30/30/20/20/0)
+            float noRefOverall = (s.gain * 30.0f + s.tonal * 30.0f + s.dynamics * 20.0f + s.spatial * 20.0f) / 100.0f;
+            float withRefOverall =
+                (s.gain * 25.0f + s.tonal * 25.0f + s.dynamics * 20.0f + s.spatial * 15.0f + s.reference * 15.0f) / 100.0f;
+
+            s.overall = noRefOverall * (1.0f - alpha) + withRefOverall * alpha;
+            s.overall = clampScore(static_cast<int>(s.overall + 0.5f)); // redondear al entero más cercano
         }
         else {
             s.overall = (s.gain * 30 + s.tonal * 30 + s.dynamics * 20 + s.spatial * 20) / 100;

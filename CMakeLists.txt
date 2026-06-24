@@ -403,6 +403,27 @@ set_target_properties(TestCoachEngine PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: SpectralBands (dynamic sample rate computeSpectralBands) ──────
+add_executable(TestSpectralBands
+    tests/TestSpectralBands.cpp
+    Source/Common/types/Constants.h
+)
+target_include_directories(TestSpectralBands PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestSpectralBands PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestSpectralBands PRIVATE /W4)
+set_target_properties(TestSpectralBands PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Test: LUFSMeter (EBU R128 loudness meter UI) ────────────────────────
 add_executable(TestLUFSMeter
     tests/TestLUFSMeter.cpp
@@ -1019,6 +1040,34 @@ set_target_properties(TestExpectedProfiles PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: GenreProfiles — getGenreProfileDelta + getExpectedProfile(role, genre) ──
+# Test header-only (TrackRole.h) con validación de deltas por género.
+add_executable(TestGenreProfiles
+    tests/TestGenreProfiles.cpp
+)
+target_include_directories(TestGenreProfiles PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestGenreProfiles PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestGenreProfiles PRIVATE /W4)
+if(MSVC)
+    target_compile_options(TestGenreProfiles PRIVATE
+        /MP1
+        /bigobj
+        "$<$<CONFIG:Release>:/Od>"   # CL.exe crash con /O2 (STATUS_ACCESS_VIOLATION) en este test
+    )
+endif()
+set_target_properties(TestGenreProfiles PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Test: MixPriorityEngine — score multidimensional (severity × role × domain × genre) ──
 add_executable(TestMixPriorityEngine
     tests/TestMixPriorityEngine.cpp
@@ -1042,6 +1091,102 @@ set_target_properties(TestMixPriorityEngine PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: MixScore — compute() con CoachEngine + AudioAnalyzer + SharedData ──
+add_executable(TestMixScore
+    tests/TestMixScore.cpp
+    Source/MixCoach/engine/CoachEngine.h
+    Source/MixCoach/engine/CoachEngine.cpp
+    Source/MixCoach/engine/CoachEngineCommands.cpp
+    Source/MixCoach/engine/CoachEngineCorrection.cpp
+    Source/MixCoach/engine/CoachEngineIssues.cpp
+    Source/MixCoach/engine/CoachEngineContext.cpp
+    Source/MixCoach/engine/CoachEngineReference.cpp
+    Source/MixCoach/engine/CoachEngineSetup.cpp
+    Source/MixCoach/engine/CoachEngine_Analysis.cpp
+    Source/MixCoach/engine/CoachEngine_Identity.cpp
+    Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/PhaseManager.h
+    Source/MixCoach/engine/PhaseManager.cpp
+    Source/MixCoach/engine/TrackRole.h
+    Source/MixCoach/engine/DomainGap.h
+    Source/MixCoach/engine/SpectralProfiler.h
+    Source/MixCoach/engine/SpectralProfiler.cpp
+    Source/MixCoach/engine/SemanticComparator.h
+    Source/MixCoach/engine/SemanticComparator.cpp
+    Source/MixCoach/engine/PlanManager.h
+    Source/MixCoach/engine/PlanManager.cpp
+    Source/MixCoach/engine/ReferenceDrivenEngine.h
+    Source/MixCoach/engine/ReferenceDrivenEngine.cpp
+    Source/MixCoach/engine/MixScore.h
+    Source/MixCoach/engine/MixScore.cpp
+    Source/MixCoach/engine/TrackState.h
+    Source/MixCoach/engine/AnalyzerInterpreter.h
+    Source/MixCoach/engine/AnalyzerInterpreter.cpp
+    Source/MixCoach/engine/MixPriorityEngine.h
+    Source/MixCoach/engine/MixPriorityEngine.cpp
+    Source/MixCoach/engine/SessionMap.cpp
+    Source/MixCoach/engine/DifferenceProfile.h
+    Source/MixCoach/engine/DifferenceProfile.cpp
+    Source/MixCoach/engine/CorrectionLearner.h
+    Source/MixCoach/engine/CorrectionLearner.cpp
+    Source/MixCoach/engine/TrackFeedCore.h
+    Source/MixCoach/engine/TrackFeedCore.cpp
+    Source/MixCoach/engine/WorkflowDetector.h
+    Source/MixCoach/engine/WorkflowDetector.cpp
+    Source/MixCoach/audio/AudioAnalyzer.h
+    Source/MixCoach/audio/AudioAnalyzer.cpp
+    Source/MixCoach/audio/ReferenceAnalyzer.h
+    Source/MixCoach/audio/ReferenceAnalyzer.cpp
+    Source/MixCoach/UI/VectorscopeComponent.h
+    Source/MixCoach/UI/VectorscopeComponent.cpp
+    Source/MixCoach/UI/MixCoachTheme.h
+    Source/Common/audio/AudioAnalysis.h
+    Source/Common/audio/AudioAnalysis.cpp
+    Source/Common/audio/LoudnessAnalyzer.h
+    Source/Common/audio/LoudnessAnalyzer.cpp
+    Source/Common/audio/DiagnosticBridge.h
+    Source/Common/audio/DiagnosticBridge.cpp
+    Source/Common/memory/SharedData.h
+    Source/Common/memory/SharedData.cpp
+    Source/Common/memory/SharedAudioMemory.h
+    Source/Common/memory/SharedAudioMemory.cpp
+    Source/Common/memory/SharedAudioMemoryV2.h
+    Source/Common/memory/SharedAudioMemoryV2.cpp
+    Source/Common/memory/SlotRegistry.h
+    Source/Common/memory/SlotRegistry.cpp
+    Source/Common/memory/SharedMemory.h
+    Source/Common/memory/SharedMemory.cpp
+    Source/Common/types/Constants.h
+    Source/Common/types/Types.h
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestMixScore PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestMixScore PRIVATE
+    juce_core
+    juce_graphics
+    juce_gui_basics
+    juce_audio_basics
+    juce_dsp
+)
+target_compile_options(TestMixScore PRIVATE /W4)
+if(MSVC)
+    target_compile_options(TestMixScore PRIVATE
+        /MP1
+        /bigobj
+        /FS
+        "$<$<CONFIG:Release>:/Od>"
+    )
+endif()
+set_target_properties(TestMixScore PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Target: build + run all tests ──────────────────────────────────────────
 add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestSmoothValue>
@@ -1051,6 +1196,7 @@ add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestSharedMemory>
     COMMAND $<TARGET_FILE:TestSlotRegistry>
     COMMAND $<TARGET_FILE:TestLUFSMeter>
+    COMMAND $<TARGET_FILE:TestSpectralBands>
     COMMAND $<TARGET_FILE:TestSpectrographComponent>
     COMMAND $<TARGET_FILE:TestVectorscopeComponent>
     COMMAND $<TARGET_FILE:TestPhaseCorrelationMeter>
@@ -1063,11 +1209,13 @@ add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestTrackFeedCore>
     COMMAND $<TARGET_FILE:TestSemanticComparator>
     COMMAND $<TARGET_FILE:TestExpectedProfiles>
+    COMMAND $<TARGET_FILE:TestGenreProfiles>
     COMMAND $<TARGET_FILE:TestMixPriorityEngine>
+    COMMAND $<TARGET_FILE:TestMixScore>
 
     DEPENDS TestSmoothValue TestPhaseManager TestCoachEngine TestIPCIntegration
             TestSharedMemory TestSlotRegistry TestStress50Tracks TestStress128Slots
-            TestLUFSMeter TestSpectrographComponent TestVectorscopeComponent
+            TestLUFSMeter TestSpectralBands TestSpectrographComponent TestVectorscopeComponent
             TestPhaseCorrelationMeter
             TestStereoWidthMeter
             TestAudioAnalyzer
@@ -1076,7 +1224,9 @@ add_custom_target(run_tests
             TestTrackFeedCore
             TestSemanticComparator
             TestExpectedProfiles
+            TestGenreProfiles
             TestMixPriorityEngine
+            TestMixScore
 
     COMMENT "Running all unit tests..."
     VERBATIM

@@ -1200,9 +1200,224 @@ namespace mixcoach {
 
 #undef PROFILE
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  Utility functions
-    // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+//  GENRE-AWARE PROFILE OVERRIDES (Fase B)
+//  Cada género tiene ajustes de target sobre la base (ExpectedProfile).
+//  Los deltas se aplican solo a los roles más relevantes por género.
+//  Para roles no especificados, se usa el perfil base sin cambios.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Delta de ajuste sobre un ExpectedProfile base. */
+struct GenreProfileDelta
+{
+    TrackRole role = TrackRole::Unknown;
+    float peakDeltaDb   = 0.0f; // Ajuste al peak target (dB)
+    float crestDeltaDb  = 0.0f; // Ajuste al crest target (dB)
+    float subDelta      = 0.0f; // Ajuste al spectralOffset[0]
+    float bassDelta     = 0.0f; // Ajuste al spectralOffset[1]
+    float loMidDelta    = 0.0f; // Ajuste al spectralOffset[2]
+    float hiMidDelta    = 0.0f; // Ajuste al spectralOffset[3]
+    float presDelta     = 0.0f; // Ajuste al spectralOffset[4]
+    float airDelta      = 0.0f; // Ajuste al spectralOffset[5]
+};
+
+/** Retorna los deltas de perfil para un género y rol específicos.
+    Si el género no tiene overrides para el rol, retorna un delta vacío (0.0f). */
+inline GenreProfileDelta getGenreProfileDelta(const juce::String& genre, TrackRole role) noexcept
+{
+    juce::String g = genre.trim().toLowerCase();
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  TRAP — 808 dominante, agudos brillantes, batería agresiva
+    //  Característica: sub-graves +8dB, presencia muy abierta, crest alto
+    // ═══════════════════════════════════════════════════════════════════
+    if (g == "trap") {
+        switch (role) {
+            case TrackRole::Kick:
+                return {role, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // crest +4dB (más agresivo)
+            case TrackRole::Kick808:
+                return {role, 1.0f, -2.0f, -2.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +1dB, crest -2dB (más sostenido), sub +2dB
+            case TrackRole::Bass808:
+                return {role, 0.0f, 2.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // crest +2dB, sub +2dB
+            case TrackRole::SnareTrap:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 2.0f}; // presencia +2dB, aire +2dB
+            case TrackRole::HiHat:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f}; // aire +2dB (brillante)
+            case TrackRole::VozPrincipal:
+                return {role, -2.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f}; // peak -2dB (más ajustada), presencia +2dB
+            case TrackRole::BassSub:
+                return {role, 2.0f, -2.0f, -3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB, sub +3dB (más peso)
+            case TrackRole::BassSynth:
+                return {role, 1.0f, 0.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // sub +2dB
+            default:
+                return {};
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  POP — Voces cristalinas, mezcla balanceada, crest moderado
+    //  Característica: presencia vocal +4dB, compresión suave, ancho stereo
+    // ═══════════════════════════════════════════════════════════════════
+    if (g == "pop") {
+        switch (role) {
+            case TrackRole::VozPrincipal:
+                return {role, 0.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, -3.0f, -2.0f}; // crest -2dB (más comprimida), presencia +3dB
+            case TrackRole::VozFondo:
+                return {role, 2.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB (más presentes)
+            case TrackRole::Kick:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::BassSub:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::BassFinger:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::KeysPiano:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            default:
+                return {};
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  ROCK — Guitarras presentes, batería potente, crest natural
+    //  Característica: guitarras +4dB en medios, rango dinámico amplio
+    // ═══════════════════════════════════════════════════════════════════
+    if (g == "rock") {
+        switch (role) {
+            case TrackRole::Kick:
+                return {role, 2.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB, crest -2dB
+            case TrackRole::Snare:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::GuitarElectric:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -3.0f, -3.0f, 0.0f}; // hiMid +3dB, presencia +3dB
+            case TrackRole::GuitarLead:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, -2.0f, 0.0f}; // hiMid +2dB, presencia +2dB
+            case TrackRole::GuitarRhythm:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -3.0f, 0.0f, 0.0f}; // hiMid +3dB
+            case TrackRole::VozPrincipal:
+                return {role, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // crest +2dB (menos comprimida, más natural)
+            case TrackRole::BassPick:
+                return {role, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // crest +2dB (más dinámica)
+            default:
+                return {};
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  REGGAETON — 808/Bass dominante, bombo punchy, rango dinámico
+    //  Característica: sub-bass prominente, bombo mid-sub, presencia vocal
+    // ═══════════════════════════════════════════════════════════════════
+    if (g == "reggaeton" || g == "reggaeton/latin" || g == "latin" || g == "dembow") {
+        switch (role) {
+            case TrackRole::Kick:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::ReggaetonKick:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil ya es reagg
+            case TrackRole::Bass808:
+                return {role, 2.0f, -2.0f, -3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB, sub +3dB (más presencia del 808)
+            case TrackRole::BassSub:
+                return {role, 2.0f, -2.0f, -4.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB, sub +4dB
+            case TrackRole::VozPrincipal:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, 0.0f}; // presencia +2dB (voz clara sobre el beat)
+            case TrackRole::Snare:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::HiHat:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            default:
+                return {};
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  AFROBEAT — Percusión presente, bajos bailables, calidez
+    //  Característica: percusión +4dB, bajos con cuerpo, voces aire
+    // ═══════════════════════════════════════════════════════════════════
+    if (g == "afrobeat" || g == "afrobeats" || g == "world") {
+        switch (role) {
+            case TrackRole::Kick:
+                return {role, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB (kick más presente)
+            case TrackRole::BassSub:
+                return {role, 0.0f, 0.0f, 0.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // bass +2dB (cuerpo extra)
+            case TrackRole::BassFinger:
+                return {role, 0.0f, 0.0f, 0.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // bass +2dB (cálido)
+            case TrackRole::Percussion:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, 0.0f}; // presencia +2dB (percusión brillante)
+            case TrackRole::Snare:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::VozPrincipal:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f}; // aire +2dB
+            case TrackRole::KeysPiano:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            default:
+                return {};
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  EDM — Sub masivo, crest comprimido, presencia extrema
+    //  Característica: sub +6dB, compresión fuerte, presencia +4dB
+    // ═══════════════════════════════════════════════════════════════════
+    if (g == "edm" || g == "electronic" || g == "house" || g == "techno" || g == "trance" || g == "dubstep") {
+        switch (role) {
+            case TrackRole::Kick:
+                return {role, 2.0f, -2.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB, sub +2dB (kick enorme)
+            case TrackRole::BassSub:
+                return {role, 2.0f, -2.0f, -4.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // peak +2dB, sub +4dB (sub masivo)
+            case TrackRole::BassSynth:
+                return {role, 0.0f, 0.0f, -3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // sub +3dB
+            case TrackRole::SynthLead:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -3.0f, -3.0f}; // presencia +3dB, aire +3dB
+            case TrackRole::SynthPad:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::HiHat:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            case TrackRole::Snare:
+                return {role, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // perfil base
+            default:
+                return {};
+        }
+    }
+
+    // Si no hay coincidencia, retornar delta vacío (sin cambios)
+    return {};
+}
+
+/** Retorna el ExpectedProfile para un rol en un género específico.
+    Aplica los deltas del género sobre el perfil base.
+    Si el género no tiene overrides, retorna el perfil base sin cambios.
+    @param role  TrackRole a consultar
+    @param genre  Género musical (vacío o desconocido = perfil base) */
+inline ExpectedProfile getExpectedProfile(TrackRole role, const juce::String& genre) noexcept
+{
+    ExpectedProfile base = getExpectedProfile(role);
+
+    // Si no hay género, retornar base sin cambios
+    if (genre.isEmpty()) return base;
+
+    // Obtener deltas específicos del género para este rol
+    GenreProfileDelta delta = getGenreProfileDelta(genre, role);
+
+    // Aplicar deltas (solo si hay cambios — detectamos por rol != Unknown)
+    if (delta.role != TrackRole::Unknown) {
+        base.peakTargetDb  = juce::jlimit(-24.0f, 0.0f, base.peakTargetDb + delta.peakDeltaDb);
+        base.crestTargetDb = juce::jlimit(2.0f, 24.0f, base.crestTargetDb + delta.crestDeltaDb);
+
+        base.spectralOffset[0] = juce::jlimit(-60.0f, 0.0f, base.spectralOffset[0] + delta.subDelta);
+        base.spectralOffset[1] = juce::jlimit(-60.0f, 0.0f, base.spectralOffset[1] + delta.bassDelta);
+        base.spectralOffset[2] = juce::jlimit(-60.0f, 0.0f, base.spectralOffset[2] + delta.loMidDelta);
+        base.spectralOffset[3] = juce::jlimit(-60.0f, 0.0f, base.spectralOffset[3] + delta.hiMidDelta);
+        base.spectralOffset[4] = juce::jlimit(-60.0f, 0.0f, base.spectralOffset[4] + delta.presDelta);
+        base.spectralOffset[5] = juce::jlimit(-60.0f, 0.0f, base.spectralOffset[5] + delta.airDelta);
+
+        // Ajustar descripción para reflejar que es genre-aware
+        // (mantenemos el nombre pero indicamos brevemente)
+    }
+
+    return base;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Utility functions
+// ═══════════════════════════════════════════════════════════════════════════
 
     inline BusType getBusForRole(TrackRole role) noexcept
     {

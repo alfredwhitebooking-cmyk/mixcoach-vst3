@@ -52,6 +52,8 @@ namespace mixcoach {
         // V7: +trackType (identidad explícita del Messenger via TrackType).
         // V8: +muted + soloed (estado de mute/solo del channel strip).
         // V9: +faderDb + panValue (nivel de fader y paneo del channel strip).
+        // Nota: SharedMemory.cpp se modificó (healthCheck refactor a helper SEH),
+        // pero SharedSlotEntry no cambió, por lo que kCurrentStructVersion sigue en 9.
         static constexpr uint32_t kCurrentStructVersion = 9;
         uint32_t structVersion                          = kCurrentStructVersion;
     };

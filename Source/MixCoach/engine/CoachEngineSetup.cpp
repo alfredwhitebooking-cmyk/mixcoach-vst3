@@ -354,6 +354,19 @@ namespace mixcoach {
             "Setup completado. Modo: " + juce::String(isMixMode() ? "Mix" : "Master")
             + ", G\xC3\xA9" "nero: " + setupGenre_, 0.0f, 0.0f);
 
+        // Registrar en MixHistory
+        {
+            MixHistoryEntry mh;
+            mh.timestampUs = juce::Time::getMillisecondCounter() * 1000;
+            mh.slotIndex   = -1;
+            mh.trackName   = "Sesi\xC3\xB3n";
+            mh.domain      = "system";
+            mh.description = "Setup completado. Modo: " + juce::String(isMixMode() ? "Mix" : "Master")
+                             + ", G\xC3\xA9nero: " + setupGenre_;
+            mh.source      = MixHistoryEntry::Source::System;
+            pushMixHistory(mh);
+        }
+
         respondWith(msg, MentorMessage::Type::Achievement);
 
         // ═══ Guía activa para la fase a la que acabamos de avanzar ═══

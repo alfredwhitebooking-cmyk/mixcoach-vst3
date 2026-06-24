@@ -362,6 +362,7 @@ namespace mixcoach {
             LogHelper::writeToLog("[CoachEngine] SEH en analyzeReferenceFile: " + juce::String(e.what()));
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("CoachEngine applyReferenceFile");
             LogHelper::writeToLog("[CoachEngine] SEH desconocido en analyzeReferenceFile");
         }
     }
@@ -383,6 +384,7 @@ namespace mixcoach {
             LogHelper::writeToLog("[CoachEngine] SEH en analyzeReferenceBuffer: " + juce::String(e.what()));
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("CoachEngine applyReferenceBuffer");
             LogHelper::writeToLog("[CoachEngine] SEH desconocido en analyzeReferenceBuffer");
         }
     }

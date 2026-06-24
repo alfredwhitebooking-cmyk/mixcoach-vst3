@@ -1,5 +1,6 @@
 #include "ProfessionalAnalyzersComponent.h"
 #include "../../Common/types/Constants.h"
+#include "../../Common/types/LogHelper.h"
 
 namespace mixcoach {
 
@@ -38,6 +39,7 @@ namespace mixcoach {
             juce::Logger::outputDebugString("[ProfessionalAnalyzersComponent] Exception: " + juce::String(e.what()));
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("ProfessionalAnalyzersComponent ctor");
             juce::Logger::outputDebugString("[ProfessionalAnalyzersComponent] Unknown exception");
         }
     }

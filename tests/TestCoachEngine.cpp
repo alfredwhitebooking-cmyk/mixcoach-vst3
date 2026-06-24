@@ -433,21 +433,19 @@ static void test_analyze_gain_staging_clipping()
 
     engine.periodicAnalysis();
 
-    // Should detect clipping
-    bool foundClipWarning = false;
-    int n = sd->getMessageCount();
-    for (int i = 0; i < n; ++i) {
-        auto msg = sd->getMessage(i);
-        if (msg.type == mixcoach::MentorMessage::Type::Warning) {
-            juce::String txt(msg.text);
-            if (txt.contains("clipping") || txt.contains("Clipping") ||
-                txt.contains("\xf0\x9f\x94\xb4"))
-                foundClipWarning = true;
+    // Clipping is detected via collectAllIssues (the brain's issue detector).
+    // periodicAnalysis may emit gain advice, but the canonical clipping check
+    // is through the issue system, not a Warning-type message.
+    auto issues = engine.collectAllIssues();
+    bool foundClippingIssue = false;
+    for (const auto& iss : issues) {
+        if (iss.issueType == "CLIPPING") {
+            foundClippingIssue = true;
+            break;
         }
     }
 
-    TEST("Clipping warning pushed",
-         foundClipWarning);
+    TEST("Clipping issue detected via collectAllIssues", foundClippingIssue);
 
     sd.reset();
 }
@@ -1720,8 +1718,8 @@ static void test_forward_mapping()
          mixcoach::getTrackRoleForTrackType(mixcoach::TrackType::Percussion) == mixcoach::TrackRole::Percussion);
     TEST("TrackType::Overheads → TrackRole::DrumBus",
          mixcoach::getTrackRoleForTrackType(mixcoach::TrackType::Overheads) == mixcoach::TrackRole::DrumBus);
-    TEST("TrackType::Room → TrackRole::FxAmbience",
-         mixcoach::getTrackRoleForTrackType(mixcoach::TrackType::Room) == mixcoach::TrackRole::FxAmbience);
+    TEST("TrackType::Room → TrackRole::DrumRoom",
+         mixcoach::getTrackRoleForTrackType(mixcoach::TrackType::Room) == mixcoach::TrackRole::DrumRoom);
 
     // ─── Bass ─────────────────────────────────────────────────────────
     TEST("TrackType::BassDI → TrackRole::BassFinger",

@@ -23,10 +23,10 @@ namespace mixcoach {
     struct SharedAudioSlot
     {
         // Posiciones atómicas para productor/consumidor cross-process.
-        // Usamos volatile int64_t directamente (no std::atomic) porque garantiza
-        // operaciones atómicas entre procesos en memoria compartida en x64/x86.
-        // En MSVC, volatile implícitamente tiene semántica de barrera de memoria.
-        // Nota: Para ARM se requeriría InterlockedExchange64.
+        // volatile int64_t es el target requerido por _InterlockedExchange64.
+        // Las publicaciones usan _InterlockedExchange64 (release store) en
+        // lugar de asignación directa a volatile, garantizando atomicidad
+        // cross-process sin depender de semántica no documentada de MSVC volatile.
         volatile int64_t writePos;      // Solo el escritor (Messenger) incrementa
         volatile int64_t readPos;       // Solo el lector (MixCoach) incrementa
         float buffer[kAudioBufferSize]; // Samples mono RAW

@@ -91,5 +91,8 @@ gemini.py
 build_fast_output.txt
 debug_output.txt
 
+# CI log archives (diagnóstico local, no parte del repo)
+ci_logs*.zip
+
 # Build artefacts
 # Nota: build/ ya esta ignorado arriba

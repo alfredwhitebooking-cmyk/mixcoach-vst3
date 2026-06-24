@@ -53,11 +53,16 @@ namespace mixcoach {
                     fos.flush();
                 }
             }
+            catch (const std::exception& e) {
+                LogHelper::writeToLog("[SharedData] ctor fallback-log EXCEPTION: " + juce::String(e.what()));
+            }
             catch (...) {
+                MIXCOACH_LOG_CATCH("SharedData ctor fallback-log");
             }
         }
         catch (...) {
             shmInitialized_ = false;
+            MIXCOACH_LOG_CATCH("SharedData ctor");
         }
     }
 
@@ -98,11 +103,15 @@ namespace mixcoach {
                     fos.flush();
                 }
             }
+            catch (const std::exception& e) {
+                LogHelper::writeToLog("[SharedData] retryInit fallback-log EXCEPTION: " + juce::String(e.what()));
+            }
             catch (...) {
+                MIXCOACH_LOG_CATCH("SharedData retryInit fallback-log");
             }
         }
         catch (...) {
-            // Silencio total
+            MIXCOACH_LOG_CATCH("SharedData retryInit");
         }
 
         return false;

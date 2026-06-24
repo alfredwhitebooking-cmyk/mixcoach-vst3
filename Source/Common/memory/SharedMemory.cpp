@@ -273,19 +273,31 @@ namespace mixcoach {
         releaseLock();
     }
 
-    bool SharedMemoryManager::healthCheck() const noexcept
+    // Helper SEH puro: no puede tener objetos C++ con destructor (C2712).
+    static bool probeSharedBlock(const volatile int* p) noexcept
     {
-        if (block_ == nullptr) return false;
-
-#ifdef _WIN32
         __try {
-            volatile int dummy = block_->header.initialized;
+            volatile int dummy = *p;
             (void)dummy;
             return true;
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             return false;
         }
+    }
+
+    bool SharedMemoryManager::healthCheck() const noexcept
+    {
+        if (block_ == nullptr) return false;
+
+#ifdef _WIN32
+        bool ok = probeSharedBlock(&block_->header.initialized);
+        if (!ok) {
+            char buf[96];
+            snprintf(buf, sizeof(buf), "[SharedMemory] healthCheck SEH (block probe failed)");
+            LogHelper::writeToLog(buf);
+        }
+        return ok;
 #else
         return block_ != nullptr;
 #endif

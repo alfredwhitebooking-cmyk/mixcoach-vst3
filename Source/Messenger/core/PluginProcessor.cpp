@@ -48,6 +48,7 @@ namespace mixcoach {
         catch (...) {
             sharedData_ = nullptr;
             slotIndex_  = -1;
+            MIXCOACH_LOG_CATCH("Messenger ensureSlotRegistered");
         }
     }
 
@@ -58,6 +59,7 @@ namespace mixcoach {
             ensureSlotRegistered();
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger prepareToPlay");
         }
     }
 
@@ -172,6 +174,7 @@ namespace mixcoach {
                 sharedData_->getSlotRegistry().updateSlotName(slotIndex_, newName.toStdString());
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setTrackName");
         }
     }
 
@@ -198,6 +201,7 @@ namespace mixcoach {
             }
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger syncTrackTypeToRegistry");
         }
     }
 
@@ -348,6 +352,7 @@ namespace mixcoach {
             }
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger syncTrackTypeFromSharedMemory");
         }
 
         return false;
@@ -364,6 +369,7 @@ namespace mixcoach {
             if (slotIndex_ >= 0 && sharedData_) sharedData_->getSlotRegistry().updateSlotFaderDb(slotIndex_, db);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setFaderDb");
         }
     }
 
@@ -374,6 +380,7 @@ namespace mixcoach {
             if (slotIndex_ >= 0 && sharedData_) sharedData_->getSlotRegistry().updateSlotPanValue(slotIndex_, pan);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setPanValue");
         }
     }
 
@@ -388,6 +395,7 @@ namespace mixcoach {
             if (slotIndex_ >= 0 && sharedData_) sharedData_->getSlotRegistry().updateSlotMuted(slotIndex_, mute);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setMuted");
         }
     }
 
@@ -398,6 +406,7 @@ namespace mixcoach {
             if (slotIndex_ >= 0 && sharedData_) sharedData_->getSlotRegistry().updateSlotSoloed(slotIndex_, solo);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setSoloed");
         }
     }
 
@@ -408,6 +417,7 @@ namespace mixcoach {
             if (slotIndex_ >= 0 && sharedData_) sharedData_->getSlotRegistry().updateSlotColour(slotIndex_, newColour);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setTrackColour");
         }
     }
 
@@ -418,6 +428,7 @@ namespace mixcoach {
             if (slotIndex_ >= 0 && sharedData_) sharedData_->getSlotRegistry().updateSlotBus(slotIndex_, bus);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setBusAssignment");
         }
     }
 
@@ -442,6 +453,7 @@ namespace mixcoach {
             mos.writeInt(soloed_ ? 1 : 0);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger getStateInformation");
         }
     }
 
@@ -506,6 +518,7 @@ namespace mixcoach {
             }
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("Messenger setStateInformation");
         }
     }
 

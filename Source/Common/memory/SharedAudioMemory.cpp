@@ -115,7 +115,7 @@ namespace mixcoach {
 
         auto& slot = block_->slots[slotIndex];
 
-        // Leer writePos una sola vez al inicio
+        // Leer writePos una sola vez al inicio (solo el escritor modifica writePos)
         int64_t wp = slot.writePos;
 
         // Escribir todos los samples en el buffer circular
@@ -123,13 +123,18 @@ namespace mixcoach {
 
         // _WriteBarrier() asegura que TODAS las escrituras del buffer ocurran
         // ANTES de que el lector vea el nuevo writePos.
-        // Esto es una barrera de compilador (no emite instrucciones en x86/x64).
 #if defined(_MSC_VER)
         _WriteBarrier();
 #endif
 
-        // Publicar nuevo writePos con un solo incremento atómico
+        // Publicar nuevo writePos atómicamente (release store).
+        // InterlockedExchange64 garantiza atomicidad cross-process sin depender
+        // de la semántica no documentada de MSVC volatile.
+#ifdef _WIN32
+        _InterlockedExchange64(&slot.writePos, wp + numSamples);
+#else
         slot.writePos = wp + numSamples;
+#endif
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -166,8 +171,12 @@ namespace mixcoach {
 
         for (int64_t i = 0; i < toRead; ++i) outData[i] = slot.buffer[(rp + i) % kAudioBufferSize];
 
-        // Publicar nuevo readPos
+        // Publicar nuevo readPos atómicamente (release store).
+#ifdef _WIN32
+        _InterlockedExchange64(&slot.readPos, rp + toRead);
+#else
         slot.readPos = rp + toRead;
+#endif
 
         return static_cast<int>(toRead);
     }
@@ -219,19 +228,31 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     //  Health check & reconexión
     // ═══════════════════════════════════════════════════════════════════════════
-    bool SharedAudioMemory::healthCheck() const noexcept
+    // Helper SEH puro: no puede tener objetos C++ con destructor (C2712).
+    static bool probeSharedBlock(const volatile int* p) noexcept
     {
-        if (block_ == nullptr) return false;
-
-#ifdef _WIN32
         __try {
-            volatile int dummy = block_->header.initialized;
+            volatile int dummy = *p;
             (void)dummy;
             return true;
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             return false;
         }
+    }
+
+    bool SharedAudioMemory::healthCheck() const noexcept
+    {
+        if (block_ == nullptr) return false;
+
+#ifdef _WIN32
+        bool ok = probeSharedBlock(&block_->header.initialized);
+        if (!ok) {
+            char buf[96];
+            snprintf(buf, sizeof(buf), "[SharedAudioMemory] healthCheck SEH (block probe failed)");
+            LogHelper::writeToLog(buf);
+        }
+        return ok;
 #else
         return block_ != nullptr;
 #endif

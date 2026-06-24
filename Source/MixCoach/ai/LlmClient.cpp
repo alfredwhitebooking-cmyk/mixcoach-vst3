@@ -169,6 +169,7 @@ namespace mixcoach {
             return (inputStream != nullptr && statusCode == 200);
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("LlmClient testConnection");
             return false;
         }
     }
@@ -445,6 +446,7 @@ namespace mixcoach {
             return false;
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("LlmClient processRequestWithConfig");
             LogHelper::writeToLog("[LlmClient] Excepción desconocida");
             if (fireCallback && request.callback) {
                 juce::MessageManager::callAsync(
@@ -514,6 +516,7 @@ namespace mixcoach {
             return {};
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("LlmClient makeRequestWithConfig");
             LogHelper::writeToLog("[LlmClient] Error HTTP desconocido");
             return {};
         }
@@ -748,6 +751,7 @@ namespace mixcoach {
             return false;
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("LlmClient processStreamWithConfig");
             LogHelper::writeToLog("[LlmClient] Stream unknown exception");
             if (request.onStreamComplete) {
                 juce::MessageManager::callAsync(

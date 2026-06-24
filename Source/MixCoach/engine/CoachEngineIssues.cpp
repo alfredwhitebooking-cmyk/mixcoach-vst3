@@ -29,9 +29,9 @@ namespace mixcoach {
 
             float peak = juce::jmax(telem.peakLeft, telem.peakRight);
 
-            // === Role-aware ExpectedProfile ===
+            // === Role-aware ExpectedProfile (genre-aware) ===
             TrackRole role             = trackRoles_[info.slotIndex];
-            ExpectedProfile expProfile = getExpectedProfile(role);
+            ExpectedProfile expProfile = getExpectedProfile(role, setupGenre_);
             bool hasRole               = (role != TrackRole::Unknown);
 
             // Clipping detection

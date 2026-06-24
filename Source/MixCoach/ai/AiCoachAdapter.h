@@ -255,6 +255,16 @@ namespace mixcoach {
         /** Eventos detectados por WorkflowDetector: qué hizo el usuario recientemente. */
         [[nodiscard]] juce::String buildWorkflowEvents() const;
 
+        /** Historial de correcciones (CorrectionHistoryEntry → texto para el LLM).
+            Incluye las últimas 20 correcciones con su estado final (Applied/OverApplied/etc.).
+            Útil para que el LLM vea el historial de recomendaciones aplicadas. */
+        [[nodiscard]] juce::String buildCorrectionHistory() const;
+
+        /** Historial unificado de la mezcla (MixHistory circular buffer → texto para el LLM).
+            Agrupa cambios por pista+dominio con delta neto, mostrando la evolución
+            de cada elemento. Incluye eventos de usuario, correcciones y workflow. */
+        [[nodiscard]] juce::String buildMixHistory() const;
+
         /** Plan de acción contra referencia: gaps priorizados por dominio. */
         [[nodiscard]] juce::String buildReferenceDrivenPlan() const;
 

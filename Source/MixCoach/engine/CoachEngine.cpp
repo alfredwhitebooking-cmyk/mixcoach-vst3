@@ -6,6 +6,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
 #include <vector>
+#include <map>
 #include <cmath>
 
 namespace mixcoach {
@@ -36,7 +37,7 @@ namespace mixcoach {
         auto result = sharedData_.getTrackAudioResult(slotIndex);
         if (result.timestampUs <= 0) return TrackTelemetry{};
         TrackTelemetry telem;
-        result.timestampUs  = result.timestampUs;
+        telem.timestamp     = result.timestampUs;
         telem.peakLeft      = result.peakLeft;
         telem.peakRight     = result.peakRight;
         telem.rmsLeft       = result.rmsLeft;
@@ -786,8 +787,8 @@ namespace mixcoach {
         advice.currentCrest = telem.crestFactor;
         advice.currentLUFS  = computePerTrackLUFS(sharedData_.getTrackAudioResult(slotIndex));
 
-        // Target from role
-        auto profile         = getExpectedProfile(advice.role);
+        // Target from role (genre-aware)
+        auto profile         = getExpectedProfile(advice.role, setupGenre_);
         advice.peakTarget    = profile.peakTargetDb;
         advice.crestTarget   = profile.crestTargetDb;
         advice.peakTolerance = profile.peakTolerance;
@@ -922,8 +923,8 @@ namespace mixcoach {
             return advice;
         }
 
-        // Target from role
-        auto profile          = getExpectedProfile(advice.role);
+        // Target from role (genre-aware)
+        auto profile          = getExpectedProfile(advice.role, setupGenre_);
         advice.crestTarget    = profile.crestTargetDb;
         advice.crestTolerance = profile.crestTolerance;
 
@@ -1041,8 +1042,8 @@ namespace mixcoach {
         }
         advice.currentPeak = peakDb;
 
-        // ─── Obtener perfil esperado del rol ────────────────────────────────
-        auto profile = getExpectedProfile(role);
+        // ─── Obtener perfil esperado del rol (genre-aware) ────────────────
+        auto profile = getExpectedProfile(role, setupGenre_);
 
         // ─── Mapear 30 bandEnergies a 6 regiones espectrales ──────────────────
         for (int region = 0; region < 6; ++region) {
@@ -1433,21 +1434,140 @@ namespace mixcoach {
 
     const CoachEngine::GenreTargetProfile& CoachEngine::getGenreProfile(const juce::String& genre)
     {
-        // Static default profile
-        static const GenreTargetProfile defaultProfile = {-14.0f, // targetIntegratedLUFS
-                                                          2.0f,   // lufsTolerance
-                                                          12.0f,  // targetCrestFactor
-                                                          4.0f,   // crestTolerance
-                                                          -6.0f,  // targetHeadroomDb
-                                                          "Default mix profile",
-                                                          0.0f,
-                                                          -0.5f,
-                                                          0.0f,
-                                                          0.0f,
-                                                          0.0f,
-                                                          0.0f};
-        juce::ignoreUnused(genre);
-        return defaultProfile;
+        juce::String g = genre.trim().toLowerCase();
+
+        // ─── Trap: sub masivo, crest alto, headroom ajustado ────────────────
+        if (g == "trap") {
+            static const GenreTargetProfile profile = {
+                -8.0f,  // targetIntegratedLUFS — más fuerte (competitivo)
+                2.0f,   // lufsTolerance
+                14.0f,  // targetCrestFactor — crest alto (dinámico)
+                4.0f,   // crestTolerance
+                -4.0f,  // targetHeadroomDb — headroom más ajustado
+                "Trap: sub masivo, 808 dominante, agudos brillantes",
+                -2.0f,  // subBassOffset — más sub
+                -1.0f,  // bassOffset
+                0.0f,   // lowMidOffset
+                0.0f,   // highMidOffset
+                2.0f,   // presenceOffset — presencia extra
+                3.0f    // airOffset — aire brillante
+            };
+            return profile;
+        }
+
+        // ─── Pop: balanceado, vocal-forward, crest moderado ────────────────
+        if (g == "pop") {
+            static const GenreTargetProfile profile = {
+                -10.0f, // targetIntegratedLUFS — estándar pop
+                2.0f,   // lufsTolerance
+                12.0f,  // targetCrestFactor — crest moderado
+                4.0f,   // crestTolerance
+                -6.0f,  // targetHeadroomDb — headroom estándar
+                "Pop: vocal-forward, balance espectral equilibrado",
+                0.0f,   // subBassOffset
+                0.0f,   // bassOffset
+                0.0f,   // lowMidOffset
+                0.0f,   // highMidOffset
+                1.0f,   // presenceOffset — presencia vocal
+                1.0f    // airOffset — aire suave
+            };
+            return profile;
+        }
+
+        // ─── Rock: dinámico, guitarras presentes, crest natural ────────────
+        if (g == "rock") {
+            static const GenreTargetProfile profile = {
+                -11.0f, // targetIntegratedLUFS — rango dinámico
+                2.5f,   // lufsTolerance — más tolerancia (dinámica variable)
+                14.0f,  // targetCrestFactor — crest alto (natural)
+                5.0f,   // crestTolerance
+                -6.0f,  // targetHeadroomDb
+                "Rock: batería potente, guitarras presentes, dinámica natural",
+                0.0f,   // subBassOffset
+                1.0f,   // bassOffset — cuerpo extra
+                2.0f,   // lowMidOffset — guitarras rítmicas
+                3.0f,   // highMidOffset — guitarras líder
+                1.0f,   // presenceOffset
+                0.0f    // airOffset
+            };
+            return profile;
+        }
+
+        // ─── Reggaeton: bass dominante, bombo punchy, presencia vocal ─────
+        if (g == "reggaeton" || g == "reggaeton/latin" || g == "latin" || g == "dembow") {
+            static const GenreTargetProfile profile = {
+                -8.0f,  // targetIntegratedLUFS — fuerte, como el género
+                2.0f,   // lufsTolerance
+                13.0f,  // targetCrestFactor
+                4.0f,   // crestTolerance
+                -4.0f,  // targetHeadroomDb
+                "Reggaeton: 808 dominante, bombo punchy (mid-sub), voz clara",
+                -3.0f,  // subBassOffset — sub pronunciado
+                -1.0f,  // bassOffset
+                0.0f,   // lowMidOffset
+                0.0f,   // highMidOffset
+                2.0f,   // presenceOffset — vocal presence
+                1.0f    // airOffset
+            };
+            return profile;
+        }
+
+        // ─── Afrobeat: percusivo, cálido, bajos bailables ──────────────────
+        if (g == "afrobeat" || g == "afrobeats" || g == "world") {
+            static const GenreTargetProfile profile = {
+                -10.0f, // targetIntegratedLUFS — balanceado
+                2.5f,   // lufsTolerance
+                14.0f,  // targetCrestFactor — crest alto (percusivo)
+                5.0f,   // crestTolerance
+                -6.0f,  // targetHeadroomDb
+                "Afrobeat: percusivo, cálido, bajos con cuerpo",
+                -1.0f,  // subBassOffset
+                -1.0f,  // bassOffset — cuerpo extra
+                1.0f,   // lowMidOffset
+                1.0f,   // highMidOffset
+                1.0f,   // presenceOffset — percusión brillante
+                1.0f    // airOffset
+            };
+            return profile;
+        }
+
+        // ─── EDM: sub masivo, crest comprimido, presencia extrema ──────────
+        if (g == "edm" || g == "electronic" || g == "house" || g == "techno" || g == "trance" || g == "dubstep") {
+            static const GenreTargetProfile profile = {
+                -9.0f,  // targetIntegratedLUFS — fuerte
+                2.0f,   // lufsTolerance
+                11.0f,  // targetCrestFactor — crest bajo (comprimido)
+                4.0f,   // crestTolerance
+                -4.0f,  // targetHeadroomDb — headroom ajustado
+                "EDM: sub masivo, compresión fuerte, presencia extrema",
+                -4.0f,  // subBassOffset — sub masivo
+                -1.0f,  // bassOffset
+                0.0f,   // lowMidOffset
+                0.0f,   // highMidOffset
+                2.0f,   // presenceOffset — presencia extrema
+                3.0f    // airOffset — aire brillante
+            };
+            return profile;
+        }
+
+        // ─── Default: perfil genérico de mezcla ────────────────────────────
+        {
+            static const GenreTargetProfile defaultProfile = {
+                -14.0f, // targetIntegratedLUFS
+                2.0f,   // lufsTolerance
+                12.0f,  // targetCrestFactor
+                4.0f,   // crestTolerance
+                -6.0f,  // targetHeadroomDb
+                "Default mix profile",
+                0.0f,
+                -0.5f,
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            };
+            return defaultProfile;
+        }
     }
 
     void CoachEngine::respondWithPremium(const juce::String& text, MentorMessage::Type type)
@@ -1795,5 +1915,160 @@ namespace mixcoach {
 
         return trackAdvices_[slotIndex];
     }
+
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  REFERENCE-DRIVEN COACHING V2: computeBlendAlpha
+    //  α = sigmoid(matchScore, k=8.0, midpoint=0.5)
+    //  Determina cuánto peso darle a la referencia vs al perfil de género.
+    //  • α ≈ 0.02 (match bajo) → confiar en perfil de género
+    //  • α ≈ 0.50 (match=0.5) → 50/50 blend
+    //  • α ≈ 0.98 (match alto) → confiar en la referencia
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    float CoachEngine::computeBlendAlpha() const noexcept
+    {
+        // Si no hay referencia de audio, α = 0 (confiar 100% en perfil de género)
+        if (!referenceFingerprint_.valid)
+            return 0.0f;
+
+        // Usar spectralSimilarity de la última comparación
+        float matchScore = lastReferenceComparison_.spectralSimilarity;
+
+        // Si no hay comparación previa, usar 0.3 como default conservador
+        if (matchScore <= 0.0f)
+            matchScore = 0.3f;
+
+        // α = sigmoid(matchScore, k=8.0, midpoint=0.5)
+        // k=8.0 da transición suave pero clara:
+        //   match 0.3 → α ≈ 0.17 (mayormente género)
+        //   match 0.5 → α ≈ 0.50 (mitad y mitad)
+        //   match 0.7 → α ≈ 0.83 (mayormente referencia)
+        return sigmoid(matchScore, 8.0f, 0.5f);
+    }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MIX HISTORY — Buffer circular unificado de 50 eventos con delta detection
+// ═══════════════════════════════════════════════════════════════════════════
+
+void CoachEngine::pushMixHistory(const MixHistoryEntry& entry) noexcept
+{
+    mixHistory_[mixHistoryWriteIndex_] = entry;
+    mixHistoryWriteIndex_ = (mixHistoryWriteIndex_ + 1) % kMaxMixHistory;
+    if (mixHistoryCount_ < kMaxMixHistory)
+        mixHistoryCount_++;
+}
+
+std::vector<CoachEngine::MixHistoryEntry> CoachEngine::getMixHistory(int maxCount) const noexcept
+{
+    std::vector<MixHistoryEntry> result;
+    result.reserve(std::min(maxCount, mixHistoryCount_));
+
+    int entriesToTake = std::min(maxCount, mixHistoryCount_);
+    int startIdx = (mixHistoryWriteIndex_ - entriesToTake + kMaxMixHistory) % kMaxMixHistory;
+
+    for (int i = 0; i < entriesToTake; ++i) {
+        int idx = (startIdx + i) % kMaxMixHistory;
+        result.push_back(mixHistory_[idx]);
+    }
+
+    // Reverse to get most recent first
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
+juce::String CoachEngine::MixHistoryEntry::toShortSummary() const
+{
+    const char* srcLabel = "?";
+    switch (source) {
+        case Source::UserAction:     srcLabel = "usuario"; break;
+        case Source::Correction:     srcLabel = "correccion"; break;
+        case Source::WorkflowDetect: srcLabel = "workflow"; break;
+        case Source::ReferenceGap:   srcLabel = "referencia"; break;
+        case Source::System:         srcLabel = "sistema"; break;
+    }
+
+    juce::String s;
+    s += juce::String("[") + juce::String(srcLabel) + "] ";
+    if (trackName.isNotEmpty())
+        s += trackName + ": ";
+    s += description;
+    if (hasDelta()) {
+        s += juce::String(" (");
+        if (delta > 0) s += "+";
+        s += juce::String(delta, 1) + ")";
+    }
+    return s;
+}
+
+juce::String CoachEngine::buildMixHistoryText(int maxEntries) const
+{
+    auto entries = getMixHistory(maxEntries);
+    if (entries.empty())
+        return "[MIX HISTORY]\n  (Sin historial de cambios)\n\n";
+
+    juce::String s;
+    s += "[MIX HISTORY]\n";
+
+    // ─── Delta-aggregation: agrupar por (trackName + domain) ────────────
+    // Map: "trackName:domain" → { count, totalDelta, lastDescription }
+    struct DeltaGroup {
+        int count = 0;
+        float totalDelta = 0.0f;
+        juce::String lastDescription;
+    };
+    std::map<juce::String, DeltaGroup> groups;
+
+    for (const auto& e : entries) {
+        juce::String key = e.trackName + ":" + e.domain;
+        groups[key].count++;
+        groups[key].totalDelta += e.delta;
+        groups[key].lastDescription = e.description;
+    }
+
+    // ─── Mostrar resumen delta-aggregated ───────────────────────────────
+    for (auto it = groups.begin(); it != groups.end(); ++it) {
+        const juce::String& key = it->first;
+        const DeltaGroup& grp   = it->second;
+
+        // Split key back into trackName:domain
+        int colonPos = key.indexOf(":");
+        juce::String track  = key.substring(0, colonPos);
+        juce::String domain = key.substring(colonPos + 1);
+
+        juce::String line;
+        line += "  \u2022 ";
+        line += (track.isNotEmpty() ? track : juce::String("(global)"));
+        line += " [" + domain + "]";
+
+        if (grp.count > 0) {
+            line += ": " + juce::String(grp.count) + "x";
+            if (std::abs(grp.totalDelta) > 0.01f) {
+                line += " (net ";
+                if (grp.totalDelta > 0) line += "+";
+                line += juce::String(grp.totalDelta, 1) + ")";
+            }
+        }
+        line += "\n";
+
+        // Última descripción como detalle
+        line += "         \u2192 ";
+        line += grp.lastDescription;
+        line += "\n";
+
+        s += line;
+    }
+
+    s += "\n";
+    return s;
+}
+
+void CoachEngine::clearMixHistory() noexcept
+{
+    for (auto& entry : mixHistory_)
+        entry = MixHistoryEntry{};
+    mixHistoryCount_ = 0;
+    mixHistoryWriteIndex_ = 0;
+}
 
 } // namespace mixcoach

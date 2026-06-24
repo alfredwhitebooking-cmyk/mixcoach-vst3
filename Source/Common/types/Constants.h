@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_graphics/juce_graphics.h>
+#include <cmath>
 
 namespace mixcoach {
 
@@ -77,6 +78,56 @@ namespace mixcoach {
         {22, 30}  // Air:      bands 22-29 (8355-16458Hz)
     };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  computeSpectralBands — Cálculo dinámico de bins para cualquier sample rate
+    //
+    //  kSpectralBandBins está hardcodeado a 44100Hz / 1024-FFT. A 48000Hz o 96000Hz
+    //  el mapeo bin→frecuencia sería incorrecto. Esta función deriva los bins
+    //  desde kSpectralBandFreqs (que son frecuencias reales, sample-rate independent)
+    //  para cualquier combinación de sampleRate y fftSize.
+    //
+    //  Fórmula: bin = round(freq * fftSize / sampleRate)
+    //
+    //  @param sampleRate  Sample rate actual (ej: 44100, 48000, 96000)
+    //  @param fftSize     Tamaño de FFT (ej: 1024)
+    //  @param outBins     Array de salida [30][2] con [start_bin, end_bin)
+    // ═══════════════════════════════════════════════════════════════════════════
+    inline void computeSpectralBands(double sampleRate, int fftSize, int outBins[30][2]) noexcept
+    {
+        const int maxBin = fftSize / 2; // Nyquist bin (512 para 1024-FFT)
+        for (int i = 0; i < kNumSpectralBands; ++i) {
+            int startBin = static_cast<int>(std::round(kSpectralBandFreqs[i][0] * fftSize / sampleRate));
+            int endBin   = static_cast<int>(std::round(kSpectralBandFreqs[i][1] * fftSize / sampleRate));
+
+            // Clamp al rango válido
+            if (startBin < 0) startBin = 0;
+            if (endBin > maxBin) endBin = maxBin;
+            // Garantizar al menos 1 bin de ancho
+            if (endBin <= startBin) endBin = startBin + 1;
+            if (endBin > maxBin) endBin = maxBin;
+
+            outBins[i][0] = startBin;
+            outBins[i][1] = endBin;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  validateSpectralBands — Verifica coherencia de kSpectralBandBins vs computeSpectralBands
+    //  Retorna true si los bins computados a 44100Hz/1024-FFT coinciden con la tabla hardcodeada.
+    // ═══════════════════════════════════════════════════════════════════════════
+    inline bool validateSpectralBands44100() noexcept
+    {
+        int computed[30][2];
+        computeSpectralBands(44100.0, kFFTSize, computed);
+        for (int i = 0; i < kNumSpectralBands; ++i) {
+            if (computed[i][0] != kSpectralBandBins[i][0] ||
+                computed[i][1] != kSpectralBandBins[i][1]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Mensajes del sistema
     inline constexpr const char* kAppName    = "MixCoach";
     inline constexpr const char* kAppVersion = "1.0.0";
@@ -98,6 +149,34 @@ namespace mixcoach {
         if (index >= 0 && index < static_cast<int>(sizeof(kBusColourARGB) / sizeof(kBusColourARGB[0])))
             return juce::Colour(kBusColourARGB[index]);
         return juce::Colours::grey;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Sigmoid — Función de activación suave para blending dinámico
+    //
+    //  α = sigmoid(x, k, midpoint) = 1 / (1 + e^(-k * (x - midpoint)))
+    //
+    //  Uso en Reference-Driven Coaching v2:
+    //    α = sigmoid(matchScore, 8.0f, 0.5f)
+    //    • matchScore = 0.0 → α ≈ 0.018 (casi 0, confiar en perfil de género)
+    //    • matchScore = 0.5 → α ≈ 0.500 (transición suave, 50/50)
+    //    • matchScore = 0.7 → α ≈ 0.832 (confiar más en la referencia)
+    //    • matchScore = 1.0 → α ≈ 0.982 (casi 1, confiar en referencia)
+    //
+    //  Parámetros:
+    //    x          Valor de entrada (normalmente matchScore 0.0-1.0)
+    //    k          Steepness: qué tan abrupta es la transición (default 8.0)
+    //    midpoint   Punto de inflexión donde α = 0.5 (default 0.5)
+    //
+    //  @return Valor entre 0.0 y 1.0
+    // ═══════════════════════════════════════════════════════════════════════════
+    inline float sigmoid(float x, float k = 8.0f, float midpoint = 0.5f) noexcept
+    {
+        // Clamp para evitar overflow en exp()
+        float arg = -k * (x - midpoint);
+        if (arg > 50.0f) return 1.0f / (1.0f + std::exp(50.0f)); // ≈ 0
+        if (arg < -50.0f) return 1.0f / (1.0f + std::exp(-50.0f)); // ≈ 1
+        return 1.0f / (1.0f + std::exp(arg));
     }
 
 } // namespace mixcoach

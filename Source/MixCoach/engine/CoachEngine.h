@@ -1100,6 +1100,59 @@ namespace mixcoach {
 
         void recalcAdaptiveThresholds();
 
+        // ═══════════════════════════════════════════════════════════════════════════
+        //  MIX HISTORY — Buffer circular unificado de 50 eventos con delta detection
+        //  Unifica trackChanges + workflowEvents + correctionHistory en UNA sola
+        //  fuente de verdad para que el LLM recuerde lo que pasó.
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        /** Una entrada en el historial unificado de la mezcla.
+            Almacena qué cambió, en qué pista, por cuánto, y quién lo inició. */
+        struct MixHistoryEntry
+        {
+            int64_t timestampUs = 0;
+            int slotIndex       = -1;
+            juce::String trackName;
+            juce::String domain;       // "gain", "tonal", "dynamics", "spatial", "masking", "reference"
+            juce::String description;   // "Gain -2dB", "EQ +3dB @3kHz", "compressor ratio 4:1"
+            float beforeValue = 0.0f;   // Valor antes del cambio
+            float afterValue  = 0.0f;   // Valor después del cambio
+            float delta       = 0.0f;   // Cambio neto (after - before)
+
+            enum class Source : uint8_t
+            {
+                UserAction,     // Cambio manual del usuario (fader, EQ, mute)
+                Correction,     // Corrección del loop (Applied/OverApplied/UnderApplied)
+                WorkflowDetect, // Detectado por WorkflowDetector
+                ReferenceGap,   // Gap contra referencia que mejoró/empeoró
+                System          // Cambio del sistema (setup, cambio de fase, etc.)
+            };
+            Source source = Source::UserAction;
+
+            [[nodiscard]] juce::String toShortSummary() const;
+            [[nodiscard]] bool hasDelta() const noexcept { return std::abs(delta) > 0.01f; }
+        };
+
+        /** Empuja un evento al MixHistory circular buffer.
+            @param entry  La entrada a registrar
+            Si el buffer está lleno, sobreescribe la entrada más antigua. */
+        void pushMixHistory(const MixHistoryEntry& entry) noexcept;
+
+        /** Retorna las últimas N entradas del MixHistory.
+            @param maxCount  Máximo número de entradas a retornar
+            @return Vector con las entradas más recientes primero */
+        [[nodiscard]] std::vector<MixHistoryEntry> getMixHistory(int maxCount = 50) const noexcept;
+
+        /** Genera un resumen delta-aggregated del MixHistory para el LLM.
+            Agrupa cambios por pista+dominio y computa el delta neto.
+            Ej: "Kick: gain net -3dB (4 cambios), tonal net +2dB @Sub (2 cambios)"
+            @param maxEntries  Máximo de entradas a considerar (default = 50)
+            @return Texto formateado listo para [MIX HISTORY] section */
+        [[nodiscard]] juce::String buildMixHistoryText(int maxEntries = 50) const;
+
+        /** Limpia todo el MixHistory. */
+        void clearMixHistory() noexcept;
+
         // ─── Cooldowns ───────────────────────────────────────────────────────
         static constexpr int64_t kWarningCooldownUs      = 60 * 1000 * 1000;  // 60s entre warnings del mismo tipo
         static constexpr int64_t kTrackCooldownUs        = 120 * 1000 * 1000; // 2min entre warnings de la misma pista
@@ -1235,6 +1288,16 @@ namespace mixcoach {
         {
             if (slotIndex >= 0 && slotIndex < SlotRegistry::kMaxSlots) trackRoleConfirmed_[slotIndex] = false;
         }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        //  REFERENCE-DRIVEN COACHING V2 — Dynamic blending α = sigmoid(matchScore)
+        //  Computa el factor de mezcla α entre perfil de género y referencia.
+        //  α = sigmoid(spectralSimilarity, k=8.0, midpoint=0.5)
+        //  • α ≈ 0 (match bajo) → confiar en perfil de género
+        //  • α ≈ 0.5 (match=0.5) → 50/50 entre perfil y referencia
+        //  • α ≈ 1 (match alto) → confiar en la referencia
+        //  Usado por MixScore, AnalysisEngine y LLM para ajustar recomendaciones. */
+        [[nodiscard]] float computeBlendAlpha() const noexcept;
 
         /** Retorna el progreso de identidad agregado (para el badge 🎯 X/Y). */
         [[nodiscard]] IdentityProgress getIdentityProgress() const noexcept;
@@ -1962,6 +2025,12 @@ namespace mixcoach {
         // ═══ V8: Solo mode detection — true si al menos una pista está en solo
         // Cuando soloActive_ == true, las pistas NO solistas se tratan como muteadas
         // (misma lógica que un DAW: solo silencia al resto).
+        // ═══ MIX HISTORY — Buffer circular unificado de 50 eventos ═══
+        static constexpr int kMaxMixHistory = 50;
+        MixHistoryEntry mixHistory_[kMaxMixHistory]{};
+        int mixHistoryCount_    = 0;
+        int mixHistoryWriteIndex_ = 0;
+
         bool soloActive_{false};
 
         void updateWorkflowDetector();

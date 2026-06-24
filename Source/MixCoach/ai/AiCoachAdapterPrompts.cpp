@@ -100,6 +100,31 @@ namespace mixcoach {
                     }
                 }
 
+                // ── BLEND ALPHA: Dynamic reference vs genre profile blending ──
+                {
+                    float alpha = coachEngine_.computeBlendAlpha();
+                    prompt += "[REFERENCE BLEND ALPHA]\n";
+                    prompt += "  α = " + juce::String(alpha, 3) + " (0.0 = solo perfil de genero, 1.0 = solo referencia)\n";
+                    prompt += "  Interpretacion:\n";
+                    if (alpha < 0.2f) {
+                        prompt += "    α muy bajo → la referencia aun NO es confiable. Confia mas en el perfil de genero.\n";
+                        prompt += "    Los gaps de referencia existen, pero no son tu guia principal.\n";
+                    }
+                    else if (alpha < 0.5f) {
+                        prompt += "    α bajo-medio → la referencia empieza a ser util. Mezcla perfil de genero + ref.\n";
+                        prompt += "    Los gaps de referencia mas grandes (>3dB) son relevantes.\n";
+                    }
+                    else if (alpha < 0.8f) {
+                        prompt += "    α medio-alto → la referencia es bastante confiable.\n";
+                        prompt += "    Los gaps de referencia son tu guia principal. Los targets del perfil de genero son secundarios.\n";
+                    }
+                    else {
+                        prompt += "    α alto → la referencia ES confiable. Usala como norte absoluto.\n";
+                        prompt += "    Los gaps de referencia son tu unica guia. Targets del perfil de genero casi irrelevantes.\n";
+                    }
+                    prompt += "\n";
+                }
+
                 prompt += "[REFERENCE MATCH GUIDE]\n";
                 prompt += "Si hay datos de DifferenceProfile abajo, usalos asi:\n";
                 prompt +=
@@ -109,14 +134,18 @@ namespace mixcoach {
                     "  - DeltaRegionEnergy: diferencia por region espectral. POSITIVO = la referencia tiene MAS "
                     "energia.\n";
                 prompt += "  - GapPriorities: que regiones requieren atencion URGENTE primero.\n";
-                prompt += "Como usar la referencia:\n";
+                prompt += "Como usar la referencia (ajusta segun α arriba):\n";
                 prompt +=
-                    "  1. Si una region muestra delta >4dB -> recomienda ajustar para acercarse a la referencia\n";
+                    "  1. Si α < 0.3: los gaps de referencia son ORIENTATIVOS. El perfil de genero es mas fiable.\n";
                 prompt +=
-                    "  2. Si la referencia tiene mas sub/bajo que el mix -> el usuario necesita mas peso en esa zona\n";
-                prompt += "  3. Si hay LUFS gap >2 LUFS -> priorizar nivel general antes de balance tonal\n";
+                    "  2. Si α > 0.7: los gaps de referencia son la GUIA PRINCIPAL. Priorizalos sobre targets de genero.\n";
                 prompt +=
-                    "  4. No digas \"la referencia tiene X\". Di cosas como: \"Escucha... respecto a la ref, el bajo "
+                    "  3. Si una region muestra delta >4dB -> recomienda ajustar para acercarse a la referencia\n";
+                prompt +=
+                    "  4. Si la referencia tiene mas sub/bajo que el mix -> el usuario necesita mas peso en esa zona\n";
+                prompt += "  5. Si hay LUFS gap >2 LUFS -> priorizar nivel general antes de balance tonal\n";
+                prompt +=
+                    "  6. No digas \"la referencia tiene X\". Di cosas como: \"Escucha... respecto a la ref, el bajo "
                     "necesita un poco mas de cuerpo, unos 2dB alrededor de 120Hz\"\n";
                 prompt += "\n";
             }
@@ -145,8 +174,26 @@ namespace mixcoach {
             prompt += "  - Si dice \"Sobre-comprimido (crest X vs Y)\" → ese Y es el target real del instrumento.\n";
             prompt += "  - Si dice \"demasiado bajo (-14 dBFS, target -6.0)\" → el usuario necesita subir ~8 dB.\n";
             prompt += "  - Si NO aparece [TRACK DIAGNOSIS] (sin rol asignado), usa los datos crudos de [TRACKS].\n";
-            prompt += "  - Comienza tu respuesta por la pista con el issue mas critico (OffTarget rojo primero).\n";
             prompt += "  - 0 tokens: esta seccion ya se calculo en C++, no la recalculates.\n";
+            prompt += "\n";
+
+            // ── Priority Issues Guide (Fase 1.3) ──
+            prompt += "[PRIORITY ISSUES GUIDE]\n";
+            prompt += "[PRIORITY ISSUES] es TU FUENTE PRINCIPAL para decidir QUE atacar primero.\n";
+            prompt += "Es un ranking calculado en C++ con la formula:\n";
+            prompt += "  Score = severity × roleImportance × domainWeight × genreModifier\n";
+            prompt += "Donde:\n";
+            prompt += "  • severity: 0-1, que tan grave es el issue (CLIPPING=1.0, falta de presencia=0.4)\n";
+            prompt += "  • roleImportance: peso del rol en la mezcla (Vocal=10, Kick=9, HiHat=6, FX=3)\n";
+            prompt += "  • domainWeight: criticidad del dominio (gain=1.2, dynamics=1.0, tonal=0.9)\n";
+            prompt += "  • genreModifier: ajuste por genero (bass en Reggaeton pesa mas)\n";
+            prompt += "ASI DEBES USARLO:\n";
+            prompt += "  1. El issue #1 (🔴) es lo MAS IMPORTANTE que debe arreglar el usuario AHORA.\n";
+            prompt += "  2. Si el user pregunta \"que hago?\" -> responde basado en #1, no en tu criterio.\n";
+            prompt += "  3. Si #1 es CLIPPING en la voz -> prioriza eso antes que el balance tonal del kick.\n";
+            prompt += "  4. Si #1-3 son todos OffTarget -> menciona solo #1, no satures al usuario.\n";
+            prompt += "  5. No menciones el score numerico al usuario. Usalo solo para priorizar internamente.\n";
+            prompt += "  6. Si [PRIORITY ISSUES] esta vacio -> no hay issues criticos, felicita al usuario.\n";
             prompt += "\n";
 
             // ── Phase-Specific Priority ──
@@ -273,7 +320,33 @@ namespace mixcoach {
         prompt += "  ❌ \"Hiciste un cambio de EQ en la voz\" (el usuario lo sabe, no lo repitas literalmente)\n";
         prompt +=
             "Si es la primera vez que el usuario hace una consulta, da la bienvenida y un consejo inicial suave.\n";
-        prompt += "Si el usuario pide seguir explorando un tema, profundiza sin repetir lo que ya se dijo.\n\n";
+        prompt += "Si el usuario pide seguir explorando un tema, profundiza sin repetir lo que ya se dijo.\n";
+        prompt += "\n";
+        prompt += "[MIX HISTORY GUIDE]\n";
+        prompt += "[MIX HISTORY] muestra el historial COMPLETO de cambios en la sesion:\n";
+        prompt += "Agrupa por pista + dominio (gain, tonal, dynamics, spatial) y muestra el delta neto.\n";
+        prompt += "  - Cambios del usuario (faders, EQ, mute, pan)\n";
+        prompt += "  - Correcciones aplicadas por el loop automatico\n";
+        prompt += "  - Eventos detectados por WorkflowDetector\n";
+        prompt += "  - Eventos del sistema (setup, cambio de fase)\n";
+        prompt += "USA [MIX HISTORY] para:\n";
+        prompt += "  1. Detectar la EVOLUCION de una pista: \"La voz ha subido 4dB en total en los ultimos cambios\"\n";
+        prompt += "  2. Referenciar acciones pasadas: \"Hace un rato ajustaste el bajo, como suena ahora?\"\n";
+        prompt += "  3. No repetir recomendaciones: si ya cambio algo, no sugerir el mismo cambio otra vez.\n";
+        prompt += "  4. Entender el flujo de trabajo del usuario en lugar de solo el estado actual.\n";
+        prompt += "\n";
+        prompt += "[CORRECTION HISTORY GUIDE]\n";
+        prompt += "[CORRECTION HISTORY] muestra las correcciones verificadas RECIENTES:\n";
+        prompt += "  ✅ Applied: el usuario aplico la recomendacion correctamente. Refuerza el progreso.\n";
+        prompt += "  ⚠️ OverApplied: el usuario se paso del target. Sugiere compensar.\n";
+        prompt += "  💪 UnderApplied: el usuario ajusto pero no llego al target. Anima a continuar.\n";
+        prompt += "  ⏭ Ignored: el usuario ignoro la recomendacion. No insistas en ese tema.\n";
+        prompt += "  🔄 Superseded: fue reemplazada por otra mas urgente.\n";
+        prompt += "USA [CORRECTION HISTORY] para:\n";
+        prompt += "  1. Referenciar correcciones previas: \"La ultima vez bajaste el kick 3dB y quedo mejor\"\n";
+        prompt += "  2. Detectar patrones: si OverApplied 3 veces seguidas, sugiere cambios MAS pequenos.\n";
+        prompt += "  3. No repetir recomendaciones ignoradas: si aparece Ignored, cambia de enfoque.\n";
+        prompt += "\n";
 
         // ── Context header ──
         prompt += "[CONTEXTO ACTUAL DE LA MEZCLA]\n";
@@ -415,6 +488,33 @@ namespace mixcoach {
         ctx += buildAnalyzerInterpretations();
         ctx += buildMixScore();
 
+        // ─── 4.5. PRIORITY ISSUES — ordenados por score multidimensional ──
+        // El MixPriorityEngine calcula severity × roleWeight × domainWeight × genreModifier
+        // para cada issue y los ordena. El LLM debe atacar primero el #1.
+        {
+            auto topIssues = coachEngine_.getTopPriorityIssues(8);
+            ctx += MixPriorityEngine::scoresToLLMContext(topIssues);
+            ctx += "\n";
+        }
+
+        // ─── 4.6. BLEND ALPHA — Peso dinámico referencia vs perfil de género ──
+        if (coachEngine_.hasReferenceAudio()) {
+            float alpha = coachEngine_.computeBlendAlpha();
+            ctx += "[BLEND ALPHA]\n";
+            ctx += "  α = " + juce::String(alpha, 3)
+                   + " (0.0 = solo perfil de genero, 1.0 = solo referencia)\n";
+            ctx += "  Interpretacion: ";
+            if (alpha < 0.2f)
+                ctx += "α bajo → los gaps de referencia son orientativos. Confia en el perfil de genero.\n";
+            else if (alpha < 0.5f)
+                ctx += "α bajo-medio → mezcla perfil de genero + referencia. Gaps >3dB son relevantes.\n";
+            else if (alpha < 0.8f)
+                ctx += "α medio-alto → referencia confiable. Gaps de ref son guia principal.\n";
+            else
+                ctx += "α alto → referencia es norte absoluto. Perfil de genero es secundario.\n";
+            ctx += "\n";
+        }
+
         // ─── 5. REFERENCE-DRIVEN MODE: Progreso contra referencia ──
         if (coachEngine_.isReferenceDrivenMode() && coachEngine_.hasReferenceAudio()) {
             auto refProgress = coachEngine_.getReferenceProgress();
@@ -431,6 +531,8 @@ namespace mixcoach {
         // ─── 6. Recomendaciones activas + memoria de sesion ──
         ctx += buildRecommendations();
         ctx += buildSessionMemory();
+        ctx += buildCorrectionHistory();
+        ctx += buildMixHistory();
 
         // ─── 7. Conversacion reciente (ultimos 20 turnos) ──
         ctx += buildConversationHistory();
@@ -545,10 +647,49 @@ namespace mixcoach {
             if (refComp.isNotEmpty()) ctx += refComp;
         }
 
+        // ─── 4.5. PRIORITY ISSUES — top 5 priorizados (solo Mix Mode) ──
+        if (!coachEngine_.isMasterMode()) {
+            auto topIssues = coachEngine_.getTopPriorityIssues(5);
+            ctx += MixPriorityEngine::scoresToLLMContext(topIssues);
+            ctx += "\n";
+        }
+
+        // ─── 4.6. BLEND ALPHA — Peso dinámico referencia vs perfil de género ──
+        if (coachEngine_.hasReferenceAudio()) {
+            float alpha = coachEngine_.computeBlendAlpha();
+            ctx += "[BLEND ALPHA] α=" + juce::String(alpha, 3);
+            if (alpha < 0.2f) ctx += " (ref no confiable, prioriza perfil de genero)";
+            else if (alpha < 0.5f)
+                ctx += " (mezcla perfil+ref, gaps >3dB relevantes)";
+            else if (alpha < 0.8f)
+                ctx += " (ref confiable, gaps son guia principal)";
+            else
+                ctx += " (ref es norte absoluto)";
+            ctx += "\n\n";
+        }
+
         // ─── RECOMMENDATIONS: Recomendaciones activas ──
         {
             juce::String recs = buildRecommendations();
             if (recs.isNotEmpty()) ctx += recs;
+        }
+
+        // ─── SESSION CHANGES: Acciones recientes del usuario ──
+        {
+            juce::String mem = buildSessionMemory();
+            if (mem.isNotEmpty()) ctx += mem;
+        }
+
+        // ─── CORRECTION HISTORY: Correcciones verificadas ──
+        {
+            juce::String corr = buildCorrectionHistory();
+            if (corr.isNotEmpty()) ctx += corr;
+        }
+
+        // ─── MIX HISTORY: Buffer circular unificado de eventos ──
+        {
+            juce::String mixh = buildMixHistory();
+            if (mixh.isNotEmpty()) ctx += mixh;
         }
 
         // ─── CONVERSATION HISTORY: Ultimos 6 turnos ──
@@ -888,27 +1029,102 @@ namespace mixcoach {
         return s;
     }
 
-    // ===========================================================================
-    //  buildSessionMemory - User action history
-    // ===========================================================================
-    juce::String AiCoachAdapter::buildSessionMemory() const
-    {
-        if (sessionHistory_.empty()) return {};
+// ===========================================================================
+//  buildSessionMemory - User action history (last 15 changes)
+// ===========================================================================
+juce::String AiCoachAdapter::buildSessionMemory() const
+{
+    if (sessionHistory_.empty()) return {};
 
-        juce::String s;
-        s += "[SESSION CHANGES]\n";
-        int count = 0;
-        for (const auto& change : sessionHistory_) {
-            if (count >= 15) {
-                s += "  (+ " + juce::String(sessionHistory_.size() - 15) + " more...)\n";
-                break;
-            }
-            s += "  " + change.trackName + ": " + change.description + "\n";
-            ++count;
+    juce::String s;
+    s += "[SESSION CHANGES]\n";
+    int count = 0;
+    for (const auto& change : sessionHistory_) {
+        if (count >= 15) {
+            s += "  (+ " + juce::String(sessionHistory_.size() - 15) + " more...)\n";
+            break;
         }
-        s += "\n";
-        return s;
+        s += "  " + change.trackName + ": " + change.description + "\n";
+        ++count;
     }
+    s += "\n";
+    return s;
+}    // ===========================================================================
+    //  buildMixHistory - MixHistory circular buffer (last 50 events)
+    //  Muestra los cambios unificados de la sesión: usuario, correcciones,
+    //  workflow, referencias. Agrupado por pista+dominio con delta neto.
+    // ===========================================================================
+    juce::String AiCoachAdapter::buildMixHistory() const
+    {
+        return coachEngine_.buildMixHistoryText(50);
+    }
+
+    // ===========================================================================
+    //  buildCorrectionHistory - Correction loop history (last 20 entries)
+    //  Muestra el historial de correcciones verificadas (Applied, OverApplied,
+    //  UnderApplied, Ignored) para que el LLM pueda referenciar correcciones
+    //  previas y ajustar su tono/estrategia.
+    // ===========================================================================
+juce::String AiCoachAdapter::buildCorrectionHistory() const
+{
+    const auto& history = coachEngine_.getCorrectionHistory();
+    if (history.empty()) return {};
+
+    juce::String s;
+    s += "[CORRECTION HISTORY]\n";
+
+    // Mostrar últimas 20 correcciones, empezando por las más recientes
+    int startIdx = std::max(0, (int)history.size() - 20);
+    int count    = 0;
+
+    for (int i = (int)history.size() - 1; i >= startIdx; --i) {
+        const auto& entry = history[i];
+
+        // Emoji + status label
+        const char* statusEmoji = "\xE2\x9A\xAB"; // ⚫
+        switch (entry.finalStatus) {
+            case TrackRecommendation::Status::Applied:
+                statusEmoji = "\xE2\x9C\x85"; break;   // ✅
+            case TrackRecommendation::Status::OverApplied:
+                statusEmoji = "\xE2\x9A\xA0\xEF\xB8\x8F"; break; // ⚠️
+            case TrackRecommendation::Status::UnderApplied:
+                statusEmoji = "\xF0\x9F\x92\xAA"; break; // 💪
+            case TrackRecommendation::Status::Ignored:
+                statusEmoji = "\xE2\x8F\xAD"; break; // ⏭
+            case TrackRecommendation::Status::Superseded:
+                statusEmoji = "\xF0\x9F\x94\x84"; break; // 🔄
+            default:
+                statusEmoji = "\xE2\x9A\xAB"; break; // ⚫
+        }
+
+        // Domain icon
+        const char* domainIcon = "\xF0\x9F\x94\xB9"; // 🔹
+        switch (entry.domain) {
+            case TrackRecommendation::Domain::Gain:
+                domainIcon = "\xF0\x9F\x93\x8A"; break; // 📊
+            case TrackRecommendation::Domain::Tonal:
+                domainIcon = "\xF0\x9F\x8E\x9B\xEF\xB8\x8F"; break; // 🎛️
+            case TrackRecommendation::Domain::Dynamics:
+                domainIcon = "\xE2\x9A\xA1"; break; // ⚡
+            case TrackRecommendation::Domain::Spatial:
+                domainIcon = "\xF0\x9F\x94\xAE"; break; // 🔮
+            default:
+                break;
+        }
+
+        juce::String actionPreview = entry.action.substring(0, 60);
+        if (entry.action.length() > 60) actionPreview += "...";
+
+        s += "  " + juce::String(domainIcon) + " " + juce::String(statusEmoji) + " " + entry.trackName
+             + ": \"" + actionPreview + "\" (ratio=" + juce::String(entry.appliedRatio, 2)
+             + ") hadFollowUp=" + (entry.hadFollowUp ? "true" : "false") + "\n";
+
+        ++count;
+        if (count >= 20) break;
+    }
+    s += "\n";
+    return s;
+}
 
     // ===========================================================================
     //  buildSemanticAnalysis - Compare each track against expected profile

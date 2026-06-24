@@ -37,6 +37,7 @@ namespace mixcoach {
             info = AudioFileInfo{};
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("ReferencePanel readAudioFileInfo");
             LogHelper::writeToLog("[ReferencePanel] Excepcion desconocida al leer audio");
             info = AudioFileInfo{};
         }
@@ -255,6 +256,7 @@ namespace mixcoach {
             }
         }
         catch (...) {
+            MIXCOACH_LOG_CATCH("ReferencePanel fetchURLTitle");
         }
 
         return {};
