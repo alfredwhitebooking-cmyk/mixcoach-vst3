@@ -10,9 +10,8 @@
 #  Requisitos:
 #    - JUCE 8+ como submodule en libs/JUCE (o vía variable JUCE_PATH en GitHub Settings → Variables)
 #
-#  Nota: Se usa -G "Visual Studio 17 2022" en lugar de Ninja porque
-#  el runner windows-latest ya tiene Visual Studio pre-instalado.
-#  No se necesita setup-msbuild ni msvc-dev-cmd.
+#  Nota: windows-2022 tiene VS 2022 pre-instalado.
+#  jwlawson/setup-cmake instala CMake recent para compatibilidad con VS 17 2022.
 #
 #  ══════════════════════════════════════════════════════════════════════════
 
@@ -40,7 +39,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 30
 
     steps:
@@ -50,14 +49,11 @@ jobs:
         with:
           submodules: recursive
 
-      # ─── Paso 2: Visual Studio viene pre-instalado en windows-latest ──
-      # El runner ya tiene Visual Studio 2022. CMake lo detecta automáticamente
-      # con -G "Visual Studio 17 2022". No se necesita setup-msbuild ni msvc-dev-cmd.
-      - name: Check Visual Studio
-        shell: pwsh
-        run: |
-          Write-Host "  windows-latest runner (Visual Studio pre-instalado)" -ForegroundColor Green
-          Write-Host "  CMake detectará VS automáticamente con -G \"Visual Studio 17 2022\"" -ForegroundColor Gray
+      # ─── Paso 2: Setup CMake (versión reciente) ──────────────────────
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.30.x'
 
       # ─── Paso 3: Verificar JUCE ──────────────────────────────────────
       - name: Check JUCE availability
