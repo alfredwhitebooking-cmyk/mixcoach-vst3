@@ -72,20 +72,19 @@ jobs:
             exit 1
           }
 
-      # ─── Paso 4: Configure + Build ALL targets (mismo shell cmd) ──
+      # ─── Paso 4: Configure + Build MixCoach + tests (mismo shell cmd) ─
       # vcvarsall.bat preservado para que MSBuild funcione.
-      # Construimos VST3 + todos los test targets aquí.
-      - name: Configure + Build all
+      - name: Configure + Build
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DJUCE_ROOT=%JUCE_ROOT%
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-          cmake --build build --config %BUILD_TYPE% -- /nologo /maxcpucount:2
+          cmake --build build --config %BUILD_TYPE% --target MixCoach_VST3 --target TestCoachEngine --target TestPhaseManager --target TestSemanticComparator --target TestTrackFeedCore --target TestSmoothValue --target TestExperienceLevel --target TestAudioAnalyzer --target TestAudioDescriptors --target TestSlotRegistry --target TestSharedMemory --target TestIPCIntegration --target TestLUFSMeter --target TestSpectrographComponent --target TestVectorscopeComponent --target TestPhaseCorrelationMeter --target TestStereoWidthMeter --target TestReferenceAudioPlayer --target TestMixPriorityEngine --target TestStress50Tracks --target TestStress128Slots -- /nologo /maxcpucount:2
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
-      # ─── Paso 5: Run tests (build ya completo desde paso 4) ─────
+      # ─── Paso 5: Run tests ─────────────────────────────────────────
       - name: Run tests
         shell: pwsh
         run: |
@@ -123,38 +122,26 @@ jobs:
           Write-Host "  Pass: $pass  |  Fail: $fail  |  Skip: $skip" -ForegroundColor $(if($fail -gt 0){"Red"}else{"Green"})
           if ($fail -gt 0) { exit 1 }
 
-
-      # ─── Paso 6: Build stress tests (serial, evita crash CL.exe) ────
-      # Fallback serial: quick_validate.ps1 construye tests en paralelo,
-      # pero TestStress50Tracks crash CL.exe en paralelo en algunos runners.
-      - name: Build stress tests (serial)
-        shell: cmd
-        run: |
-          cmake --build build --config %BUILD_TYPE% --target TestStress50Tracks --target TestStress128Slots -- /maxcpucount:1 /nologo
-          if %ERRORLEVEL% EQU 0 (echo Stress tests built successfully) else (echo Warning: stress tests issue)
-
-      # ─── Paso 7: Run stress tests ────────────────────────────────────
+      # ─── Paso 6: Run stress tests (ya build desde paso 4) ────────────
       - name: Run stress tests
         shell: pwsh
         run: |
-          $stressTests = @("TestStress50Tracks", "TestStress128Slots")
+          $tests = @("TestStress50Tracks", "TestStress128Slots")
           $failed = 0
-          foreach ($test in $stressTests) {
+          foreach ($test in $tests) {
             $exe = "build/tests/Release/$test.exe"
             if (-not (Test-Path $exe)) { $exe = "build/tests/$test.exe" }
             if (-not (Test-Path $exe)) {
-              Write-Host "  ⚠️  $test.exe not found (SKIP)" -ForegroundColor Yellow
+              Write-Host "  [?] $test.exe not found (SKIP)" -ForegroundColor Yellow
               continue
             }
             Write-Host "  Running $test..." -ForegroundColor Gray
             $output = & $exe 2>&1
             if ($LASTEXITCODE -eq 0) {
-              Write-Host "  ✅ $test PASSED" -ForegroundColor Green
+              Write-Host "  [PASS] $test" -ForegroundColor Green
             } else {
-              Write-Host "  ❌ $test FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
-              $output | Select-String "FAIL|failed|Results" | Select-Object -First 3 | ForEach-Object {
-                Write-Host "    $_" -ForegroundColor Red
-              }
+              Write-Host "  [FAIL] $test" -ForegroundColor Red
+              $output | Select-String "FAIL|failed|Results" | Select-Object -First 3 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
               $failed++
             }
           }
