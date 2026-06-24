@@ -83,7 +83,7 @@ jobs:
 
       # ─── Paso 5: Build + tests via quick_validate.ps1 ──────────────
       - name: Build and test (quick_validate.ps1)
-        shell: cmd
+        shell: pwsh
         run: |
           .\scripts\quick_validate.ps1 -Target All
           if ($LASTEXITCODE -eq 0) {
@@ -104,7 +104,7 @@ jobs:
 
       # ─── Paso 7: Run stress tests ────────────────────────────────────
       - name: Run stress tests
-        shell: cmd
+        shell: pwsh
         run: |
           $stressTests = @("TestStress50Tracks", "TestStress128Slots")
           $failed = 0
