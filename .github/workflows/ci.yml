@@ -2,18 +2,13 @@
 #  MixCoach CI — GitHub Actions
 #
 #  Ejecuta en cada push y PR:
-#    1. Configura CMake con Visual Studio 17 2022 (MSBuild)
+#    1. Configura CMake con Ninja + MSVC
 #    2. Build de MixCoach_VST3 + Messenger_VST3
 #    3. Pattern validator + tests via quick_validate.ps1
 #    4. Upload de artefactos VST3 en master
 #
-#  Requisitos para activar:
-#    - Repositorio en GitHub
-#    - JUCE 8+ disponible en el runner
-#      Opción A: Agregar JUCE como submodule en libs/JUCE (recomendado)
-#      Opción B: Setear variable JUCE_PATH en GitHub: Settings → Variables
-#      Opción C: Self-hosted runner con JUCE instalado
-#    - El workflow usa -DJUCE_ROOT=<path> para configurar CMake
+#  Requisitos:
+#    - JUCE 8+ como submodule en libs/JUCE
 #
 #  ══════════════════════════════════════════════════════════════════════════
 
@@ -51,11 +46,9 @@ jobs:
         with:
           submodules: recursive
 
-      # ─── Paso 2: Configurar MSVC (Visual Studio 2022) ───────────────
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-        with:
-          vs-version: 17
+      # ─── Paso 2: Configurar MSVC compiler environment ─────────────
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
       # ─── Paso 3: Verificar JUCE ──────────────────────────────────────
       - name: Check JUCE availability
@@ -74,13 +67,12 @@ jobs:
             exit 1
           }
 
-      # ─── Paso 4: Configurar CMake ────────────────────────────────────
+      # ─── Paso 4: Configurar CMake (Ninja + MSVC) ────────────────────
       - name: Configure CMake
         shell: pwsh
         run: |
           cmake -S . -B build `
-            -G "Visual Studio 17 2022" `
-            -A x64 `
+            -G Ninja `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
             -DJUCE_ROOT="${{ env.JUCE_ROOT }}"
 
@@ -96,17 +88,12 @@ jobs:
             exit $LASTEXITCODE
           }
 
-      # ─── Paso 6: Build stress tests (serial, evita crash CL.exe) ────
-      # Fallback serial: quick_validate.ps1 construye tests en paralelo,
-      # pero TestStress50Tracks crash CL.exe en paralelo en algunos runners.
-      # Si el build paralelo del paso 5 ya tuvo exito, este paso es
-      # redundante pero inofensivo (~2-3 min extra).
-      - name: Build stress tests (serial)
+      # ─── Paso 6: Build stress tests ─────────────────────────────────
+      - name: Build stress tests
         shell: pwsh
         run: |
           cmake --build build --config ${{ env.BUILD_TYPE }} `
-            --target TestStress50Tracks --target TestStress128Slots `
-            -- /maxcpucount:1 /nologo
+            --target TestStress50Tracks --target TestStress128Slots
           if ($LASTEXITCODE -eq 0) {
             Write-Host "  ✅ Stress tests built successfully" -ForegroundColor Green
           } else {
