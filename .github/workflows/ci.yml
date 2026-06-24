@@ -8,7 +8,7 @@
 #    4. Upload de artefactos VST3 en master
 #
 #  Requisitos:
-#    - JUCE 8+ como submodule en libs/JUCE
+#    - JUCE 8+ como submodule en libs/JUCE (o vía variable JUCE_PATH en GitHub Settings → Variables)
 #
 #  ══════════════════════════════════════════════════════════════════════════
 
