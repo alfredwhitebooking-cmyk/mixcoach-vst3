@@ -15,7 +15,7 @@ namespace mixcoach {
     //  128 slots × 4096 samples × 4 bytes = ~2 MB.
     // ═══════════════════════════════════════════════════════════════════════════
 
-    static constexpr int kAudioBufferSize = 4096; // ~85ms @ 48kHz
+    static constexpr int kAudioBufferSize = 8192; // ~85ms @ 96kHz (G1: duplicado de 4096 para 96kHz)
     static constexpr int kMaxAudioSlots   = 128;
 
 #pragma pack(push, 8)

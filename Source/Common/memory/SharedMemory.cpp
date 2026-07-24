@@ -1,6 +1,9 @@
 #include "SharedMemory.h"
 #include "../types/LogHelper.h"
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <immintrin.h> // _mm_pause()
 
 #ifdef _WIN32
@@ -10,6 +13,130 @@
 #endif
 
 namespace mixcoach {
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Helpers de sesión
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    juce::String generateSessionGUID()
+    {
+        // Genera un GUID único: "MixCoach_<timestamp-hex>_<random16-hex>"
+        uint32_t now = juce::Time::getMillisecondCounter();
+        uint32_t rng = static_cast<uint32_t>(now ^ (uint32_t)(intptr_t)&now); // entropy from stack
+        rng ^= static_cast<uint32_t>(rand() ^ (uint32_t)time(nullptr));
+
+        char buf[48];
+        snprintf(buf, sizeof(buf), "MixCoach_%08X%08X", now, rng);
+        return juce::String(buf);
+    }
+
+    juce::String makeSlotShmName(const juce::String& guid)
+    {
+        return "Local\\" + guid + "_Slots";
+    }
+
+    juce::String makeAudioShmName(const juce::String& guid)
+    {
+        return "Local\\" + guid + "_Audio";
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SessionDiscovery — Negociación de GUID entre procesos
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    SessionDiscovery::SessionDiscovery() = default;
+
+    SessionDiscovery::~SessionDiscovery()
+    {
+        if (block_ != nullptr) {
+            block_->active = 0; // Señal de muerte
+        }
+        closeDiscovery();
+    }
+
+    bool SessionDiscovery::initialize()
+    {
+        if (block_ != nullptr) return true;
+
+#ifdef _WIN32
+        fileMapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE,
+                                          nullptr,
+                                          PAGE_READWRITE,
+                                          0,
+                                          sizeof(SessionDiscoveryBlock),
+                                          juce::String(kSessionDiscoveryName).toWideCharPointer());
+
+        if (fileMapping_ == nullptr) {
+            LogHelper::writeToLog("[SessionDiscovery] ERROR: Cannot create/open discovery shm (error "
+                                  + juce::String(GetLastError()) + ")");
+            return false;
+        }
+
+        fileView_ = MapViewOfFile(fileMapping_, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SessionDiscoveryBlock));
+
+        if (fileView_ == nullptr) {
+            LogHelper::writeToLog("[SessionDiscovery] ERROR: MapViewOfFile failed (" + juce::String(GetLastError())
+                                  + ")");
+            CloseHandle(fileMapping_);
+            fileMapping_ = nullptr;
+            return false;
+        }
+
+        block_ = static_cast<SessionDiscoveryBlock*>(fileView_);
+        LogHelper::writeToLog("[SessionDiscovery] Inicializado");
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    void SessionDiscovery::publishGUID(const juce::String& guid)
+    {
+        if (block_ == nullptr) return;
+
+        memset(block_->sessionGUID, 0, sizeof(block_->sessionGUID));
+        juce::String guidStr = guid.substring(0, sizeof(block_->sessionGUID) - 1);
+        strncpy(block_->sessionGUID, guidStr.toRawUTF8(), sizeof(block_->sessionGUID) - 1);
+        block_->timestampMs = juce::Time::getMillisecondCounter();
+        block_->active      = 1;
+        block_->protocolVer = 1;
+
+        LogHelper::writeToLog("[SessionDiscovery] GUID publicado: " + guid);
+    }
+
+    juce::String SessionDiscovery::readGUID() const
+    {
+        if (block_ == nullptr || block_->active == 0) return {};
+
+        // Leer el GUID del bloque compartido
+        juce::String guid = juce::String::fromUTF8(block_->sessionGUID);
+        if (guid.isNotEmpty()) return guid;
+
+        return {};
+    }
+
+    void SessionDiscovery::closeSession()
+    {
+        if (block_ != nullptr) {
+            block_->active = 0;
+            memset(block_->sessionGUID, 0, sizeof(block_->sessionGUID));
+        }
+    }
+
+    void SessionDiscovery::closeDiscovery()
+    {
+#ifdef _WIN32
+        if (fileView_ != nullptr) {
+            UnmapViewOfFile(fileView_);
+            fileView_ = nullptr;
+        }
+        if (fileMapping_ != nullptr) {
+            CloseHandle(fileMapping_);
+            fileMapping_ = nullptr;
+        }
+        block_ = nullptr;
+#endif
+    }
 
     // ─── Constructor / Destructor ───────────────────────────────────────────────
 
@@ -271,6 +398,39 @@ namespace mixcoach {
 #endif
 
         releaseLock();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  V10: Heartbeat lock-free (sin spinlock)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void SharedMemoryManager::writeHeartbeat(int slotIndex, int64_t timestampMs) noexcept
+    {
+        if (block_ == nullptr || slotIndex < 0 || slotIndex >= kSharedMaxSlots) return;
+
+#ifdef _WIN32
+        // ═══ Lock-free: sin spinlock, sin advertencia de timeout ═══════════
+        // InterlockedExchange64 es atómico en x64 y no bloquea.
+        // El audio thread de Messenger llama esto ~94 veces/segundo/pista.
+        InterlockedExchange64(reinterpret_cast<volatile LONG64*>(&block_->slotHeartbeats[slotIndex]),
+                              static_cast<LONG64>(timestampMs));
+#else
+        block_->slotHeartbeats[slotIndex] = timestampMs;
+#endif
+    }
+
+    int64_t SharedMemoryManager::readHeartbeat(int slotIndex) const noexcept
+    {
+        if (block_ == nullptr || slotIndex < 0 || slotIndex >= kSharedMaxSlots) return 0;
+
+#ifdef _WIN32
+        // Lectura atómica con barrera de memoria (acquire semantics)
+        return InterlockedCompareExchange64(
+            reinterpret_cast<volatile LONG64*>(const_cast<int64_t*>(&block_->slotHeartbeats[slotIndex])),
+            0, 0);
+#else
+        return block_->slotHeartbeats[slotIndex];
+#endif
     }
 
     // Helper SEH puro: no puede tener objetos C++ con destructor (C2712).

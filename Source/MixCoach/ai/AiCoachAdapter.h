@@ -14,6 +14,7 @@
 #include "../UI/MessengerListComponent.h"
 #include "LlmClient.h"
 #include "LlmChatSession.h"
+#include "../engine/LlmCommandInterpreter.h"
 
 namespace mixcoach {
 
@@ -117,13 +118,35 @@ namespace mixcoach {
         [[nodiscard]] juce::String buildSessionHistoryString() const;
 
         // ═══ User Profile — Patrones del ingeniero entre sesiones ═══════
+        // ═══ V2: Expanded with tone preference, favorite plugins, behavior profile ═══
         struct UserProfile
         {
-            juce::String engineerName; // Nombre del ingeniero (artístico o real)
+            // ─── Identidad ────────────────────────────────────────────────
+            juce::String engineerName;   // Nombre del ingeniero (artístico o real)
+            juce::String preferredTone;  // "motivador", "técnico", "directo", "paciente", etc.
+
+            // ─── Estadísticas de sesión ───────────────────────────────────
             int sessionCount = 0;
+            juce::String lastSessionDate;  // "2026-07-22"
             juce::String mostUsedGenre;
             std::map<juce::String, int> genreFrequency;
 
+            // ─── Preferencias ─────────────────────────────────────────────
+            juce::StringArray favoriteGenres;  // ["reggaeton", "trap"]
+            juce::StringArray favoritePlugins; // ["FabFilter Pro-Q 3", "ValhallaRoom"]
+            int experienceLevel = 2;            // 1=Novice, 2=Intermediate, 3=Advanced, 4=Expert
+
+            // ─── Perfil de comportamiento ─────────────────────────────────
+            struct BehaviorProfile
+            {
+                bool tendsToOverApply = false;     // Tiende a aplicar demasiado gain/corte
+                bool tendsToIgnore = false;         // Tiende a ignorar recomendaciones
+                float averageCorrectionTime = 0.0f; // Tiempo promedio entre recomendación y verify (segundos)
+                int totalSessions = 0;
+            };
+            BehaviorProfile behavior;
+
+            // ═══ V1 legacy fields (spectral tendency, habits) ════════════
             // Spectral tendency per band (Sub→Air): positive = consistently boosts, negative = cuts
             float tendencyPerBand[6] = {};
             int tendencyCounts[6]    = {}; // How many data points per band
@@ -145,7 +168,27 @@ namespace mixcoach {
 
             std::vector<Habit> habits;
 
-            juce::String lastSessionSummary; // Brief text about what happened in last session
+            // ═══ Session History — datos de la última sesión ═══════════════════
+            /** Duración de la última sesión en segundos. */
+            int lastSessionDurationS = 0;
+            /** Problemas detectados en la última sesión. */
+            int lastSessionProblemsDetected = 0;
+            /** Problemas resueltos (verificados) en la última sesión. */
+            int lastSessionProblemsResolved = 0;
+            /** % de match vs referencia al final de la última sesión (0-100). */
+            int lastSessionReferenceMatchPct = 0;
+            /** Mix Score global al final de la última sesión (0-100). */
+            int lastSessionMixScore = 0;
+            /** Género trabajado en la última sesión. */
+            juce::String lastSessionGenre;
+            /** Brief text about what happened in last session */
+            juce::String lastSessionSummary;
+            /** Acumulado: total de problemas resueltos a lo largo de todas las sesiones. */
+            int totalProblemsResolved = 0;
+            /** Acumulado: mejor match % alcanzado en cualquier sesión. */
+            int bestReferenceMatchPct = 0;
+
+            bool walkthroughCompleted = false; // Tutorial 4.3: true si ya vieron el walkthrough
             bool valid = false;
 
             /** Builds a formatted string for injection into the LLM system prompt. */
@@ -171,8 +214,32 @@ namespace mixcoach {
         /** Setea el nombre del ingeniero (artístico o real). */
         void setEngineerName(const juce::String& name) noexcept { userProfile_.engineerName = name; }
 
+        /** Marca el walkthrough como completado (Tutorial 4.3). */
+        void setWalkthroughCompleted(bool completed = true) noexcept { userProfile_.walkthroughCompleted = completed; }
+
+        /** Retorna true si el walkthrough ya fue completado. */
+        [[nodiscard]] bool isWalkthroughCompleted() const noexcept { return userProfile_.walkthroughCompleted; }
+
         /** Retorna el nombre del ingeniero. */
         [[nodiscard]] const juce::String& getEngineerName() const noexcept { return userProfile_.engineerName; }
+
+        // ═══ Session snapshots — historial multi-sesión ═══════════════
+        /** Snapshot de una sesión anterior para el historial de progreso. */
+        struct SessionSnapshotEntry
+        {
+            int64_t timestampUs = 0;
+            int sessionNumber = 0;
+            int mixScoreOverall = 0;
+            int domainGain = 0;
+            int domainTonal = 0;
+            int domainDynamics = 0;
+            int domainSpatial = 0;
+            int domainReference = 0;
+        };
+
+        /** Carga el historial de sesiones desde el archivo persistente.
+            Retorna vector vacío si no hay historial o hay error de lectura. */
+        static std::vector<SessionSnapshotEntry> loadSessionHistory();
 
         /** Ruta por defecto: Documents/MixCoach_Logs/session_memory.json */
         static juce::File getDefaultSessionFile();
@@ -226,12 +293,48 @@ namespace mixcoach {
             return llmClient_ != nullptr && llmClient_->isAvailable();
         }
 
+        /** Configura el intérprete de comandos UI del LLM.
+            NavigationShell lo cablea para ejecutar comandos JSON (switch_tab, highlight_track, etc.). */
+        void setCommandInterpreter(LlmCommandInterpreter* interp) noexcept { commandInterpreter_ = interp; }
+
         /** Activa/desactiva el modo LLM híbrido. */
         void setLlmEnabled(bool enabled) noexcept { llmEnabled_ = enabled; }
 
         [[nodiscard]] bool isLlmEnabled() const noexcept { return llmEnabled_; }
 
+        // ═══ Priority Adherence Stats — tracking de consistencia del LLM ═══
+        struct PriorityAdherenceStats
+        {
+            int totalChecks        = 0;
+            int adherentResponses  = 0;
+            int retriesTriggered   = 0;
+
+            [[nodiscard]] float adherenceRate() const noexcept
+            {
+                return totalChecks > 0 ? static_cast<float>(adherentResponses) / static_cast<float>(totalChecks) : 1.0f;
+            }
+
+            void reset() noexcept
+            {
+                totalChecks = 0;
+                adherentResponses = 0;
+                retriesTriggered = 0;
+            }
+        };
+
+        /** Retorna las estadísticas de adherencia a prioridad. */
+        [[nodiscard]] const PriorityAdherenceStats& getPriorityAdherenceStats() const noexcept
+        {
+            return priorityAdherenceStats_;
+        }
+
     private:
+        /** Valida que la respuesta del LLM mencione el issue #1 de [PRIORITY ISSUES].
+            @param response     Respuesta del LLM a validar
+            @param topIssues    Lista de issues priorizados (de CoachEngine::getTopPriorityIssues)
+            @return true si la respuesta menciona el issue #1 o no hay issues activos */
+        [[nodiscard]] static bool validatePriorityAdherence(const juce::String& response,
+                                                             const std::vector<PriorityScore>& topIssues) noexcept;
         // ─── Bloques del prompt ───────────────────────────────────────────────
         [[nodiscard]] juce::String buildMasterSummary() const;
         [[nodiscard]] juce::String buildTrackSummaries() const;
@@ -336,11 +439,18 @@ namespace mixcoach {
 
         static constexpr int kMaxConversationTurns = 50; // Máximo de turnos de conversación guardados
         static constexpr int kMaxSessionChanges    = 50;
-        static constexpr float kEnergyThreshold    = -70.0f; // dB — umbral para considerar banda activa
+        static constexpr float kEnergyThreshold    = -70.0f;
+        static constexpr int kMaxPriorityRetries   = 1;    // Máximo re-envíos por mensaje si el LLM ignora issue #1
+
+        // ═══ Priority Adherence tracking ═════════════════════════════════
+        PriorityAdherenceStats priorityAdherenceStats_; // dB — umbral para considerar banda activa
 
         // ═══ User Profile storage ═══════════════════════════════════════
         UserProfile userProfile_;
         int initialProfileSessionCount_ = -1; // -1 = unset, snapshot al cargar para incrementar solo 1x por sesion;
+
+        // ═══ LlmCommandInterpreter — procesa comandos JSON del LLM (switch_tab, highlight_track, etc.) ═══
+        LlmCommandInterpreter* commandInterpreter_{nullptr};
 
         juce::String dawName_ = "FL Studio"; // DAW por defecto (el usuario usa FL Studio). Se puede cambiar via
                                              // setHostName() o cuando getHostProperties() esté disponible.

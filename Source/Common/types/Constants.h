@@ -102,9 +102,18 @@ namespace mixcoach {
             // Clamp al rango válido
             if (startBin < 0) startBin = 0;
             if (endBin > maxBin) endBin = maxBin;
+            // Si el start se pasó del maxBin, clamparlo también
+            if (startBin > maxBin) startBin = maxBin;
             // Garantizar al menos 1 bin de ancho
-            if (endBin <= startBin) endBin = startBin + 1;
-            if (endBin > maxBin) endBin = maxBin;
+            if (endBin <= startBin) {
+                endBin = startBin + 1;
+                // Si start está en el último bin, retroceder start para hacer espacio
+                if (endBin > maxBin) {
+                    endBin = maxBin;
+                    startBin = maxBin - 1;
+                    if (startBin < 0) { startBin = 0; endBin = 1; }
+                }
+            }
 
             outBins[i][0] = startBin;
             outBins[i][1] = endBin;

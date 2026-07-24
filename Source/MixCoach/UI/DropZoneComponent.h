@@ -24,10 +24,11 @@ namespace mixcoach {
         void paint(juce::Graphics& g) override;
         void resized() override;
 
-        void mouseEnter(const juce::MouseEvent&) override;
-        void mouseExit(const juce::MouseEvent&) override;
+    void mouseEnter(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
+    void mouseDown(const juce::MouseEvent& e) override;
 
-        // FileDragAndDropTarget
+    // FileDragAndDropTarget
         bool isInterestedInFileDrag(const juce::StringArray&) override { return true; }
 
         void fileDragEnter(const juce::StringArray&, int, int) override;
@@ -52,6 +53,12 @@ namespace mixcoach {
         // Section bounds for paint (Audio left / Link right)
         juce::Rectangle<int> audioSectionBounds_;
         juce::Rectangle<int> linkSectionBounds_;
+
+        // FileChooser con unique_ptr para evitar memory leak
+        // Antes: new FileChooser sin delete si el usuario cancela el diálogo.
+        // Ahora: unique_ptr se limpia automáticamente al destruir el componente
+        // o al asignar un nuevo FileChooser.
+        std::unique_ptr<juce::FileChooser> fileChooser_;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DropZoneComponent)
     };

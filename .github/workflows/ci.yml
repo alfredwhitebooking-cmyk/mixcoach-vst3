@@ -81,72 +81,42 @@ jobs:
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DJUCE_ROOT=%JUCE_ROOT%
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-          cmake --build build --config %BUILD_TYPE% --target MixCoach_VST3 --target TestCoachEngine --target TestPhaseManager --target TestSemanticComparator --target TestTrackFeedCore --target TestSmoothValue --target TestExperienceLevel --target TestAudioAnalyzer --target TestAudioDescriptors --target TestSlotRegistry --target TestSharedMemory --target TestIPCIntegration --target TestLUFSMeter --target TestSpectralBands --target TestSpectrographComponent --target TestVectorscopeComponent --target TestPhaseCorrelationMeter --target TestStereoWidthMeter --target TestReferenceAudioPlayer --target TestMixPriorityEngine --target TestExpectedProfiles --target TestGenreProfiles --target TestChatBubbleHeight --target TestDifferenceProfile --target TestMixScore --target TestStress50Tracks --target TestStress128Slots -- /nologo /maxcpucount:2
+          cmake --build build --config %BUILD_TYPE% --target MixCoach_VST3 --target Messenger_VST3 --target TestSmoothValue --target TestLlmCommandInterpreter --target TestCoachingNarrativeTypes --target TestPhaseManager --target TestSlotRegistry --target TestNavigationAnimations --target TestCoachingGuideWidget --target TestChatInlineCards --target TestMixBotComponent --target TestMixMapDetailPanel --target TestSessionTransitions --target TestCoachEngine --target TestTrackFeedCore --target TestTrackAnalyzerCore --target TestSemanticComparator --target TestMixPriorityEngine --target TestMixScore --target TestExpectedProfiles --target TestGenreProfiles --target TestDifferenceProfile --target TestExperienceLevel --target TestReferenceAudioPlayer --target TestAudioAnalyzer --target TestAudioDescriptors --target TestLUFSMeter --target TestSpectralBands --target TestSpectrographComponent --target TestVectorscopeComponent --target TestPhaseCorrelationMeter --target TestStereoWidthMeter --target TestSharedMemory --target TestIPCIntegration --target TestStress50Tracks --target TestStress128Slots -- /nologo /maxcpucount:2
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
-      # ─── Paso 5: Run tests ─────────────────────────────────────────
-      - name: Run tests
+      # ─── Paso 4b: Run linters ────────────────────────────────────────
+      - name: Validate REGLAS DE USO vs REGLAS DE ORO consistency
         shell: pwsh
         run: |
-          $testExeDir = "build/tests/Release"
-          if (-not (Test-Path $testExeDir)) { $testExeDir = "build/tests" }
-          $tests = @(
-            "TestCoachEngine","TestPhaseManager","TestSemanticComparator",
-            "TestTrackFeedCore","TestSmoothValue","TestExperienceLevel",
-            "TestAudioAnalyzer","TestAudioDescriptors","TestSlotRegistry",
-            "TestSharedMemory","TestIPCIntegration","TestLUFSMeter",
-            "TestSpectralBands","TestSpectrographComponent","TestVectorscopeComponent",
-            "TestPhaseCorrelationMeter","TestStereoWidthMeter",
-            "TestReferenceAudioPlayer","TestMixPriorityEngine",
-            "TestExpectedProfiles","TestGenreProfiles","TestChatBubbleHeight","TestDifferenceProfile","TestMixScore"
-          )
-          $pass = 0; $fail = 0; $skip = 0
-          foreach ($test in $tests) {
-            $exe = Join-Path $testExeDir "$test.exe"
-            if (-not (Test-Path $exe)) {
-              Write-Host "  [?] $test.exe not found (SKIP)" -ForegroundColor Yellow
-              $skip++
-              continue
-            }
-            Write-Host "  Running $test..." -ForegroundColor Gray
-            $output = & $exe 2>&1
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "  [PASS] $test" -ForegroundColor Green
-              $pass++
-            } else {
-              Write-Host "  [FAIL] $test" -ForegroundColor Red
-              $output | Select-String "FAIL|failed|Error|Results" | Select-Object -First 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
-              $fail++
-            }
+          Write-Host "Running rules consistency linter..." -ForegroundColor Cyan
+          $output = python scripts/validate_rules_consistency.py 2>&1
+          Write-Host $output
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "[FAIL] Rules consistency check failed" -ForegroundColor Red
+            exit 1
           }
-          Write-Host ""
-          Write-Host "  Pass: $pass  |  Fail: $fail  |  Skip: $skip" -ForegroundColor $(if($fail -gt 0){"Red"}else{"Green"})
-          if ($fail -gt 0) { exit 1 }
+          Write-Host "[PASS] Rules are consistent" -ForegroundColor Green
 
-      # ─── Paso 6: Run stress tests (ya build desde paso 4) ────────────
-      - name: Run stress tests
+      - name: Validate all 14 actions have CUANDO USAR section
         shell: pwsh
         run: |
-          $tests = @("TestStress50Tracks", "TestStress128Slots")
-          $failed = 0
-          foreach ($test in $tests) {
-            $exe = "build/tests/Release/$test.exe"
-            if (-not (Test-Path $exe)) { $exe = "build/tests/$test.exe" }
-            if (-not (Test-Path $exe)) {
-              Write-Host "  [?] $test.exe not found (SKIP)" -ForegroundColor Yellow
-              continue
-            }
-            Write-Host "  Running $test..." -ForegroundColor Gray
-            $output = & $exe 2>&1
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "  [PASS] $test" -ForegroundColor Green
-            } else {
-              Write-Host "  [FAIL] $test" -ForegroundColor Red
-              $output | Select-String "FAIL|failed|Results" | Select-Object -First 3 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
-              $failed++
-            }
+          Write-Host "Running action coverage linter..." -ForegroundColor Cyan
+          $output = python scripts/validate_action_coverage.py 2>&1
+          Write-Host $output
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "[FAIL] Action coverage check failed" -ForegroundColor Red
+            exit 1
           }
-          if ($failed -gt 0) { exit 1 }
+          Write-Host "[PASS] All actions have CUANDO USAR sections" -ForegroundColor Green
+
+      # ─── Paso 5: Run ALL tests via run_all_tests.ps1 🔬 ─────────────
+      # El script usa Start-Process (evita bugs de cmd.exe → bash),
+      # mide tiempos de ejecución, parsea resultados de cada test,
+      # y reporta en formato GitHub Actions (::error::, ::notice::).
+      - name: Run all tests
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/run_all_tests.ps1 -TestDir build/tests/Release -GHActions
 
       # ─── Paso 8: Upload VST3 artifacts (solo en master) ────────────
       - name: Upload VST3 artifacts

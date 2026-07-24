@@ -84,14 +84,14 @@ namespace mixcoach {
         // NOTA: refPanel_.onSectionSeekTo ya está cableado internamente en
         // CoachChatComponent.cpp a través de onSeekReference, que se conecta
         // al método de arriba (coachPanel_->onSeekReference).
-        addTab(juce::CharPointer_UTF8("\xF0\x9F\x8E\x9B  Mix Coach"),
+        addTab("Mix Coach",
                MixCoachTheme::bgPanel(),
                coachPanel_.get(),
                false,
                0);
 
         // ─── Tab 2: Professional Metering ──────────────────────────────────────
-        addTab(juce::CharPointer_UTF8("\xF0\x9F\x93\x8A  Metering"),
+        addTab(juce::CharPointer_UTF8("[CHART]  Metering"),
                MixCoachTheme::bgPanel(),
                analyzersPanel_.get(),
                false,

@@ -65,17 +65,21 @@ namespace mixcoach {
 
     float SpectrographComponent::freqToX(float freqHz, juce::Rectangle<float> plot) const noexcept
     {
-        freqHz           = juce::jlimit(0.0f, kMaxFreq, freqHz);
-        const float norm = (freqHz <= kMinFreq) ? 0.0f : std::log2(freqHz / kMinFreq) / std::log2(kMaxFreq / kMinFreq);
+        const float loFreq = displayMinFreq_;
+        const float hiFreq = displayMaxFreq_;
+        freqHz             = juce::jlimit(loFreq, hiFreq, freqHz);
+        const float norm   = (freqHz <= loFreq) ? 0.0f : std::log2(freqHz / loFreq) / std::log2(hiFreq / loFreq);
         return plot.getX() + norm * plot.getWidth();
     }
 
     float SpectrographComponent::xToFreq(float x, juce::Rectangle<float> plot) const noexcept
     {
-        const float norm = juce::jmap(x, plot.getX(), plot.getRight(), 0.0f, 1.0f);
-        if (norm <= 0.0f) return kMinFreq;
-        if (norm >= 1.0f) return kMaxFreq;
-        return kMinFreq * std::pow(kMaxFreq / kMinFreq, norm);
+        const float loFreq = displayMinFreq_;
+        const float hiFreq = displayMaxFreq_;
+        const float norm   = juce::jmap(x, plot.getX(), plot.getRight(), 0.0f, 1.0f);
+        if (norm <= 0.0f) return loFreq;
+        if (norm >= 1.0f) return hiFreq;
+        return loFreq * std::pow(hiFreq / loFreq, norm);
     }
 
     float SpectrographComponent::displayNormToDb(float norm) const noexcept

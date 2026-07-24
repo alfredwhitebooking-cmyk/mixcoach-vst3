@@ -52,7 +52,7 @@ namespace mixcoach {
 
         LogHelper::writeToLog("[CoachEngine] Recomendacion creada: slot=" + juce::String(slotIndex) + " \"" + trackName
                               + "\" " + action + " [" + verifyMetric + "] " + "(" + juce::String(beforeValue, 1)
-                              + " dB \xE2\x86\x92 " + juce::String(expectedAfter, 1) + " dB)");
+                              + " dB [RIGHT] " + juce::String(expectedAfter, 1) + " dB)");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -264,8 +264,43 @@ namespace mixcoach {
                 feedbackMsg = "\xF0\x9F\x91\x80 Veo que ajustaste **" + rec.trackName + "** "
                         + juce::String(actualApplied, 1) + " dB — "
                         + "justo lo que suger\xC3\xAD. "
-                        + "El balance se nota mejor. "
-                        + "\xBF""Quieres seguir ajustando algo m\xC3\xA1s?";
+                        + "El balance se nota mejor. ";
+
+                // ═══ Añadir sugerencias de plugins 3-tier para la corrección ═══
+                {
+                    juce::String domainName = TrackRecommendation::domainName(rec.domain);
+                    juce::String issueType;
+                    if (domainName == "gain") {
+                        issueType = (rec.beforeValue > -0.5f) ? "CLIPPING" : "GAIN";
+                    } else if (domainName == "tonal") {
+                        issueType = "EXCESS";
+                    } else if (domainName == "dynamics") {
+                        // Inferir dirección desde el delta
+                        issueType = (rec.delta > 0) ? "TOO_DYNAMIC" : "OVERCOMPRESSED";
+                    } else if (domainName == "spatial") {
+                        issueType = "PHASE";
+                    }
+                    // Usar la frecuencia de la recomendación si aplica (EQ)
+                    float freq = (rec.frequencyHz > 0.0f) ? rec.frequencyHz : 0.0f;
+                    auto sugBlock = buildPluginSuggestionBlock(domainName, issueType,
+                                                                rec.trackName, rec.delta, freq);
+                    if (sugBlock.isNotEmpty()) {
+                        feedbackMsg += sugBlock;
+                        // ═══ Gap #2: Registrar plugins sugeridos en el reporte final ═══
+                        // Extraer nombres de plugins desde el provider
+                        auto problemType = PluginSuggestionsProvider::domainToProblemType(domainName, issueType);
+                        if (problemType != ProblemType::Unknown) {
+                            auto pluginSugs = pluginSuggestionsProvider_.getSuggestionsForProblem(
+                                problemType, rec.delta, freq);
+                            for (const auto& ps : pluginSugs) {
+                                if (ps.isValid() && ps.plugin != nullptr)
+                                    recordAppliedPlugin(ps.plugin->name);
+                            }
+                        }
+                    }
+                }
+
+                feedbackMsg += "\n\xF0\x9F\x92\xA1 Si quieres m\xC3\xA1s opciones, dime \"qu\xC3\xA9 plugin uso para " + rec.trackName + "?\"";
 
                 // Registrar en sesión
                 if (trackChangeCallback_)
@@ -528,11 +563,19 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     const TrackRecommendation* CoachEngine::getMostUrgentRecommendation() const
     {
-        const TrackRecommendation* best = nullptr;
-        int bestPriority                = 999;
+        return const_cast<CoachEngine*>(this)->getMostUrgentRecommendation();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  getMostUrgentRecommendation — Non-const overload
+    // ═══════════════════════════════════════════════════════════════════════════
+    TrackRecommendation* CoachEngine::getMostUrgentRecommendation() noexcept
+    {
+        TrackRecommendation* best = nullptr;
+        int bestPriority          = 999;
 
         for (int i = 0; i < SlotRegistry::kMaxSlots; ++i) {
-            const auto& rec = recommendations_[i];
+            auto& rec = recommendations_[i];
             if (rec.slotIndex != i || rec.status != TrackRecommendation::Status::Pending) continue;
 
             // Determinar prioridad
@@ -568,6 +611,22 @@ namespace mixcoach {
         }
 
         return best;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  recordAppliedPlugin — Registra un nombre de plugin para el reporte final
+    //  Evita duplicados (mismo plugin no aparece 2 veces en el reporte).
+    // ═══════════════════════════════════════════════════════════════════════════
+    void CoachEngine::recordAppliedPlugin(const juce::String& pluginName)
+    {
+        if (pluginName.isEmpty()) return;
+        juce::String lower = pluginName.trim().toLowerCase();
+        for (const auto& existing : appliedPluginNames_) {
+            if (existing.toLowerCase() == lower) return; // ya registrado
+        }
+        appliedPluginNames_.add(pluginName.trim());
+        pluginNamesDirty_ = true;
+        LogHelper::writeToLog("[CoachEngine] Plugin aplicado registrado: " + pluginName);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

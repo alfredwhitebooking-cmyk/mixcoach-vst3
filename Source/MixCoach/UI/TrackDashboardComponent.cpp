@@ -102,7 +102,7 @@ namespace mixcoach {
             g.setColour(MixCoachTheme::textMuted());
             g.drawText(
                 juce::CharPointer_UTF8(
-                    "\xF0\x9F\x94\x8C Conecta los plugins Messenger en tus pistas para ver datos agregados aqui."),
+                    "[PLUGIN] Conecta los plugins Messenger en tus pistas para ver datos agregados aqui."),
                 getLocalBounds(),
                 juce::Justification::centred);
             return;
@@ -136,7 +136,7 @@ namespace mixcoach {
         g.setColour(MixCoachTheme::accent());
         auto titleArea = bounds.removeFromLeft(140);
         g.drawText(
-            juce::CharPointer_UTF8("\xF0\x9F\x93\x8A MASTER DASHBOARD"), titleArea, juce::Justification::centredLeft);
+            juce::CharPointer_UTF8("[CHART] MASTER DASHBOARD"), titleArea, juce::Justification::centredLeft);
 
         // ─── Track count badge ─────────────────────────────────────────────────
         auto badgeArea = bounds.removeFromLeft(60).reduced(0, 3);
@@ -156,7 +156,7 @@ namespace mixcoach {
             g.fillRoundedRectangle(clipArea.toFloat(), 6.0f);
             g.setColour(MixCoachTheme::meterRed());
             g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-            g.drawText(juce::String(juce::CharPointer_UTF8("\xE2\x9A\xA0 ")) + juce::String(clipCount) + " clipping",
+            g.drawText(juce::String(juce::CharPointer_UTF8("[WARN] ")) + juce::String(clipCount) + " clipping",
                        clipArea,
                        juce::Justification::centred);
         }
@@ -166,7 +166,7 @@ namespace mixcoach {
             g.fillRoundedRectangle(warnArea.toFloat(), 6.0f);
             g.setColour(MixCoachTheme::warning());
             g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-            g.drawText(juce::String(juce::CharPointer_UTF8("\xE2\x97\x89 ")) + juce::String(warnCount) + " near limit",
+            g.drawText(juce::String(juce::CharPointer_UTF8("[ACTIVE] ")) + juce::String(warnCount) + " near limit",
                        warnArea,
                        juce::Justification::centred);
         }
@@ -176,7 +176,7 @@ namespace mixcoach {
             g.fillRoundedRectangle(okArea.toFloat(), 6.0f);
             g.setColour(MixCoachTheme::success());
             g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-            g.drawText(juce::CharPointer_UTF8("\xE2\x9C\x93 All clear"), okArea, juce::Justification::centred);
+            g.drawText(juce::CharPointer_UTF8("[OK] All clear"), okArea, juce::Justification::centred);
         }
 
         // ─── Signal count ──────────────────────────────────────────────────────

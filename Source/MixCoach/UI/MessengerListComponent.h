@@ -17,6 +17,11 @@ namespace mixcoach {
     class TrackFeedCore;
 } // namespace mixcoach
 
+// Forward declaration for track highlight support
+namespace mixcoach {
+    struct TrackHighlightInfo;
+} // namespace mixcoach
+
 #include "../engine/TrackRole.h"
 
 namespace mixcoach {
@@ -201,6 +206,15 @@ namespace mixcoach {
             healthFilter_ = HealthFilter::None;
             repaint();
         }
+
+        /** Resalta tracks por sus TrackHighlightInfo (desde PanelRevealManager).
+            Selecciona el primer track de la lista si existe. */
+        void setTrackHighlights(const std::vector<TrackHighlightInfo>& highlights);
+
+        /** Retorna los bounds de una tarjeta de pista en coordenadas locales,
+            útil para FocusOverlay o tooltip positioning.
+            Retorna vacío si el slot no está visible. */
+        [[nodiscard]] juce::Rectangle<int> getTrackCardBounds(int slotIndex) const;
 
         /** Retorna true si un slot debe ser filtrado según el healthFilter activo. */
         [[nodiscard]] bool isFilteredOut(int slotIndex) const;

@@ -119,6 +119,27 @@ namespace mixcoach {
             return TrackAudioResult{};
         }
 
+        // ─── Session GUID isolation ───────────────────────────────────────
+        /** Inicializa shared memory con nombres derivados de un GUID de sesión.
+            MixCoach (brain) llama esto después de generar/publicar un GUID.
+            Messenger (sensor) llama esto después de leer el GUID del discovery.
+            El GUID-derived name aísla los datos de esta sesión de otras instancias
+            del DAW, evitando que dos proyectos compartan slots.
+
+            Formato de nombres:
+              Slots:  Local\MixCoach_<GUID>_Slots
+              Audio:  Local\MixCoach_<GUID>_Audio
+
+            Retorna true si la inicialización fue exitosa (creó/abrió ambos mappings).
+            Retorna false si falló (el otro plugin aún no creó la memoria). */
+        bool initializeSession(const juce::String& sessionGUID, bool isBrain = true);
+
+        /** Retorna el GUID de sesión activo, o vacío si no hay sesión. */
+        [[nodiscard]] const juce::String& getSessionGUID() const noexcept { return sessionGUID_; }
+
+        /** Retorna true si se está usando una sesión con GUID (no el nombre fijo legacy). */
+        [[nodiscard]] bool hasSessionGUID() const noexcept { return sessionGUID_.isNotEmpty(); }
+
         // ─── Reintentar inicialización de shared memory ───────────────────────
         bool retryInitSharedMemory();
 
@@ -213,6 +234,8 @@ namespace mixcoach {
         std::array<MentorMessage, kMaxMessages> messages_{};
         int messageCount_{0};
         bool shmInitialized_{false};
+        // GUID de sesión activo (vacío = modo legacy con nombres fijos)
+        juce::String sessionGUID_;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SharedData)
     };

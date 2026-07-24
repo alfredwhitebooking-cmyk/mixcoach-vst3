@@ -24,9 +24,9 @@ namespace mixcoach {
 
             juce::String msg;
             msg +=
-                "\xF0\x9F\x91\x8B **\xC2\xA1"
+                "[WAVE] **\xC2\xA1"
                 "Bienvenido de nuevo, "
-                + engineerName_ + "!** \xF0\x9F\x94\xA5\n\n";
+                + engineerName_ + "!** [FIRE]\n\n";
             msg += "Tu setup anterior est\xC3\xA1 listo. Cu\xC3\xA9ntame qu\xC3\xA9 vamos a hacer hoy...";
 
             respondWithPremium(msg, MentorMessage::Type::Question);
@@ -106,12 +106,15 @@ namespace mixcoach {
 
         // Confirmar y avanzar a modo (tono natural)
         respondWithPremium(
-        "\xF0\x9F\x91\x8B **\xC2\xA1" "Encantado de conocerte, " + cleanName + "!** \xF0\x9F\x8E\xA7\n\n"
+        "[WAVE] **\xC2\xA1" "Encantado de conocerte, " + cleanName + "!** \xF0\x9F\x8E\xA7\n\n"
         "Ahora dime, \xC2\xBFqu\xC3\xA9 vamos a hacer hoy?\n\n"
-        "  \xF0\x9F\x8E\x9B **MIX** — Mezclar una canci\xC3\xB3n desde cero\n"
+        "  [COACH] **MIX** — Mezclar una canci\xC3\xB3n desde cero\n"
         "  \xF0\x9F\x8E\xB1 **MASTER** — Masterizar una mezcla terminada\n\n"
         "\xC2\xBFSuelta **\"Mix\"** o **\"Master\"** y empezamos.",
         MentorMessage::Type::Question);
+
+        // Evitar que el timer dispare startSetupDialogue() duplicado
+        setupGreetingSent_ = true;
 
         // Avanzar al siguiente paso del setup
         setupStep_ = SetupStep::WaitingForMode;
@@ -144,7 +147,7 @@ namespace mixcoach {
             setupStep_ = SetupStep::WaitingForGenre;
 
             respondWithPremium(
-                "\xF0\x9F\x8E\x9B **\xC2\xA1Modo MIX activado!** \xF0\x9F\x94\xA5\n\n"
+                "[COACH] **\xC2\xA1Modo MIX activado!** [FIRE]\n\n"
                 "Perfecto. \xC2\xBFQu\xC3\xA9 g\xC3\xA9nero vamos a mezclar?\n"
                 "Dime el estilo y me adapto a \xC3\xA9l:\n"
                 "Por ejemplo: **House, Reggaeton, Pop, Rock, Hip-Hop, Trap, EDM...**\n"
@@ -166,11 +169,11 @@ namespace mixcoach {
                 "\xF0\x9F\x8E\xB1 **Modo MASTER activado!**\n\n"
                 "\xC2\xBF"
                 "Cu\xC3\xA1l es el destino de esta masterizaci\xC3\xB3n?\n\n"
-                "  \xF0\x9F\x8E\xB5 **Spotify**         — -14 LUFS, -1 dBTP\n"
+                "  [MUSIC] **Spotify**         — -14 LUFS, -1 dBTP\n"
                 "  \xF0\x9F\x8D\x8E **Apple Music**      — -16 LUFS, -1 dBTP\n"
-                "  \xF0\x9F\x96\xA5 **YouTube**          — -14 LUFS, -1 dBTP\n"
+                "  [THUMBS] **YouTube**          — -14 LUFS, -1 dBTP\n"
                 "  \xF0\x9F\x92\x83 **Club**             — -8 LUFS, -0.5 dBTP\n"
-                "  \xF0\x9F\x93\xA1 **Streaming General** — -14 LUFS (gen\xC3\xA9rico)\n"
+                "  [INFO] **Streaming General** — -14 LUFS (gen\xC3\xA9rico)\n"
                 "  \xF0\x9F\x92\xBF **CD**               — -9 LUFS, -0.1 dBTP\n\n"
                 "Escribe el nombre del destino, o **/skip** para Streaming General.",
                 MentorMessage::Type::Question);
@@ -199,8 +202,8 @@ namespace mixcoach {
             dest = MasterDestination::AppleMusic;
         else if (lower.contains("youtube") || lower.contains("yt"))
             dest = MasterDestination::YouTube;
-        else if (lower.contains("club") || lower.contains("club") || lower.contains("dj"))
-            dest = MasterDestination::Club;
+        else if (lower.contains("soundcloud") || lower.contains("sc") || lower.contains("dj"))
+            dest = MasterDestination::SoundCloud;
         else if (lower.contains("cd") || lower.contains("disco"))
             dest = MasterDestination::CD;
         else
@@ -213,11 +216,11 @@ namespace mixcoach {
         juce::String msg;
         msg += "\xF0\x9F\x93\x8C **Destino seleccionado: " + juce::String(destinationNames[static_cast<int>(dest)])
                + "**\n\n";
-        msg += "\xF0\x9F\x8E\xAF Target LUFS: **" + juce::String(::mixcoach::getDestinationLUFS(dest), 1) + "**\n";
-        msg += "\xE2\x9A\xA0 True Peak m\xC3\xA1ximo: **" + juce::String(::mixcoach::getDestinationTruePeak(dest), 1)
+        msg += "[TARGET] Target LUFS: **" + juce::String(::mixcoach::getDestinationLUFS(dest), 1) + "**\n";
+        msg += "[WARN] True Peak m\xC3\xA1ximo: **" + juce::String(::mixcoach::getDestinationTruePeak(dest), 1)
                + " dBTP**\n\n";
         msg += "Masterizar\xC3\xA9 con estos targets en mente.\n\n";
-        msg += "\xE2\x9C\x85 **Confirma:**\n";
+        msg += "[DONE] **Confirma:**\n";
         msg += "  - Escribe **\"si\"** o **\"confirmar\"** para continuar\n";
         msg += "  - Escribe el nombre de otro destino para cambiarlo\n";
         msg += "  - Escribe **\"/skip\"** para saltar el setup\n";
@@ -256,24 +259,24 @@ namespace mixcoach {
         setupGenre_ = detectedGenre;
         setupStep_  = SetupStep::WaitingForConfirm;
 
-        juce::String scanResult = scanAndShowResults();
+        // Mapear nombres de género comunes a keys del sistema para características
+        juce::String genreKey = detectedGenre.toLowerCase();
+        if (genreKey == "hip-hop" || genreKey == "hip hop" || genreKey == "rap") genreKey = "hiphop";
+        else if (genreKey == "rnb" || genreKey == "r&b" || genreKey == "soul") genreKey = "rnb";
+        else if (genreKey == "electrónica" || genreKey == "electronica" || genreKey == "electronic") genreKey = "edm";
 
-        juce::String msg;
-        msg +=
-            "\xF0\x9F\x93\x8C **G\xC3\xA9"
-            "nero detectado: "
-            + setupGenre_ + "**\n\n";
-        msg += scanResult;
-        msg +=
-            "\n\n\xE2\x9C\x85 **Confirma que est\xC3\xA1"
-            " correcto:**\n";
-        msg += "  - Escribe **\"si\"** o **\"confirmar\"** para continuar\n";
-        msg +=
-            "  - Escribe el nombre del g\xC3\xA9"
-            "nero para cambiarlo\n";
-        msg += "  - Escribe **\"/skip\"** para saltar el setup\n";
+        // Mensaje combinado: características + confirmación + scan
+        juce::String fullMsg;
+        fullMsg += "\xF0\x9F\x93\x8C **G\xC3\xA9nero detectado: " + setupGenre_ + "**\n\n";
+        fullMsg += getGenreCharacteristicsMessage(genreKey, setupGenre_);
+        fullMsg += "\n\n---\n\n";
+        fullMsg += "[DONE] **Confirma que es correcto:**\n";
+        fullMsg += "  - Escribe **\"si\"** o **\"confirmar\"** para continuar\n";
+        fullMsg += "  - Escribe el nombre del g\xC3\xA9nero para cambiarlo\n";
+        fullMsg += "  - Escribe **\"/skip\"** para saltar el setup\n\n";
+        fullMsg += scanAndShowResults();
 
-        respondWithPremium(msg, MentorMessage::Type::Question);
+        respondWithPremium(fullMsg, MentorMessage::Type::Question);
     }
 
     juce::String CoachEngine::scanAndShowResults() const
@@ -282,7 +285,7 @@ namespace mixcoach {
         int active     = registry.activeCount();
 
         juce::String result;
-        result += "\xF0\x9F\x8E\x9B **Pistas detectadas: " + juce::String(active) + "**\n";
+        result += "[COACH] **Pistas detectadas: " + juce::String(active) + "**\n";
 
         if (active == 0) {
             result +=
@@ -314,11 +317,11 @@ namespace mixcoach {
         });
 
         result += "\n";
-        if (unnamedCount > 0) result += "  \xE2\x9A\xA0 " + juce::String(unnamedCount) + " pista(s) sin nombre\n";
+        if (unnamedCount > 0) result += "  [WARN] " + juce::String(unnamedCount) + " pista(s) sin nombre\n";
         if (bussedCount < active)
             result += "  \xF0\x9F\x92\xA1 " + juce::String(active - bussedCount) + " pista(s) sin bus asignado\n";
 
-        if (active >= 3) result += "\n\xF0\x9F\x93\x8A Ya tienes suficientes pistas para empezar a mezclar!";
+        if (active >= 3) result += "\n[CHART] Ya tienes suficientes pistas para empezar a mezclar!";
 
         return result;
     }
@@ -332,18 +335,18 @@ namespace mixcoach {
         auto newPhase = phaseManager_.getCurrentPhase();
 
         juce::String msg;
-        msg += "\xE2\x9C\x85 **Setup completado!**\n\n";
+        msg += "[DONE] **Setup completado!**\n\n";
 
         if (isMixMode()) {
             msg += "\xF0\x9F\x93\x8C **Modo:** MIX\n";
-            msg += "\xF0\x9F\x8E\xB5 **G\xC3\xA9nero:** " + setupGenre_ + "\n";
+            msg += "[MUSIC] **G\xC3\xA9nero:** " + setupGenre_ + "\n";
         }
         else {
             msg += "\xF0\x9F\x93\x8C **Modo:** MASTER\n";
-            msg += "\xF0\x9F\x8E\xAF **Destino:** "
+            msg += "[TARGET] **Destino:** "
                    + juce::String(destinationNames[static_cast<int>(masterDestination_)]) + "\n";
             msg +=
-                "\xF0\x9F\x8E\x9B"
+                "[COACH]"
                 " Target: "
                 + juce::String(getDestinationLUFS(), 1) + " LUFS\n";
         }
@@ -407,7 +410,7 @@ namespace mixcoach {
 
         juce::String msg;
         msg += "\xF0\x9F\x97\xBA **" + juce::String(phaseLabel) + "**\n";
-        msg += "\xF0\x9F\x93\x8B " + juce::String(phaseManager_.phaseDescription(phase)) + "\n\n";
+        msg += "[NOTES] " + juce::String(phaseManager_.phaseDescription(phase)) + "\n\n";
 
         // ═══ MASTER MODE: guía específica de masterización ══════════════════
         if (isMasterMode()) {
@@ -422,7 +425,7 @@ namespace mixcoach {
 
                 case MentorPhase::GainStaging:
                     msg +=
-                        "\xF0\x9F\x93\x8A **An\xC3\xA1lisis de Niveles del Master**\n\n"
+                        "[CHART] **An\xC3\xA1lisis de Niveles del Master**\n\n"
                         "Voy a medir:\n"
                         "  \xE2\x80\xA2 LUFS Integrado vs target\n"
                         "  \xE2\x80\xA2 True Peak y crest factor\n"
@@ -432,7 +435,7 @@ namespace mixcoach {
 
                 case MentorPhase::Balance:
                     msg +=
-                        "\xF0\x9F\x93\x8A **Balance Espectral del Master**\n\n"
+                        "[CHART] **Balance Espectral del Master**\n\n"
                         "Voy a medir:\n"
                         "  \xE2\x80\xA2 Balance espectral (sub, bajos, medios, agudos)\n"
                         "  \xE2\x80\xA2 Correlaci\xC3\xB3n est\xC3\xA9reo\n"
@@ -442,7 +445,7 @@ namespace mixcoach {
 
                 case MentorPhase::EQ:
                     msg +=
-                        "\xF0\x9F\x94\xA7 **EQ de Master**\n\n"
+                        "[CHANGE] **EQ de Master**\n\n"
                         "Basado en el an\xC3\xA1lisis, voy a sugerir:\n"
                         "  \xE2\x80\xA2 EQ sutiles para balance espectral\n"
                         "  \xE2\x80\xA2 Ajustes de presencia y aire\n\n"
@@ -451,7 +454,7 @@ namespace mixcoach {
 
                 case MentorPhase::Compresion:
                     msg +=
-                        "\xF0\x9F\x94\xA7 **Compresi\xC3\xB3n y Din\xC3\xA1mica**\n\n"
+                        "[CHANGE] **Compresi\xC3\xB3n y Din\xC3\xA1mica**\n\n"
                         "Voy a sugerir:\n"
                         "  \xE2\x80\xA2 Compresi\xC3\xB3n suave si es necesario\n"
                         "  \xE2\x80\xA2 Limitaci\xC3\xB3n para alcanzar el LUFS target\n"
@@ -483,13 +486,13 @@ namespace mixcoach {
                         msg += "Referencia cargada: **" + getReferenceName() + "**\n"
                            "Comparando a volumen real contra tu master.\n";
                     }
-                    msg += "\n\xF0\x9F\x8F\x86 **Veredicto Final**\n"
+                    msg += "\n[TROPHY] **Veredicto Final**\n"
                        "Vamos a verificar:\n"
-                       "  1. \xE2\x9C\x85 LUFS dentro del target\n"
-                       "  2. \xE2\x9C\x85 Sin clipping ni distorsi\xC3\xB3n\n"
-                       "  3. \xE2\x9C\x85 Balance espectral s\xC3\xB3lido\n"
-                       "  4. \xE2\x9C\x85 Compatibilidad mono\n"
-                       "  5. \xE2\x9C\x85 Ready para " + juce::String(destinationNames[static_cast<int>(masterDestination_)]) + "\n\n"
+                       "  1. [DONE] LUFS dentro del target\n"
+                       "  2. [DONE] Sin clipping ni distorsi\xC3\xB3n\n"
+                       "  3. [DONE] Balance espectral s\xC3\xB3lido\n"
+                       "  4. [DONE] Compatibilidad mono\n"
+                       "  5. [DONE] Ready para " + juce::String(destinationNames[static_cast<int>(masterDestination_)]) + "\n\n"
                        "Usa **/analisis** para el veredicto completo.";
                     break;
                 }
@@ -506,7 +509,7 @@ namespace mixcoach {
             switch (phase) {
                 case MentorPhase::Organizacion:
                     msg +=
-                        "\xF0\x9F\x8E\xAF **Acci\xC3\xB3n:** Activa **Messengers** en cada pista, asigna **rol**, "
+                        "[TARGET] **Acci\xC3\xB3n:** Activa **Messengers** en cada pista, asigna **rol**, "
                         "**bus y nombre**:\n"
                         "  1. **Rol**: Kick, Snare, Voz, Bajo, etc.\n"
                         "  2. **Bus**: Drums, Bass, Guitars, Keys o Vocals\n"
@@ -517,7 +520,7 @@ namespace mixcoach {
 
                 case MentorPhase::GainStaging:
                     msg +=
-                        "\xF0\x9F\x94\x84 **Gain Staging**\n\n"
+                        "[PHASE] **Gain Staging**\n\n"
                         "Ajusta niveles para headroom saludable:\n"
                         "  \xE2\x80\xA2 Cada pista: picos entre -18 dB y -12 dB\n"
                         "  \xE2\x80\xA2 Master: picos entre -12 dB y -6 dB\n"
@@ -528,7 +531,7 @@ namespace mixcoach {
 
                 case MentorPhase::Balance:
                     msg +=
-                        "\xF0\x9F\x8E\x9B **Balance de Mezcla**\n\n"
+                        "[COACH] **Balance de Mezcla**\n\n"
                         "Usa faders y paneo para balancear niveles relativos:\n"
                         "  \xE2\x80\xA2 El kick y bajo son la base — que se sientan s\xC3\xB3lidos\n"
                         "  \xE2\x80\xA2 La voz debe estar encima, no enterrada\n"
@@ -540,7 +543,7 @@ namespace mixcoach {
 
                 case MentorPhase::EQ:
                     msg +=
-                        "\xF0\x9F\x8E\x9B **Balance Tonal (EQ)**\n\n"
+                        "[COACH] **Balance Tonal (EQ)**\n\n"
                         "Moldea el sonido de cada pista:\n"
                         "  \xE2\x80\xA2 HPF en pistas que no necesitan graves\n"
                         "  \xE2\x80\xA2 Carving espectral para que cada instrumento tenga su espacio\n"
@@ -551,7 +554,7 @@ namespace mixcoach {
 
                 case MentorPhase::Compresion:
                     msg +=
-                        "\xF0\x9F\x94\xA7 **Compresi\xC3\xB3n y Din\xC3\xA1mica**\n\n"
+                        "[CHANGE] **Compresi\xC3\xB3n y Din\xC3\xA1mica**\n\n"
                         "Controla la din\xC3\xA1mica de cada pista:\n"
                         "  \xE2\x80\xA2 Compresores para nivelar picos y dar consistencia\n"
                         "  \xE2\x80\xA2 Saturaci\xC3\xB3n para calidez y arm\xC3\xB3nicos\n"
@@ -572,7 +575,7 @@ namespace mixcoach {
 
                 case MentorPhase::MasterCheck: {
                     bool hasRef = hasReference();
-                    msg += "\xF0\x9F\x8F\x86 **Master Check**\n\n";
+                    msg += "[TROPHY] **Master Check**\n\n";
                     if (!hasRef) {
                         msg +=
                             "Carga una referencia para comparar:\n"
@@ -586,7 +589,7 @@ namespace mixcoach {
                            "Comparando balance y espectro.\n";
                     }
                     msg +=
-                        "\n\xF0\x9F\x93\x8B Verificaci\xC3\xB3n Final:\n"
+                        "\n[NOTES] Verificaci\xC3\xB3n Final:\n"
                         "  \xE2\x80\xA2 El balance es similar a la referencia?\n"
                         "  \xE2\x80\xA2 Sale bien en mono?\n"
                         "  \xE2\x80\xA2 Headroom adecuado para masterizar?\n\n"

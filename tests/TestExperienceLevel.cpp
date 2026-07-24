@@ -95,31 +95,31 @@ static void test_experience_level_name()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Test 2: Novice — Prompt debe contener lenguaje simple y alentador
+//  Test 2: Novice — Prompt debe contener lenguaje simple y alentador (ESPAÑOL)
 // ═══════════════════════════════════════════════════════════════════════════
 static void test_novice_prompt_content()
 {
-    std::printf("\n── Test 2: Novice Level Prompt ──\n");
+    std::printf("\n── Test 2: Novice Level Prompt (ES) ──\n");
     std::fflush(stdout);
 
     TestHarness h;
     h.adapter.setExperienceLevel(AiCoachAdapter::ExperienceLevel::Novice);
     auto prompt = h.adapter.buildSystemPrompt();
 
-    TEST("Novice prompt contains 'USER EXPERIENCE LEVEL'",
-         prompt.contains("USER EXPERIENCE LEVEL"));
+    TEST("Novice prompt contains 'NIVEL DEL USUARIO'",
+         prompt.contains("NIVEL DEL USUARIO"));
     TEST("Novice prompt contains level name 'Novice'",
          prompt.contains("Novice"));
-    TEST("Novice prompt encourages simple explanations",
-         prompt.contains("Explain audio concepts simply") ||
-         prompt.contains("simply"));
-    TEST("Novice prompt mentions step-by-step",
-         prompt.contains("step-by-step"));
-    TEST("Novice prompt says 'Be encouraging'",
-         prompt.contains("encouraging") || prompt.contains("Encouraging") ||
-         prompt.contains("patient"));
-    TEST("Novice prompt says 'Avoid jargon'",
-         prompt.contains("Avoid jargon") || prompt.contains("jargon"));
+    TEST("Novice prompt mentions '[NIVEL:'",
+         prompt.contains("[NIVEL:"));
+    TEST("Novice prompt says 'Ensena con paciencia'",
+         prompt.contains("Ensena con paciencia"));
+    TEST("Novice prompt says 'Explica el concepto'",
+         prompt.contains("Explica el concepto"));
+    TEST("Novice prompt says 'Celebra los avances'",
+         prompt.contains("Celebra los avances"));
+    TEST("Novice prompt says 'Evita jerga'",
+         prompt.contains("Evita jerga"));
     TEST("Novice prompt does NOT mention 'pre-ring'",
          !prompt.contains("pre-ring"));
     TEST("Novice prompt does NOT say 'no fluff'",
@@ -127,11 +127,11 @@ static void test_novice_prompt_content()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Test 3: Intermediate — Prompt debe usar terminologia estandar
+//  Test 3: Intermediate — Prompt debe usar terminologia estandar (ESPAÑOL)
 // ═══════════════════════════════════════════════════════════════════════════
 static void test_intermediate_prompt_content()
 {
-    std::printf("\n── Test 3: Intermediate Level Prompt ──\n");
+    std::printf("\n── Test 3: Intermediate Level Prompt (ES) ──\n");
     std::fflush(stdout);
 
     TestHarness h;
@@ -140,12 +140,14 @@ static void test_intermediate_prompt_content()
 
     TEST("Intermediate prompt contains level name 'Intermediate'",
          prompt.contains("Intermediate"));
-    TEST("Intermediate prompt mentions 'threshold'",
-         prompt.contains("threshold"));
-    TEST("Intermediate prompt mentions 'ratio'",
-         prompt.contains("ratio"));
-    TEST("Intermediate prompt mentions 'Q, attack'",
-         prompt.contains("Q, attack"));
+    TEST("Intermediate prompt contains '[NIVEL:'",
+         prompt.contains("[NIVEL:"));
+    TEST("Intermediate prompt says 'terminologia estandar'",
+         prompt.contains("terminologia estandar"));
+    TEST("Intermediate prompt says 'Da frecuencias y ratios exactos'",
+         prompt.contains("frecuencias y ratios exactos"));
+    TEST("Intermediate prompt says 'Explica el POR QUE'",
+         prompt.contains("POR QUE"));
     TEST("Intermediate prompt does NOT say 'Avoid jargon'",
          !prompt.contains("Avoid jargon"));
     TEST("Intermediate prompt does NOT mention 'pre-ring'",
@@ -153,11 +155,11 @@ static void test_intermediate_prompt_content()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Test 4: Advanced — Prompt debe usar jerga tecnica
+//  Test 4: Advanced — Prompt debe usar jerga tecnica (ESPAÑOL)
 // ═══════════════════════════════════════════════════════════════════════════
 static void test_advanced_prompt_content()
 {
-    std::printf("\n── Test 4: Advanced Level Prompt ──\n");
+    std::printf("\n── Test 4: Advanced Level Prompt (ES) ──\n");
     std::fflush(stdout);
 
     TestHarness h;
@@ -166,17 +168,18 @@ static void test_advanced_prompt_content()
 
     TEST("Advanced prompt contains level name 'Advanced'",
          prompt.contains("Advanced"));
-    TEST("Advanced prompt mentions 'pre-ring'",
-         prompt.contains("pre-ring"));
-    TEST("Advanced prompt mentions 'phase coherence'",
-         prompt.contains("phase coherence"));
-    TEST("Advanced prompt mentions 'transient shaping'",
-         prompt.contains("transient shaping"));
-    TEST("Advanced prompt says 'Skip basic explanations'",
-         prompt.contains("Skip basic explanations"));
-    TEST("Advanced prompt says 'Give exact numbers'",
-         prompt.contains("exact numbers") ||
-         prompt.contains("frequencies, ratios"));
+    TEST("Advanced prompt contains '[NIVEL:'",
+         prompt.contains("[NIVEL:"));
+    TEST("Advanced prompt says 'Ve directo al grano'",
+         prompt.contains("Ve directo al grano"));
+    TEST("Advanced prompt says 'Da numeros exactos'",
+         prompt.contains("Da numeros exactos"));
+    TEST("Advanced prompt says 'Discute trade-offs'",
+         prompt.contains("Discute trade-offs"));
+    TEST("Advanced prompt says 'No expliques conceptos basicos'",
+         prompt.contains("No expliques conceptos basicos"));
+    TEST("Advanced prompt says 'frecuencias, ratios, attack/release'",
+         prompt.contains("frecuencias, ratios, attack/release"));
     TEST("Advanced prompt does NOT say 'step-by-step'",
          !prompt.contains("step-by-step"));
     TEST("Advanced prompt does NOT say 'Avoid jargon'",
@@ -184,11 +187,11 @@ static void test_advanced_prompt_content()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Test 5: Expert — Prompt debe ser directo, sin emojis, solo numeros
+//  Test 5: Expert — Prompt debe ser directo, sin emojis, solo numeros (ESPAÑOL)
 // ═══════════════════════════════════════════════════════════════════════════
 static void test_expert_prompt_content()
 {
-    std::printf("\n── Test 5: Expert Level Prompt ──\n");
+    std::printf("\n── Test 5: Expert Level Prompt (ES) ──\n");
     std::fflush(stdout);
 
     TestHarness h;
@@ -197,30 +200,30 @@ static void test_expert_prompt_content()
 
     TEST("Expert prompt contains level name 'Expert'",
          prompt.contains("Expert"));
-    TEST("Expert prompt says 'Be direct'",
-         prompt.contains("Be direct"));
-    TEST("Expert prompt says 'no fluff, no emojis'",
-         prompt.contains("no fluff") && prompt.contains("no emojis"));
-    TEST("Expert prompt says 'exact solution'",
-         prompt.contains("exact solution") ||
-         prompt.contains("exact numbers"));
-    TEST("Expert prompt says 'Assume deep technical knowledge'",
-         prompt.contains("deep technical knowledge") ||
-         prompt.contains("technical knowledge"));
-    TEST("Expert prompt does NOT contain 'step-by-step'",
-         !prompt.contains("step-by-step"));
+    TEST("Expert prompt contains '[NIVEL:'",
+         prompt.contains("[NIVEL:"));
+    TEST("Expert prompt says 'Se directo'",
+         prompt.contains("Se directo"));
+    TEST("Expert prompt says 'sin emojis, sin rodeos'",
+         prompt.contains("sin emojis, sin rodeos"));
+    TEST("Expert prompt says 'Solo numeros'",
+         prompt.contains("Solo numeros"));
+    TEST("Expert prompt says 'Tratalo como colega'",
+         prompt.contains("Tratalo como colega"));
+    TEST("Expert prompt says 'No des opiniones. Da datos'",
+         prompt.contains("No des opiniones. Da datos"));
     TEST("Expert prompt does NOT contain 'Avoid jargon'",
          !prompt.contains("Avoid jargon"));
-    TEST("Expert prompt does NOT contain 'encouraging and patient'",
-         !prompt.contains("encouraging and patient"));
+    TEST("Expert prompt does NOT contain 'step-by-step'",
+         !prompt.contains("step-by-step"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Test 6: Todos los niveles incluyen Chain-of-Thought
+//  Test 6: Todos los niveles incluyen Chain-of-Thought (ESPAÑOL, 5 pasos)
 // ═══════════════════════════════════════════════════════════════════════════
 static void test_all_levels_include_chain_of_thought()
 {
-    std::printf("\n── Test 6: Chain-of-Thought in all levels ──\n");
+    std::printf("\n── Test 6: Chain-of-Thought in all levels (ES) ──\n");
     std::fflush(stdout);
 
     auto levels = {
@@ -238,19 +241,29 @@ static void test_all_levels_include_chain_of_thought()
         juce::String levelName =
             AiCoachAdapter::experienceLevelName(level);
 
+        // CoT verification: check that each level prompt includes the level
+        // instructions block (e.g., "[NIVEL: PRINCIPIANTE]") which is the
+        // equivalent of chain-of-thought reasoning instructions.
         TEST(("CoT present in " + levelName).toRawUTF8(),
-             prompt.contains("Step 1") &&
-             prompt.contains("REASONING PROTOCOL"));
+             prompt.contains("[NIVEL:") ||
+             prompt.contains("PRINCIPIANTE") ||
+             prompt.contains("Experto") ||
+             prompt.contains("Avanzado"));
+
+        TEST(("CoT Step 1 in " + levelName).toRawUTF8(),
+             prompt.contains("1. Que problema es MAS CRITICO"));
 
         TEST(("CoT Step 2 in " + levelName).toRawUTF8(),
-             prompt.contains("Step 2") &&
-             (prompt.contains("PRIORITIZE") ||
-              prompt.contains("Critical > Warning")));
+             prompt.contains("2. Cual es la UNA accion"));
 
-        TEST(("CoT Step 7 in " + levelName).toRawUTF8(),
-             prompt.contains("Step 7") &&
-             (prompt.contains("OUTPUT") ||
-              prompt.contains("do NOT dump everything")));
+        TEST(("CoT Step 3 in " + levelName).toRawUTF8(),
+             prompt.contains("3. Que numero exacto"));
+
+        TEST(("CoT Step 4 in " + levelName).toRawUTF8(),
+             prompt.contains("4. Que va a pasar"));
+
+        TEST(("CoT Step 5 in " + levelName).toRawUTF8(),
+             prompt.contains("5. Como pregunto"));
     }
 }
 

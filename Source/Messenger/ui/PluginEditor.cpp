@@ -680,8 +680,8 @@ namespace mixcoach {
 
             // Añadir indicador visual para el color seleccionado
             bool isSelected     = (i == selectedColourIndex_);
-            juce::String prefix = isSelected ? juce::CharPointer_UTF8("\xE2\x97\x89 ")  // ◉
-                                             : juce::CharPointer_UTF8("\xE2\x97\x8B "); // ○
+            juce::String prefix = isSelected ? juce::CharPointer_UTF8("[ACTIVE] ")  // ◉
+                                             : juce::CharPointer_UTF8("[EMPTY] "); // ○
             menu.addColouredItem(i + 1, prefix + name, c, true, isSelected);
         }
 

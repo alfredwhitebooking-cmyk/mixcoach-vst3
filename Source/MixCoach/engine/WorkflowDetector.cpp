@@ -18,10 +18,10 @@ namespace mixcoach {
         float corrDiff = correlationAfter - correlationBefore;
         if (std::abs(corrDiff) >= 0.10f) {
             if (!hasAny) {
-                msg += "\xF0\x9F\x93\x8A ";
+                msg += "[CHART] ";
                 hasAny = true;
             }
-            msg += "Correlaci\xC3\xB3n: " + juce::String(correlationBefore, 2) + " \xE2\x86\x92 "
+            msg += "Correlaci\xC3\xB3n: " + juce::String(correlationBefore, 2) + " [RIGHT] "
                    + juce::String(correlationAfter, 2) + " (";
             if (corrDiff > 0) msg += "mejor\xC3\xB3";
             else
@@ -34,13 +34,13 @@ namespace mixcoach {
             float lufsDiff = lufsAfter - lufsBefore;
             if (std::abs(lufsDiff) >= 1.0f) {
                 if (!hasAny) {
-                    msg += "\xF0\x9F\x93\x8A ";
+                    msg += "[CHART] ";
                     hasAny = true;
                 }
                 else {
                     msg += " | ";
                 }
-                msg += "LUFS: " + juce::String(lufsBefore, 1) + " \xE2\x86\x92 " + juce::String(lufsAfter, 1) + " LU ("
+                msg += "LUFS: " + juce::String(lufsBefore, 1) + " [RIGHT] " + juce::String(lufsAfter, 1) + " LU ("
                        + (lufsDiff > 0 ? "m\xC3\xA1s fuerte" : "m\xC3\xA1s suave") + ")";
             }
         }
@@ -49,13 +49,13 @@ namespace mixcoach {
         float widthDiff = stereoWidthAfter - stereoWidthBefore;
         if (std::abs(widthDiff) >= 0.08f && stereoWidthBefore > 0.0f && stereoWidthAfter > 0.0f) {
             if (!hasAny) {
-                msg += "\xF0\x9F\x93\x8A ";
+                msg += "[CHART] ";
                 hasAny = true;
             }
             else {
                 msg += " | ";
             }
-            msg += "Ancho est\xC3\xA9reo: " + juce::String(stereoWidthBefore, 2) + " \xE2\x86\x92 "
+            msg += "Ancho est\xC3\xA9reo: " + juce::String(stereoWidthBefore, 2) + " [RIGHT] "
                    + juce::String(stereoWidthAfter, 2) + " (" + (widthDiff > 0 ? "\xC3\xA1" : "se")
                    + "ampli\xC3\xB3" // split for readability
                    + ")";
@@ -66,13 +66,13 @@ namespace mixcoach {
             float crestDiff = crestAfter - crestBefore;
             if (std::abs(crestDiff) >= 2.0f) {
                 if (!hasAny) {
-                    msg += "\xF0\x9F\x93\x8A ";
+                    msg += "[CHART] ";
                     hasAny = true;
                 }
                 else {
                     msg += " | ";
                 }
-                msg += "Crest: " + juce::String(crestBefore, 1) + " \xE2\x86\x92 " + juce::String(crestAfter, 1)
+                msg += "Crest: " + juce::String(crestBefore, 1) + " [RIGHT] " + juce::String(crestAfter, 1)
                        + " dB (" + (crestDiff > 0 ? "m\xC3\xA1s din\xC3\xA1mico" : "m\xC3\xA1s comprimido") + ")";
             }
         }
@@ -82,13 +82,13 @@ namespace mixcoach {
             float centroidDiff = centroidAfter - centroidBefore;
             if (std::abs(centroidDiff) >= 0.10f) {
                 if (!hasAny) {
-                    msg += "\xF0\x9F\x93\x8A ";
+                    msg += "[CHART] ";
                     hasAny = true;
                 }
                 else {
                     msg += " | ";
                 }
-                msg += "Centroide: " + juce::String(centroidBefore, 2) + " \xE2\x86\x92 "
+                msg += "Centroide: " + juce::String(centroidBefore, 2) + " [RIGHT] "
                        + juce::String(centroidAfter, 2) + " ("
                        + (centroidDiff > 0 ? "espectro m\xC3\xA1s brillante" : "espectro m\xC3\xA1s oscuro") + ")";
             }
@@ -99,15 +99,15 @@ namespace mixcoach {
             float tpDiff = truePeakAfter - truePeakBefore;
             if (std::abs(tpDiff) >= 1.0f) {
                 if (!hasAny) {
-                    msg += "\xF0\x9F\x93\x8A ";
+                    msg += "[CHART] ";
                     hasAny = true;
                 }
                 else {
                     msg += " | ";
                 }
-                msg += "True Peak: " + juce::String(truePeakBefore, 1) + " \xE2\x86\x92 "
+                msg += "True Peak: " + juce::String(truePeakBefore, 1) + " [RIGHT] "
                        + juce::String(truePeakAfter, 1) + " dBTP";
-                if (truePeakAfter > -1.0f && truePeakBefore > -1.0f) msg += " \xE2\x9A\xA0 CLIPPING!";
+                if (truePeakAfter > -1.0f && truePeakBefore > -1.0f) msg += " [WARN] CLIPPING!";
                 else if (truePeakAfter < -6.0f && truePeakBefore >= -6.0f)
                     msg += " \xE2\x9C\xA8 headroom recuperado!";
             }
@@ -118,13 +118,13 @@ namespace mixcoach {
             float lraDiff = lraAfter - lraBefore;
             if (std::abs(lraDiff) >= 2.0f) {
                 if (!hasAny) {
-                    msg += "\xF0\x9F\x93\x8A ";
+                    msg += "[CHART] ";
                     hasAny = true;
                 }
                 else {
                     msg += " | ";
                 }
-                msg += "Rango din\xC3\xA1mico: " + juce::String(lraBefore, 1) + " \xE2\x86\x92 "
+                msg += "Rango din\xC3\xA1mico: " + juce::String(lraBefore, 1) + " [RIGHT] "
                        + juce::String(lraAfter, 1) + " LU (" + (lraDiff > 0 ? "mayor variedad" : "m\xC3\xA1s uniforme")
                        + ")";
             }
@@ -274,12 +274,12 @@ namespace mixcoach {
         if (impact.valid) {
             float corrDiff = impact.correlationAfter - impact.correlationBefore;
             if (std::abs(corrDiff) >= 0.10f) {
-                s += " | corr " + juce::String(impact.correlationBefore, 2) + "\xE2\x86\x92"
+                s += " | corr " + juce::String(impact.correlationBefore, 2) + "[RIGHT]"
                      + juce::String(impact.correlationAfter, 2);
             }
             if (impact.lufsBefore > -80.0f && impact.lufsAfter > -80.0f
                 && std::abs(impact.lufsAfter - impact.lufsBefore) >= 1.0f) {
-                s += " | LUFS " + juce::String(impact.lufsBefore, 1) + "\xE2\x86\x92"
+                s += " | LUFS " + juce::String(impact.lufsBefore, 1) + "[RIGHT]"
                      + juce::String(impact.lufsAfter, 1);
             }
         }

@@ -113,6 +113,11 @@ namespace mixcoach {
 
     void SpectrographComponent::paint(juce::Graphics& g)
     {
+        // ─── Advance pulse animation phase (~1 cycle per 3 seconds) ────────
+        highlightPulsePhase_ += 0.035f;  // ~0.035 rad per frame at 60fps ≈ 3s period
+        if (highlightPulsePhase_ > juce::MathConstants<float>::twoPi)
+            highlightPulsePhase_ -= juce::MathConstants<float>::twoPi;
+
         pruneFrequencyMarkers();
 
         g.fillAll(juce::Colours::transparentBlack);
@@ -162,6 +167,7 @@ namespace mixcoach {
             drawRtaBars(g, plotInComponent);
             drawDiagnosticOverlay(g, plotInComponent);
             drawFrequencyMarkers(g, plotInComponent);
+            drawFrequencyHighlight(g, plotInComponent);
             drawCentroidMarker(g, plotInComponent);
             drawReferenceOverlay(g, plotInComponent);
 
@@ -285,6 +291,173 @@ namespace mixcoach {
                 }
             }
             repaint();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Frequency Highlight API
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void SpectrographComponent::setHighlightFrequency(float frequencyHz,
+                                                       float bandwidthHz,
+                                                       const juce::String& label,
+                                                       juce::Colour colour)
+    {
+        if (frequencyHz <= 0.0f) { clearHighlight(); return; }
+
+        highlightFreqHz_ = frequencyHz;
+
+        if (bandwidthHz > 0.0f) {
+            // Explicit bandwidth
+            float halfBand = bandwidthHz * 0.5f;
+            highlightLowHz_  = juce::jmax(kMinFreq, frequencyHz - halfBand);
+            highlightHighHz_ = frequencyHz + halfBand;
+        } else {
+            // Auto: 1/3 octave around center freq
+            // low = freq / 2^(1/6),  high = freq * 2^(1/6)
+            float sixthOct = std::pow(2.0f, 1.0f / 6.0f);
+            highlightLowHz_  = juce::jmax(kMinFreq, frequencyHz / sixthOct);
+            highlightHighHz_ = juce::jmin(kMaxFreq, frequencyHz * sixthOct);
+        }
+
+        highlightLabel_ = label.isNotEmpty() ? label : (frequencyHz >= 1000.0f
+                                                         ? juce::String(frequencyHz / 1000.0f, 1) + " kHz"
+                                                         : juce::String(static_cast<int>(frequencyHz)) + " Hz");
+        highlightColour_ = colour;
+        highlightPulsePhase_ = 0.0f;
+        highlightActive_ = true;
+
+        repaint();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  setZoomHighlight — Highlight + zoom in on the frequency region
+    //
+    //  La frecuencia problema se centra en el espectro y el rango visible
+    //  se reduce a ±zoomOctaves octavas alrededor de ella.
+    //  El resto del espectro se oscurece y el label se muestra con glow.
+    // ═══════════════════════════════════════════════════════════════════════════
+    void SpectrographComponent::setZoomHighlight(float frequencyHz,
+                                                  const juce::String& label,
+                                                  float zoomOctaves)
+    {
+        if (frequencyHz <= 0.0f) { clearHighlight(); return; }
+
+        // ─── Poner el highlight visual ───────────────────────────────────
+        setHighlightFrequency(frequencyHz, 0.0f, label, MixCoachTheme::accentCyanBright());
+
+        // ─── Zoom: centrar la frecuencia y mostrar ±zoomOctaves octavas ──
+        float halfRangeOct = zoomOctaves * 0.5f;
+        float lowOct  = std::log2(frequencyHz / kMinFreq);
+        float highOct = std::log2(kMaxFreq / frequencyHz);
+
+        // Limitar para no salirse del rango 20Hz-20kHz
+        float zoomLowOct  = juce::jmax(lowOct - halfRangeOct, 0.0f);
+        float zoomHighOct = juce::jmin(highOct + halfRangeOct, std::log2(kMaxFreq / kMinFreq));
+
+        // Si el rango es muy pequeÃ±o (frecuencia cerca de los bordes), expandir
+        float totalOct = zoomLowOct + zoomHighOct;
+        if (totalOct < zoomOctaves) {
+            float deficit = zoomOctaves - totalOct;
+            float expandLow  = deficit * (zoomLowOct / (zoomLowOct + zoomHighOct + 0.001f));
+            float expandHigh = deficit * (zoomHighOct / (zoomLowOct + zoomHighOct + 0.001f));
+            zoomLowOct  = juce::jmin(zoomLowOct + expandLow, std::log2(kMaxFreq / kMinFreq));
+            zoomHighOct = juce::jmin(zoomHighOct + expandHigh, std::log2(kMaxFreq / kMinFreq));
+        }
+
+        float newMinFreq = frequencyHz / std::pow(2.0f, zoomLowOct);
+        float newMaxFreq = frequencyHz * std::pow(2.0f, zoomHighOct);
+
+        displayMinFreq_ = juce::jmax(kMinFreq, newMinFreq);
+        displayMaxFreq_ = juce::jmin(kMaxFreq, newMaxFreq);
+
+        // Invalidar cache estÃ¡tico para redibujar todo con el nuevo rango
+        invalidateStaticCache();
+
+        repaint();
+    }
+
+    void SpectrographComponent::clearZoom()
+    {
+        displayMinFreq_ = kMinFreq;
+        displayMaxFreq_ = kMaxFreq;
+        invalidateStaticCache();
+        repaint();
+    }
+
+    void SpectrographComponent::clearHighlight()
+    {
+        highlightActive_ = false;
+        highlightFreqHz_ = 0.0f;
+        highlightLowHz_  = 0.0f;
+        highlightHighHz_ = 0.0f;
+        highlightLabel_.clear();
+        highlightPulsePhase_ = 0.0f;
+        // Clear zoom too — return to full frequency range
+        displayMinFreq_ = kMinFreq;
+        displayMaxFreq_ = kMaxFreq;
+        invalidateStaticCache();
+        repaint();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  drawFrequencyHighlight — Renderiza banda glow en la región resaltada
+    //
+    //  Dibuja:
+    //    1. Fill semitransparente de la región (con alpha pulsante)
+    //    2. Borde glow a los lados (2 líneas verticales con gradiente)
+    //    3. Label descriptivo centrado arriba de la región
+    //    4. Líneas de guía horizontales desde el borde hacia los extremos
+    // ═══════════════════════════════════════════════════════════════════════════
+    void SpectrographComponent::drawFrequencyHighlight(juce::Graphics& g,
+                                                        juce::Rectangle<float> plot) const
+    {
+        if (!highlightActive_) return;
+
+        // ─── Calcular posición X ──────────────────────────────────────────
+        float xLow  = freqToX(highlightLowHz_, plot);
+        float xHigh = freqToX(highlightHighHz_, plot);
+        xLow  = juce::jmax(plot.getX(), xLow);
+        xHigh = juce::jmin(plot.getRight(), xHigh);
+        if (xHigh - xLow < 2.0f) return;
+
+        auto regionRect = juce::Rectangle<float>(xLow, plot.getY(), xHigh - xLow, plot.getHeight());
+
+        // ─── PASO 1: DIMMING (Apagar las luces del resto) ─────────────────
+        g.setColour(juce::Colours::black.withAlpha(0.65f));
+        // Área izquierda
+        g.fillRect(plot.withWidth(xLow - plot.getX()));
+        // Área derecha
+        g.fillRect(plot.withLeft(xHigh));
+
+        // ─── PASO 2: SPOTLIGHT (Iluminar el problema) ─────────────────────
+        juce::Colour baseCol = (highlightColour_ == juce::Colour()) ? MixCoachTheme::accentCyanBright() : highlightColour_;
+        
+        // Glow sutil en el fondo de la zona
+        juce::ColourGradient spotlight(baseCol.withAlpha(0.12f),
+                                       juce::Point<float>(regionRect.getCentreX(), regionRect.getY()),
+                                       baseCol.withAlpha(0.0f),
+                                       juce::Point<float>(regionRect.getCentreX(), regionRect.getBottom()),
+                                       false);
+        g.setGradientFill(spotlight);
+        g.fillRect(regionRect);
+
+        // Bordes del spotlight
+        g.setColour(baseCol.withAlpha(0.50f));
+        g.drawVerticalLine(juce::roundToInt(xLow), plot.getY(), plot.getBottom());
+        g.drawVerticalLine(juce::roundToInt(xHigh), plot.getY(), plot.getBottom());
+
+        // ─── PASO 3: LABEL SENIOR ──────────────────────────────────────────
+        if (highlightLabel_.isNotEmpty()) {
+            g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
+            auto labelRect = regionRect.withHeight(20.0f).translated(0, 10.0f);
+            
+            // Sombra para el texto para legibilidad máxima
+            g.setColour(juce::Colours::black.withAlpha(0.5f));
+            g.drawText(highlightLabel_, labelRect.translated(1, 1), juce::Justification::centred);
+            
+            g.setColour(juce::Colours::white);
+            g.drawText(highlightLabel_, labelRect, juce::Justification::centred);
         }
     }
 

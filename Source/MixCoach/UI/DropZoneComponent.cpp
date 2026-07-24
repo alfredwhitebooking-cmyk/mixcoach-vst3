@@ -6,6 +6,7 @@ namespace mixcoach {
 
     DropZoneComponent::DropZoneComponent()
     {
+        setSize(360, 120); // default size evita 0x0 si se agrega sin bounds
         // ─── URL Input ─────────────────────────────────────────────────────────
         urlInput_.setMultiLine(false);
         urlInput_.setFont(juce::Font(juce::FontOptions(11.0f)));
@@ -133,47 +134,107 @@ namespace mixcoach {
             // --- ESTADO VACÍO (Dos tarjetas grandes y descriptivas) ---
             if (!audioSectionBounds_.isEmpty()) {
                 auto r = audioSectionBounds_.toFloat().reduced(3, 2);
-                g.setColour(MixCoachTheme::accent().withAlpha(isHovering_ ? 0.05f : 0.02f));
+                // Hover glow para tarjeta de audio
+                if (audioSectionBounds_.contains(getMouseXYRelative())) {
+                    g.setColour(MixCoachTheme::accent().withAlpha(0.08f));
+                    g.fillRoundedRectangle(r.expanded(2, 2), 6.0f);
+                }
+                g.setColour(MixCoachTheme::accent().withAlpha(0.04f));
                 g.fillRoundedRectangle(r, 6.0f);
-                g.setColour(MixCoachTheme::border().withAlpha(0.15f));
+                g.setColour(MixCoachTheme::accent().withAlpha(0.25f));
                 g.drawRoundedRectangle(r, 6.0f, 0.8f);
 
-                drawFileIcon(g, r.getX() + 22.0f, r.getY() + r.getHeight() * 0.35f, 20.0f, MixCoachTheme::accentGlow());
+                drawFileIcon(g, r.getX() + 22.0f, r.getY() + r.getHeight() * 0.30f, 22.0f, MixCoachTheme::accentGlow());
 
                 auto textR = r.withTrimmedLeft(40.0f).toNearestInt();
                 g.setFont(juce::Font(juce::FontOptions(10.5f)).boldened());
-                g.setColour(MixCoachTheme::textPrimary());
-                g.drawText("Archivo de Audio", textR.withHeight(16).translated(0, 8), juce::Justification::centredLeft);
+                g.setColour(MixCoachTheme::accentGlow());
+                g.drawText("Archivo de Audio", textR.withHeight(16).translated(0, 6), juce::Justification::centredLeft);
 
                 g.setFont(juce::Font(juce::FontOptions(8.5f)));
                 g.setColour(MixCoachTheme::textMuted());
-                g.drawText("Arrastra WAV, FLAC, MP3...",
-                           textR.withHeight(12).translated(0, 24),
+                g.drawText("Arrastra o explora...",
+                           textR.withHeight(12).translated(0, 22),
                            juce::Justification::centredLeft);
+
+                // ═══ File format badges (WAV / FLAC / MP3) ═══════════════════
+                const char* audioFormats[] = {"WAV", "FLAC", "MP3"};
+                juce::Colour colWav = MixCoachTheme::success().withAlpha(0.7f);
+                juce::Colour colFlac = MixCoachTheme::accentCyan().withAlpha(0.7f);
+                juce::Colour colMp3 = MixCoachTheme::warning().withAlpha(0.7f);
+                juce::Colour formatCols[] = { colWav, colFlac, colMp3 };
+                int badgeY = textR.getY() + 38;
+                int badgeX = textR.getX();
+                for (int i = 0; i < 3; ++i) {
+                    auto badgeFont = juce::Font(juce::FontOptions(6.5f)).boldened();
+                    float bW = juce::GlyphArrangement::getStringWidthInt(badgeFont, audioFormats[i]) + 10.0f;
+                    auto badgeR = juce::Rectangle<int>(badgeX, badgeY, (int)bW, 16).toFloat();
+                    g.setColour(formatCols[i].withAlpha(0.12f));
+                    g.fillRoundedRectangle(badgeR, 3.0f);
+                    g.setColour(formatCols[i].withAlpha(0.4f));
+                    g.drawRoundedRectangle(badgeR, 3.0f, 0.4f);
+                    g.setFont(badgeFont);
+                    g.setColour(formatCols[i]);
+                    g.drawText(audioFormats[i], badgeR.toNearestInt(), juce::Justification::centred);
+                    badgeX += (int)bW + 4;
+                }
             }
 
             if (!linkSectionBounds_.isEmpty()) {
                 auto r = linkSectionBounds_.toFloat().reduced(3, 2);
-                g.setColour(MixCoachTheme::accentCyan().withAlpha(isHovering_ ? 0.05f : 0.02f));
+                // Hover glow para tarjeta de enlace
+                if (linkSectionBounds_.contains(getMouseXYRelative())) {
+                    g.setColour(MixCoachTheme::accentCyan().withAlpha(0.08f));
+                    g.fillRoundedRectangle(r.expanded(2, 2), 6.0f);
+                }
+                g.setColour(MixCoachTheme::accentCyan().withAlpha(0.04f));
                 g.fillRoundedRectangle(r, 6.0f);
-                g.setColour(MixCoachTheme::border().withAlpha(0.15f));
+                g.setColour(MixCoachTheme::accentCyan().withAlpha(0.25f));
                 g.drawRoundedRectangle(r, 6.0f, 0.8f);
 
                 drawLinkIcon(g,
                              r.getX() + 22.0f,
-                             r.getY() + r.getHeight() * 0.35f,
-                             20.0f,
+                             r.getY() + r.getHeight() * 0.30f,
+                             22.0f,
                              MixCoachTheme::accentCyan().brighter(0.2f));
 
                 auto textR = r.withTrimmedLeft(40.0f).toNearestInt();
                 g.setFont(juce::Font(juce::FontOptions(10.5f)).boldened());
-                g.setColour(MixCoachTheme::textPrimary());
-                g.drawText("Enlace Web", textR.withHeight(16).translated(0, 8), juce::Justification::centredLeft);
+                g.setColour(MixCoachTheme::accentCyan());
+                g.drawText("Enlace Web", textR.withHeight(16).translated(0, 6), juce::Justification::centredLeft);
 
                 g.setFont(juce::Font(juce::FontOptions(8.5f)));
                 g.setColour(MixCoachTheme::textMuted());
                 g.drawText(
-                    "YouTube, Spotify...", textR.withHeight(12).translated(0, 24), juce::Justification::centredLeft);
+                    "YouTube, Spotify...", textR.withHeight(12).translated(0, 22), juce::Justification::centredLeft);
+
+                // ═══ Streaming platform badges (YouTube / Spotify) ═══════════
+                const char* platforms[] = {"YouTube", "Spotify"};
+                juce::Colour colYt = juce::Colour(0xFFFF0000).withAlpha(0.6f);
+                juce::Colour colSp = juce::Colour(0xFF1DB954).withAlpha(0.6f);
+                juce::Colour platCols[] = { colYt, colSp };
+                int badgeY = textR.getY() + 38;
+                int badgeX = textR.getX();
+                for (int i = 0; i < 2; ++i) {
+                    auto badgeFont = juce::Font(juce::FontOptions(6.5f)).boldened();
+                    float bW = juce::GlyphArrangement::getStringWidthInt(badgeFont, platforms[i]) + 12.0f;
+                    auto badgeR = juce::Rectangle<int>(badgeX, badgeY, (int)bW, 16).toFloat();
+                    g.setColour(platCols[i].withAlpha(0.12f));
+                    g.fillRoundedRectangle(badgeR, 3.0f);
+                    g.setColour(platCols[i].withAlpha(0.35f));
+                    g.drawRoundedRectangle(badgeR, 3.0f, 0.4f);
+                    g.setFont(badgeFont);
+                    g.setColour(platCols[i]);
+                    g.drawText(platforms[i], badgeR.toNearestInt(), juce::Justification::centred);
+                    badgeX += (int)bW + 4;
+                }
+            }
+
+            // ═══ Línea divisoria sutil entre las dos tarjetas ════════════════
+            if (!audioSectionBounds_.isEmpty()) {
+                int midX = audioSectionBounds_.getRight();
+                g.setColour(MixCoachTheme::border().withAlpha(0.10f));
+                g.drawVerticalLine(midX, bounds.getY() + 8.0f, bounds.getBottom() - 8.0f);
             }
         }
         else {
@@ -221,16 +282,23 @@ namespace mixcoach {
 
     void DropZoneComponent::browseForFiles()
     {
-        auto* chooser = new juce::FileChooser(
+        // Usar unique_ptr para evitar memory leak
+        // Antes: new + delete manual. Si el usuario cancelaba el diálogo,
+        // el callback nunca se ejecutaba y el FileChooser fugaba.
+        // Ahora: unique_ptr se limpia automáticamente al destruir el componente
+        // o al llamar browseForFiles() de nuevo.
+        fileChooser_ = std::make_unique<juce::FileChooser>(
             "Seleccionar archivos de referencia", juce::File(), "*.wav;*.aiff;*.aif;*.flac;*.mp3;*.ogg");
 
-        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectMultipleItems,
-                             [this](const juce::FileChooser& fc) {
-                                 auto results = fc.getResults();
-                                 for (auto& f : results) {
-                                     if (onFileDropped) onFileDropped(f.getFullPathName());
-                                 }
-                             });
+        fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectMultipleItems,
+                                  [this](const juce::FileChooser& fc) {
+                                      auto results = fc.getResults();
+                                      for (auto& f : results) {
+                                          if (onFileDropped) onFileDropped(f.getFullPathName());
+                                      }
+                                      // unique_ptr se limpia automáticamente al salir del scope
+                                      // o al llamar browseForFiles() de nuevo.
+                                  });
     }
 
     void DropZoneComponent::mouseEnter(const juce::MouseEvent&)
@@ -243,6 +311,23 @@ namespace mixcoach {
     {
         isHovering_ = false;
         repaint();
+    }
+
+    void DropZoneComponent::mouseDown(const juce::MouseEvent& e)
+    {
+        auto pos = e.getPosition();
+
+        // ═══ Click en tarjeta izquierda (Audio) → browse files ═══════════
+        if (audioSectionBounds_.contains(pos)) {
+            browseForFiles();
+            return;
+        }
+
+        // ═══ Click en tarjeta derecha (Link) → focus URL input ═══════════
+        if (linkSectionBounds_.contains(pos)) {
+            urlInput_.grabKeyboardFocus();
+            return;
+        }
     }
 
     void DropZoneComponent::fileDragEnter(const juce::StringArray&, int, int)

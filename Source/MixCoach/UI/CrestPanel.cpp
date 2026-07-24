@@ -10,6 +10,22 @@ namespace mixcoach {
 
     void CrestPanel::resized() {}
 
+    void CrestPanel::setTargetCrest(float targetDb, const juce::String& label)
+    {
+        hasTargetCrest_ = true;
+        targetCrestDb_ = juce::jlimit(0.0f, kMaxCrest, targetDb);
+        targetCrestLabel_ = label;
+        repaint();
+    }
+
+    void CrestPanel::clearTargetCrest()
+    {
+        if (!hasTargetCrest_) return;
+        hasTargetCrest_ = false;
+        targetCrestLabel_.clear();
+        repaint();
+    }
+
     void CrestPanel::setValues(float peak, float rms)
     {
         rawPeak_ = peak;
@@ -225,11 +241,69 @@ namespace mixcoach {
             g.strokePath(fillArc, juce::PathStrokeType(2.0f));
         }
 
+        // ─── Target crest marker ──────────────────────────────────────────
+        if (hasTargetCrest_) {
+            drawTargetMarker(g, cx, cy, radius);
+        }
+
         // ─── Escala con marcas ───────────────────────────────────────────────
         drawScale(g, cx, cy, radius);
 
         // ─── Aguja ───────────────────────────────────────────────────────────
         drawNeedle(g, cx, cy, radius, crestNorm);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Target Marker — Marca coloreada en el arco mostrando el target de crest
+    //  Dibuja un arco punteado + tick + label en la posición del target.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void CrestPanel::drawTargetMarker(juce::Graphics& g, float cx, float cy, float radius)
+    {
+        float halfR = radius;
+        float targetNorm = juce::jlimit(0.0f, 1.0f, targetCrestDb_ / kMaxCrest);
+        float targetAngle = kGaugeStart + targetNorm * kGaugeRange;
+        float ca = std::cos(targetAngle);
+        float sa = std::sin(targetAngle);
+
+        // ─── Arco de target (punteado, del inicio al target) ───────────────────
+        juce::Path targetArc;
+        targetArc.addArc(cx - radius, cy - halfR, radius * 2.0f, halfR * 2.0f,
+                         kGaugeStart, targetAngle, true);
+
+        // Glow exterior
+        g.setColour(MixCoachTheme::accent().withAlpha(0.10f));
+        g.strokePath(targetArc, juce::PathStrokeType(9.0f));
+
+        // Arco principal delgado
+        g.setColour(MixCoachTheme::accent().withAlpha(0.40f));
+        g.strokePath(targetArc, juce::PathStrokeType(3.0f));
+
+        // ─── Tick en el target ─────────────────────────────────────────────
+        float tickLen = 10.0f;
+        float tx1 = cx + ca * (radius - 1.0f);
+        float ty1 = cy + sa * (halfR - 0.5f);
+        float tx2 = cx + ca * (radius + tickLen);
+        float ty2 = cy + sa * (halfR + tickLen * 0.5f);
+
+        // Glow
+        g.setColour(MixCoachTheme::accent().withAlpha(0.15f));
+        g.drawLine(tx1, ty1, tx2, ty2, 5.0f);
+
+        // Tick principal
+        g.setColour(MixCoachTheme::accent());
+        g.drawLine(tx1, ty1, tx2, ty2, 2.5f);
+
+        // ─── Label cerca del tick ──────────────────────────────────────────
+        if (targetCrestLabel_.isNotEmpty()) {
+            float lx = cx + ca * (radius + tickLen + 20.0f);
+            float ly = cy + sa * (halfR + tickLen * 0.5f + 4.0f);
+            g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+            g.setColour(MixCoachTheme::accent());
+            g.drawText(targetCrestLabel_,
+                       juce::Rectangle<float>(lx - 25, ly - 6, 50, 12),
+                       juce::Justification::centred);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

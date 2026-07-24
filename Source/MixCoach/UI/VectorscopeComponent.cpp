@@ -107,7 +107,7 @@ namespace mixcoach {
 
             // Outer ring glow
             if (ring.norm > 0.99f) {
-                g.setColour(juce::Colour(0xFFA855F7).withAlpha(0.06f));
+                g.setColour(MixCoachTheme::accent().withAlpha(0.06f));
                 g.drawEllipse(ringBounds, 2.0f);
             }
         }
@@ -139,7 +139,7 @@ namespace mixcoach {
 
         // ─── Center dot con glow ───────────────────────────────────────────
         {
-            g.setColour(juce::Colour(0xFFA855F7).withAlpha(0.06f));
+            g.setColour(MixCoachTheme::accent().withAlpha(0.06f));
             g.fillEllipse(cx - 5.0f, cy - 5.0f, 10.0f, 10.0f);
             g.setColour(juce::Colour(0xFF888888).withAlpha(0.25f));
             g.fillEllipse(cx - 1.8f, cy - 1.8f, 3.6f, 3.6f);
@@ -155,7 +155,7 @@ namespace mixcoach {
         const float diag = radius * 0.72f * 0.70710678f; // proyección sobre cada eje
 
         // M - Mid (arriba) - morado
-        g.setColour(juce::Colour(0xFFA855F7).withAlpha(0.70f));
+        g.setColour(MixCoachTheme::accent().withAlpha(0.70f));
         g.drawText(
             "M", juce::Rectangle<float>(cx - 8.0f, area.getY() + 1.0f, 16.0f, 12.0f), juce::Justification::centred);
         // L - diagonal superior izquierda - azul claro
@@ -310,6 +310,9 @@ namespace mixcoach {
         // ─── Phase diagnostic overlay ──────────────────────────────────────
         if (hasPhaseDiagnostic_) drawPhaseOverlay(g, circleArea);
 
+        // ─── Target correlation overlay (ideal circle) ────────────────────
+        if (hasTargetCorrelation_) drawTargetOverlay(g, circleArea);
+
         // ─── Stereo width badge overlay (si hay datos relevantes) ───────────
         if (stereoWidth_ > 0.01f) {
             auto badgeBounds =
@@ -317,7 +320,7 @@ namespace mixcoach {
 
             // Badge background
             g.setColour(juce::Colour(0xBB000000));
-            g.fillRoundedRectangle(badgeBounds, 3.0f);
+            g.fillRoundedRectangle(badgeBounds, MixCoachTheme::cornerRadius_small);
 
             // Color según zona
             juce::Colour wCol;
@@ -330,11 +333,11 @@ namespace mixcoach {
                 wCol = juce::Colour(0xFFFF6633);
 
             g.setColour(wCol.withAlpha(0.10f));
-            g.fillRoundedRectangle(badgeBounds, 3.0f);
+            g.fillRoundedRectangle(badgeBounds, MixCoachTheme::cornerRadius_small);
 
             // Badge border
             g.setColour(wCol.withAlpha(0.30f));
-            g.drawRoundedRectangle(badgeBounds, 3.0f, 0.5f);
+            g.drawRoundedRectangle(badgeBounds, MixCoachTheme::cornerRadius_small, 0.5f);
 
             // Badge text
             g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
@@ -380,12 +383,16 @@ namespace mixcoach {
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  setPhaseDiagnostic — Recibe un diagnóstico de fase opcional
+    //  Además activa automáticamente el target correlation overlay para
+    //  mostrar visualmente cómo debería verse la correlación ideal.
     // ═══════════════════════════════════════════════════════════════════════════
     void VectorscopeComponent::setPhaseDiagnostic(const PhaseDiagnostic* diagnostic)
     {
         if (diagnostic == nullptr) {
             if (hasPhaseDiagnostic_) {
                 hasPhaseDiagnostic_ = false;
+                // Limpiar también el target overlay cuando se limpia el diagnóstico
+                clearTargetCorrelation();
                 repaint();
             }
             return;
@@ -393,6 +400,23 @@ namespace mixcoach {
 
         phaseDiagnostic_    = *diagnostic;
         hasPhaseDiagnostic_ = true;
+
+        // ═══ Auto-activar target correlation overlay ════════════════════════════
+        // Cuando se muestra una advertencia de fase, automáticamente mostramos
+        // el círculo ideal para que el usuario vea hacia dónde ir.
+        // Usamos 0.85 como target ideal (estéreo balanceado con buena correlación).
+        if (!hasTargetCorrelation_) {
+            juce::String targetLabel;
+            if (diagnostic->isWarning)
+                targetLabel = "Objetivo: corr > 0.85";
+            else if (diagnostic->isPraise)
+                targetLabel = "Correlacion buena!";
+            else
+                targetLabel = "Target: 0.85";
+
+            setTargetCorrelation(0.85f, targetLabel);
+        }
+
         repaint();
     }
 
@@ -432,7 +456,7 @@ namespace mixcoach {
 
             // Badge background
             g.setColour(juce::Colour(0xBB000000));
-            g.fillRoundedRectangle(textArea.expanded(4.0f, 2.0f), 4.0f);
+            g.fillRoundedRectangle(textArea.expanded(4.0f, 2.0f), MixCoachTheme::cornerRadius_medium);
 
             // Texto
             g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
@@ -440,9 +464,9 @@ namespace mixcoach {
 
             juce::String displayText = phaseDiagnostic_.description;
             if (displayText.isEmpty()) {
-                if (phaseDiagnostic_.isWarning) displayText = "\xE2\x9A\xA0 Phase Warning";
+                if (phaseDiagnostic_.isWarning) displayText = "[WARN] Phase Warning";
                 else if (phaseDiagnostic_.isPraise)
-                    displayText = "\xE2\x9C\x93 Good Phase";
+                    displayText = "[OK] Good Phase";
             }
 
             if (displayText.isNotEmpty()) g.drawText(displayText, textArea, juce::Justification::centredTop);
@@ -450,7 +474,182 @@ namespace mixcoach {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  advanceFrame
+    //  setTargetCorrelation — Activa el overlay de círculo ideal
+    // ═══════════════════════════════════════════════════════════════════════════
+    void VectorscopeComponent::setTargetCorrelation(float targetCorrelation,
+                                                     const juce::String& label)
+    {
+        float newVal = juce::jlimit(0.0f, 1.0f, targetCorrelation);
+        targetCorrelationLabel_ = label;
+        if (!hasTargetCorrelation_) {
+            targetCorrelation_ = newVal;
+            hasTargetCorrelation_ = true;
+            repaint();
+        } else if (std::abs(newVal - targetCorrelation_) > 0.01f
+                   || targetCorrelationLabel_ != label) {
+            targetCorrelation_ = newVal;
+            repaint();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  clearTargetCorrelation — Desactiva el overlay
+    // ═══════════════════════════════════════════════════════════════════════════
+    void VectorscopeComponent::clearTargetCorrelation()
+    {
+        if (hasTargetCorrelation_) {
+            hasTargetCorrelation_ = false;
+            repaint();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  drawTargetOverlay — Dibuja un círculo/corona ideal en el vectorscope
+    //
+    //  Muestra un círculo punteado que representa la correlación objetivo:
+    //    - Círculo compacto para high correlation (> 0.8)
+    //    - Elipse más ancha para correlaciones medias (0.5-0.8)
+    //    - Forma más difusa para baja correlación
+    //  El overlay late (pulso) suavemente cuando la correlación actual difiere
+    //  del target, para ayudar al usuario a ver visualmente qué ajustar.
+    // ═══════════════════════════════════════════════════════════════════════════
+    void VectorscopeComponent::drawTargetOverlay(juce::Graphics& g,
+                                                  juce::Rectangle<float> circleArea)
+    {
+        auto cx = circleArea.getCentreX();
+        auto cy = circleArea.getCentreY();
+        float maxR = juce::jmin(circleArea.getWidth(), circleArea.getHeight()) * 0.5f - 3.0f;
+
+        if (maxR < 10.0f) return;
+
+        // ─── Calcular el radio del círculo ideal basado en la correlación target ──
+        // Alta correlación (>0.8) = círculo pequeño y centrado (Mono-dominante)
+        // Media correlación (0.5-0.8) = círculo mediano (estéreo balanceado)
+        // Baja correlación (<0.5) = círculo más grande (estéreo amplio)
+        float idealRadius = maxR * (1.0f - targetCorrelation_ * 0.55f);
+        idealRadius = juce::jlimit(maxR * 0.20f, maxR * 0.75f, idealRadius);
+
+        // Calcular pulso: late si la correlación actual difiere del target
+        float pulseAlpha = 1.0f;
+        float corrDiff = std::abs(correlation_ - targetCorrelation_);
+        if (corrDiff > 0.10f) {
+            // Breathing pulse: oscila entre 0.5 y 1.0
+            pulseAlpha = 0.5f + 0.5f * std::sin(targetPulsePhase_);
+        }
+
+        juce::Colour targetColour;
+        if (targetCorrelation_ >= 0.8f)
+            targetColour = juce::Colour(0xFF44CC66); // Verde saludable
+        else if (targetCorrelation_ >= 0.5f)
+            targetColour = juce::Colour(0xFF44BBFF); // Azul - aceptable
+        else
+            targetColour = juce::Colour(0xFFFFCC44); // Amarillo - bajo
+
+        // ─── Círculo punteado (corona ideal) ─────────────────────────────────
+        constexpr int kNumDots = 32;
+        constexpr float kDashAngle = juce::MathConstants<float>::twoPi / kNumDots;
+
+        juce::Path idealGlowPath;
+        juce::Path idealDashPath;
+        bool glowFirst = true;
+        bool dashFirst = true;
+
+        for (int d = 0; d < kNumDots; ++d) {
+            float angle = d * kDashAngle;
+            float dotX = cx + idealRadius * std::cos(angle);
+            float dotY = cy + idealRadius * std::sin(angle);
+
+            float normAngle = angle / juce::MathConstants<float>::twoPi;
+            float fractional = normAngle - std::floor(normAngle);
+
+            if (fractional < 0.75f) {
+                if (glowFirst) {
+                    idealGlowPath.startNewSubPath(dotX, dotY);
+                    glowFirst = false;
+                } else {
+                    idealGlowPath.lineTo(dotX, dotY);
+                }
+
+                if (dashFirst) {
+                    idealDashPath.startNewSubPath(dotX, dotY);
+                    dashFirst = false;
+                } else {
+                    idealDashPath.lineTo(dotX, dotY);
+                }
+            } else {
+                glowFirst = true;
+                dashFirst = true;
+            }
+        }
+
+        // Glow exterior pulsante
+        g.setColour(targetColour.withAlpha(0.08f * pulseAlpha));
+        g.strokePath(idealGlowPath, juce::PathStrokeType(4.5f));
+
+        // Línea punteada principal (late suavemente si diff > 0.10)
+        float dashAlpha = corrDiff > 0.10f
+            ? juce::jlimit(0.35f, 0.75f, 0.55f * pulseAlpha)
+            : 0.55f;
+        g.setColour(targetColour.withAlpha(dashAlpha));
+        g.strokePath(idealDashPath, juce::PathStrokeType(1.8f));
+
+        // ─── Label del target ────────────────────────────────────────────────
+        juce::String label;
+        if (targetCorrelationLabel_.isNotEmpty())
+            label = targetCorrelationLabel_;
+        else
+            label = "Target corr: " + juce::String(targetCorrelation_, 2);
+
+        auto labelBounds = juce::Rectangle<float>(
+            circleArea.getX() + 4.0f,
+            circleArea.getBottom() - 20.0f,
+            160.0f, 16.0f);
+
+        // Badge background
+        g.setColour(juce::Colour(0xBB000000));
+        g.fillRoundedRectangle(labelBounds.expanded(2.0f, 1.0f), MixCoachTheme::cornerRadius_small);
+        g.setColour(targetColour.withAlpha(0.12f * pulseAlpha));
+        g.fillRoundedRectangle(labelBounds.expanded(2.0f, 1.0f), MixCoachTheme::cornerRadius_small);
+        g.setColour(targetColour.withAlpha(0.30f * pulseAlpha));
+        g.drawRoundedRectangle(labelBounds.expanded(2.0f, 1.0f), MixCoachTheme::cornerRadius_small, 0.5f);
+
+        g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
+        g.setColour(targetColour);
+        g.drawText(label, labelBounds, juce::Justification::centredLeft);
+
+        // ─── Flecha de "dirección" pulsante: indicador visual de cómo el
+        //     usuario puede mover la correlación hacia el target ────────────
+        float currentRadius = maxR * (1.0f - correlation_ * 0.55f);
+        currentRadius = juce::jlimit(maxR * 0.20f, maxR * 0.75f, currentRadius);
+
+        float radiusDiff = idealRadius - currentRadius;
+        if (std::abs(radiusDiff) > maxR * 0.04f) {
+            float arrowY = cy - maxR * 0.55f;
+            float startX, endX;
+            juce::Colour arrowColour;
+
+            float arrowAlpha = 0.40f * pulseAlpha;
+
+            if (radiusDiff > 0) {
+                startX = cx + currentRadius + 6.0f;
+                endX = cx + idealRadius - 2.0f;
+                arrowColour = juce::Colour(0xFFFFCC44); // Amarillo — expandir
+            } else {
+                startX = cx + idealRadius + 2.0f;
+                endX = cx + currentRadius - 6.0f;
+                arrowColour = juce::Colour(0xFF44CC66); // Verde — contraer
+            }
+
+            if (endX > startX + 4.0f) {
+                g.setColour(arrowColour.withAlpha(arrowAlpha));
+                g.drawArrow(juce::Line<float>(startX, arrowY, endX, arrowY),
+                            2.0f, 4.0f, 4.0f);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  advanceFrame — Decae el phosphor trail y avanza la fase de pulso
     // ═══════════════════════════════════════════════════════════════════════════
     bool VectorscopeComponent::advanceFrame(double /*sampleRateHz*/, bool allowRepaint)
     {
@@ -459,6 +658,12 @@ namespace mixcoach {
             if (p.alpha > 0.01f) hasTrace = true;
             p.alpha *= 0.970f;
         }
+
+        // ─── Avanzar fase de pulso del target overlay ────────────────────────
+        // Late a ~0.66 Hz (2π / ~9.5 frames a 60fps ≈ 0.66 Hz)
+        targetPulsePhase_ += 0.045f;
+        if (targetPulsePhase_ > juce::MathConstants<float>::twoPi * 10.0f)
+            targetPulsePhase_ -= juce::MathConstants<float>::twoPi * 10.0f;
 
         if (hasTrace && allowRepaint) repaint();
 

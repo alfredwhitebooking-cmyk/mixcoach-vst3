@@ -322,7 +322,7 @@ namespace mixcoach {
         // Cargar el archivo
         juce::AudioFormatManager formatMgr;
         formatMgr.registerBasicFormats();
-        auto* reader = formatMgr.createReaderFor(file);
+        std::unique_ptr<juce::AudioFormatReader> reader(formatMgr.createReaderFor(file));
         if (reader == nullptr) {
             LogHelper::writeToLog("[CoachEngine] analyzeReferenceFile: formato no soportado: " + filePath);
             return;
@@ -340,7 +340,7 @@ namespace mixcoach {
         // Leer el buffer completo
         juce::AudioBuffer<float> buffer(numChannels, readSamplesInt);
         reader->read(&buffer, 0, readSamplesInt, 0, true, true);
-        delete reader;
+        // BUG #3: reader es unique_ptr, se destruye automáticamente al salir del ámbito
 
         // Extraer pointers L/R
         const float* bufL = buffer.getReadPointer(0);
@@ -853,7 +853,7 @@ namespace mixcoach {
             LogHelper::writeToLog(logMsg);
 
             // También enviar al chat del coach
-            juce::String chatMsg = "\xF0\x9F\x93\x8A **Secciones detectadas en la referencia:**\n";
+            juce::String chatMsg = "[CHART] **Secciones detectadas en la referencia:**\n";
             for (const auto& s : referenceSections_) {
                 if (s.label == "Full") continue; // No mostrar Full en el chat
                 chatMsg += "  \xE2\x97\x8F **" + s.label + "** " + juce::String(s.startSeconds, 1) + "s - "

@@ -173,8 +173,24 @@ namespace mixcoach {
     // Cuando el usuario minimiza/restaura el plugin en FL Studio, el editor se
     // destruye y recrea, pero estos flags retienen su estado. Así evitamos
     // re-escanear backup files y re-anunciar tracks en cada reapertura.
-    std::atomic<bool> MixCoachAudioProcessorEditor::s_initialFullSyncDone_{false};
+    // INCREMENTO 1: s_initialFullSyncDone_ eliminado — el MixCoachBgService
+    // (en PluginProcessor) maneja su propio estado de sync interna.
+    // s_announcedSlots_ persiste para evitar re-anunciar tracks al reabrir la UI.
     std::array<bool, SlotRegistry::kMaxSlots> MixCoachAudioProcessorEditor::s_announcedSlots_{};
+
+    namespace {
+        bool messageSuggestsAnalyzers(const juce::String& text)
+        {
+            auto lower = text.toLowerCase();
+            return lower.contains("espectro") || lower.contains("frecuencia")
+                   || lower.contains("lufs") || lower.contains("fase")
+                   || lower.contains("phase") || lower.contains("stereo")
+                   || lower.contains("ancho") || lower.contains("correlación")
+                   || lower.contains("crest") || lower.contains("dinámica")
+                   || lower.contains("spectrum") || lower.contains("analizador")
+                   || lower.contains("analyzers");
+        }
+    } // namespace
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  CONSTRUCTOR
@@ -187,9 +203,11 @@ namespace mixcoach {
     {
         earlyCrashLog("EDITOR", "Editor constructor INICIO");
 
-        setSize(960, 640);
+        editorBoundsConstrainer_.setFixedAspectRatio(16.0 / 9.0);
+        setConstrainer(&editorBoundsConstrainer_);
         setResizable(true, true);
-        setResizeLimits(800, 500, 1920, 1440);
+        setResizeLimits(960, 540, 1920, 1080);
+        setSize(1280, 720);
         earlyCrashLog("EDITOR2", "setSize/setResizable OK");
 
         // ─── Placeholder invisible (solo ocupa espacio, sin texto molesto) ──
@@ -209,43 +227,28 @@ namespace mixcoach {
 
         // ═══ Init header animation ────────────────────────────────────
         headerTabAnim_.setTargetValue(0.0f);
+        analyzersTabVisible_ = false;
 
-        // ═══ Timer a 60fps — Fast UI + Slow updates ─────────────────────
-        // AHORA: Heavy I/O está en el background worker (backgroundRunLoop),
-        // el timer SOLO hace lectura ligera de telemetry + actualización UI.
+        // ═══ INCREMENTO 1: Background worker MOVIDO a PluginProcessor ──────
+        // MixCoachBgService vive en PluginProcessor y se inicia cuando
+        // sharedData está disponible. El editor SOLO lee snapshots del servicio
+        // via processor_.getBgService().getLatestSnapshots().
         //
-        // - Cada tick (~16ms): actualiza barras de Messengers y spectrograph
-        //   (solo lectura de shared memory y telemetry — operaciones rápidas)
-        // - Cada 16 ticks (~266ms): full updateAllPanels (analyzers completos)
-        // - Log cada ~5s
+        // Esto significa que la telemetría NUNCA se detiene aunque el usuario
+        // cierre/reabra la ventana del plugin (comportamiento normal en mezcla).
         //
-        // Esto da movimiento fluido como un DAW profesional (60fps) sin
-        // saturar el message thread, porque las operaciones I/O pesadas
-        // están en el bg.
-        // s_announcedSlots_ es estático — NO se resetea aquí. Persiste entre
-        // recreaciones del editor para evitar re-anunciar tracks al restaurar.
-
-        // ═══ SCAN INICIAL: Solo se ejecuta UNA VEZ por vida del proceso DLL ═══
-        // s_initialFullSyncDone_ evita re-escanear backup files y s_announcedSlots_
-        // evita re-anunciar tracks en futuras reaperturas del editor.
-        // El background worker ejecuta forceFullSync + loadBackupFiles UNA SOLA
-        // vez al inicio del proceso. Al minimizar/restaurar, NO se re-escanéa.
-        if (!s_initialFullSyncDone_.load()) {
-            bgForceSyncRequested_.store(true);
-            bgBackupScanRequested_.store(true);
-        }
-
-        startTimerHz(60);
+        // ═══ TIMER GUARD: NO empezar 60fps timer aún ═════════════════════════
+        // El timer 60fps se inicia SOLO al final de buildFullUI(), cuando toda
+        // la UI está construida. En vez de timer, usamos callAfterDelay para
+        // poll sharedData sin riesgo de race conditions durante la construcción
+        // del árbol de componentes (NavigationShell, CoachPanel, etc).
+        // Esto soluciona el caos al minimizar/restaurar el plugin: antes el timer
+        // se disparaba durante la construcción, causando timerCallback() que
+        // accedía a tabbedComponent_ antes de que estuviera listo.
+        juce::Timer::callAfterDelay(100, [this]() { retryInitSharedData(); });
 
         // Registrar el tiempo de creación del editor para el log de diagnóstico
         editorCreatedMs_ = juce::Time::getMillisecondCounter();
-
-        // ═══ Start background worker para I/O pesada ─────────────────────────
-        // Ejecuta forceFullSync, loadBackupFiles, healthCheck fuera del
-        // message thread para no bloquear la UI de FL Studio.
-        backgroundWorker_ = std::make_unique<MixCoachBgWorker>(*this);
-        backgroundWorker_->startThread();
-        earlyCrashLog("EDITOR6", "Background worker iniciado OK");
 
         // ═══ ChangeBroadcaster Listener ═══════════════════════════════════════
         processorRef_.sharedDataChangeBroadcaster_.addChangeListener(this);
@@ -258,29 +261,20 @@ namespace mixcoach {
     MixCoachAudioProcessorEditor::~MixCoachAudioProcessorEditor()
     {
         // ═══ CRÍTICO: Marcar flag ANTES de cualquier cleanup ════════════════
-        // Esto evita que callbacks pendientes accedan a miembros parcialmente
-        // destruidos.
         editorBeingDestroyed_ = true;
 
-        // ═══ 1. Detener BACKGROUND WORKER primero ═══════════════════════════
-        // Esto asegura que no haya callbacks (onSlotChanged, etc.) ejecutándose
-        // en el background thread mientras destruimos miembros.
-        if (backgroundWorker_) {
-            backgroundWorker_->signalThreadShouldExit();
-            backgroundWorker_->notify();         // Wake up if sleeping in wait()
-            backgroundWorker_->stopThread(5000); // Wait up to 5s
-            backgroundWorker_ = nullptr;
-        }
+        // ═══ INCREMENTO 1: NO detenemos el bg service aquí ──────────────────
+        // MixCoachBgService vive en PluginProcessor y sigue ejecutándose
+        // incluso cuando el editor se cierra. El processor lo detiene
+        // en su destructor (~MixCoachAudioProcessor).
 
-        // ═══ 2. Remover ChangeBroadcaster listener ═══════════════════════════
+        // ═══ 1. Remover ChangeBroadcaster listener ═══════════════════════════
         processorRef_.sharedDataChangeBroadcaster_.removeChangeListener(this);
 
-        // ═══ 3. Detener timer (ya no hay background thread que pueda
-        //         disparar callbacks vía forceFullSync) ═══════════════════
+        // ═══ 2. Detener timer ════════════════════════════════════════════════
         stopTimer();
 
-        // ═══ 4. Limpiar callbacks del SlotRegistry ═══════════════════════════
-        // Ahora es seguro porque el background thread ya se detuvo.
+        // ═══ 3. Limpiar callbacks del SlotRegistry ═══════════════════════════
         if (sharedData_) {
             auto& registry            = sharedData_->getSlotRegistry();
             registry.onSlotChanged    = nullptr;
@@ -288,12 +282,32 @@ namespace mixcoach {
             registry.onSlotReleased   = nullptr;
         }
 
-        // ═══ 5. Desconectar callbacks del coach engine (evita dangling ref en recreate) ═══
+        // ═══ 4. Desconectar callbacks del coach engine ═══
         auto* coach = processorRef_.getCoachEngine();
         if (coach != nullptr) {
             coach->setMessagePushedCallback(nullptr);
             coach->setDiagnosticUpdateCallback(nullptr);
             coach->setEngineerNameCallback(nullptr);
+        }
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  visibilityChanged — Pausa timer cuando el plugin no es visible
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void MixCoachAudioProcessorEditor::visibilityChanged()
+    {
+        // NOTA: NUNCA detener el timer al ocultar la ventana.
+        // El timer es el ÚNICO mecanismo que dispara buildFullUI()
+        // (via initSharedData() → timerCallback). Si lo detenemos,
+        // la UI nunca se construye y la pantalla se queda en negro.
+        //
+        // Además, el timer mantiene viva la actualización de
+        // métricas vía MixCoachBgService incluso cuando la UI
+        // está minimizada (INCREMENTO 1).
+        if (isShowing() && !isTimerRunning()) {
+            startTimerHz(60);
         }
     }
 
@@ -331,10 +345,10 @@ namespace mixcoach {
 
         placeholderLabel_.setVisible(false);
 
-        LogHelper::writeToLog("[MixCoachEditor] Creando MainTabbedComponent...");
-        earlyCrashLog("BUILD", "before new MainTabbedComponent");
-        tabbedComponent_ = std::make_unique<MainTabbedComponent>(processorRef_, *sharedData_);
-        earlyCrashLog("BUILD", "after new MainTabbedComponent");
+        LogHelper::writeToLog("[MixCoachEditor] Creando NavigationShell...");
+        earlyCrashLog("BUILD", "before new NavigationShell");
+        tabbedComponent_ = std::make_unique<NavigationShell>(processorRef_, *sharedData_);
+        earlyCrashLog("BUILD", "after new NavigationShell");
 
         // ═══ Wire DiagnosticBridge and CoachEngine to Analyzers Panel ═══════
         auto& analyzersPanel = tabbedComponent_->getAnalyzersPanel();
@@ -342,11 +356,42 @@ namespace mixcoach {
         if (auto* coach = processorRef_.getCoachEngine()) analyzersPanel.setCoachEngine(coach);
 
         addAndMakeVisible(tabbedComponent_.get());
+
+        // NavigationShell maneja su propio WelcomeComponent internamente
+        // con el flujo completo: Welcome → Intention → ModeSelectionCards.
+        analyzersTabVisible_ = false;
+        headerActiveTab_ = 0;
+        headerTabAnim_.setTargetValue(0.0f);
+
+        // ═══ Walkthrough: Tutorial interactivo para primera sesion ═══
+        {
+            walkthroughOverlay_ = std::make_unique<WalkthroughOverlay>();
+            addAndMakeVisible(walkthroughOverlay_.get());
+
+            walkthroughOverlay_->onComplete = [this]() {
+                if (auto* adapter = processorRef_.getAiCoachAdapter()) {
+                    adapter->setWalkthroughCompleted(true);
+                    adapter->autoSave();
+                }
+            };
+            walkthroughOverlay_->onSkipped = walkthroughOverlay_->onComplete;
+
+            if (auto* adapter = processorRef_.getAiCoachAdapter()) {
+                if (!adapter->isWalkthroughCompleted()) {
+                    juce::Timer::callAfterDelay(800, [safeThis = juce::Component::SafePointer<MixCoachAudioProcessorEditor>(this)]() {
+                        if (safeThis == nullptr) return;
+                        if (safeThis->walkthroughOverlay_ != nullptr)
+                            safeThis->walkthroughOverlay_->startWalkthrough();
+                    });
+                }
+            }
+        }
+
         fullUIBuilt_ = true;
 
         // ═══ TIMESTAMP: registrar cuándo se construyó la UI ════════════════════
         uiBuiltTimeMs_   = juce::Time::getMillisecondCounter();
-        initialSyncDone_ = false;
+        // INCREMENTO 1: initialSyncDone_ se eliminó — el bg service gestiona su propio sync.
 
         // ═══ forceFullSync NO SE HACE AQUÍ ═══════════════════════════════════
         // El background worker (backgroundRunLoop) ejecuta forceFullSync cada
@@ -380,15 +425,68 @@ namespace mixcoach {
                 // Mostrar mensaje del usuario en el chat
                 coachPanel.addUserMessage(text);
 
-                // Enviar al motor de mentoría
-                if (coach != nullptr) coach->handleUserMessage(text);
-            };
+                // ═══ Comandos del chat (prefijo /, case-insensitive) ═══════════
+                juce::String trimmed = text.trim();
+                juce::String lower   = trimmed.toLowerCase();
 
-            coachPanel.onSuggestionClicked = [this, &coachPanel, coach](const juce::String& text) {
-                // Mostrar sugerencia clickeada como mensaje del usuario
-                coachPanel.addUserMessage(text);
+                if (lower.startsWith("/apikey ")) {
+                    juce::String key = trimmed.substring(8).trim();
+                    if (key.isNotEmpty()) {
+                        processorRef_.setApiKey(key);
 
-                // Enviar al motor de mentoría
+                        // Verificar resultado
+                        bool connected = processorRef_.isLlmAvailable();
+                        juce::String label = processorRef_.getLlmProviderModelLabel();
+
+                        if (connected && label.isNotEmpty()) {
+                            coachPanel.addSystemMessage(
+                                "[DONE] **API key configurada!**\n"
+                                "Proveedor activo: " + label);
+                        }
+                        else if (label.isNotEmpty()) {
+                            coachPanel.addSystemMessage(
+                                "[WARN] **API key configurada pero sin conexi\xC3\xB3n.**\n"
+                                "Proveedor: " + label + "\n"
+                                "Verifica la key e internet, o escribe /retry para reconectar.");
+                        }
+                        else {
+                            coachPanel.addSystemMessage(
+                                "\xE2\x9D\x8C **El sistema LLM a\xC3\xBan no se ha inicializado.**\n"
+                                "Espera unos segundos a que el plugin termine de conectar "
+                                "y vuelve a intentarlo con: /apikey nvapi-xxxxxxxxxxxx");
+                        }
+                    }
+                    else {
+                        coachPanel.addSystemMessage(
+                            "\xE2\x9D\x8C **API key vac\xC3\xAD" "a.**\n"
+                            "Usa: /apikey nvapi-xxxxxxxxxxxx\n"
+                            "O:    /apikey gsk_xxxxxxxxxxxx");
+                    }
+                    return;
+                }
+
+                if (lower.trim() == "/retry") {
+                    processorRef_.retryOllamaConnection();
+                    bool connected = processorRef_.isLlmAvailable();
+                    juce::String label = processorRef_.getLlmProviderModelLabel();
+                    if (connected && label.isNotEmpty()) {
+                        coachPanel.addSystemMessage(
+                            "[DONE] Reconexi\xC3\xB3n exitosa: " + label);
+                    }
+                    else if (label.isNotEmpty()) {
+                        coachPanel.addSystemMessage(
+                            "\xE2\x9D\x8C No se pudo conectar con " + label + ".\n"
+                            "Verifica tu API key con /apikey o que Ollama est\xC3" "\xA9 corriendo.");
+                    }
+                    else {
+                        coachPanel.addSystemMessage(
+                            "\xE2\x9D\x8C El sistema LLM a\xC3\xBA" "an no se ha inicializado.\n"
+                            "Espera unos segundos y vuelve a intentarlo.");
+                    }
+                    return;
+                }
+
+                // Enviar al motor de mentoría (solo mensajes que no son comandos)
                 if (coach != nullptr) coach->handleUserMessage(text);
             };
 
@@ -433,7 +531,8 @@ namespace mixcoach {
             auto& coachPanel = tabbedComponent_->getCoachPanel();
             auto* coach      = processorRef_.getCoachEngine();
             if (coach != nullptr) {
-                coach->setMessagePushedCallback([&coachPanel](const juce::String& text, bool isSystem) {
+                coach->setMessagePushedCallback([this, &coachPanel](const juce::String& text, bool isSystem) {
+                    maybeRevealAnalyzersTabFromMessage(text);
                     if (isSystem) coachPanel.addSystemMessage(text);
                     else
                         coachPanel.addMessage(text);
@@ -449,9 +548,20 @@ namespace mixcoach {
                         // Token received: append to streaming bubble
                         coachPanel.appendStreamingToken(token);
                     },
-                    [&coachPanel]() {
+                    [this, &coachPanel]() {
                         // Stream ended: finalizar burbuja
                         coachPanel.finalizeStreamingMessage();
+                    });
+
+                // ═══ Wire LLM response complete callback → Director ═══
+                coach->setLlmResponseCompleteCallback(
+                    [this](const juce::String& fullResponse) {
+                        if (tabbedComponent_ != nullptr) {
+                            auto* director = tabbedComponent_->getNarrativeDirector();
+                            if (director != nullptr) {
+                                director->processCoachMessage(fullResponse);
+                            }
+                        }
                     });
             }
         }
@@ -477,6 +587,61 @@ namespace mixcoach {
         registry.onSlotChanged    = nullptr;
         registry.onSlotRegistered = nullptr;
         registry.onSlotReleased   = nullptr;
+        
+        // ═══ CRÍTICO: Disparar el layout de tabbedComponent_ ══════════════════
+        // Si no se llama resized() aquí, tabbedComponent_ se queda con tamaño 0x0
+        // y la UI aparece en negro.
+        resized();
+
+        // ═══ TIMER GUARD: Empezar 60fps timer SOLO después de buildFullUI ═════
+        // El timer se inicia aquí, NO en el constructor, para evitar que se
+        // dispare durante la construcción del árbol de componentes (que causaba
+        // race conditions al minimizar/restaurar el editor en FL Studio).
+        startTimerHz(60);
+    }
+
+    void MixCoachAudioProcessorEditor::retryInitSharedData()
+    {
+        if (editorBeingDestroyed_) return;
+
+        // Si sharedData no está disponible aún, reintentar más tarde
+        if (sharedData_ == nullptr) {
+            // initSharedData() puede ser llamado múltiples veces
+            // hasta que sharedData esté listo.
+            initSharedData();
+            if (sharedData_ == nullptr) {
+                // Reintentar en 100ms
+                juce::Timer::callAfterDelay(100, [this]() { retryInitSharedData(); });
+                return;
+            }
+        }
+
+        // buildFullUI() solo se ejecuta una vez (fullUIBuilt_ guard)
+        if (!fullUIBuilt_) {
+            buildFullUI();
+        }
+    }
+
+    void MixCoachAudioProcessorEditor::revealAnalyzersTab()
+    {
+        if (analyzersTabVisible_) return;
+
+        analyzersTabVisible_ = true;
+        repaint();
+    }
+
+    void MixCoachAudioProcessorEditor::maybeRevealAnalyzersTabFromMessage(const juce::String& text)
+    {
+        if (analyzersTabVisible_) return;
+        if (!messageSuggestsAnalyzers(text)) return;
+
+        revealAnalyzersTab();
+    }
+
+    bool MixCoachAudioProcessorEditor::isWelcomeActive() const noexcept
+    {
+        return tabbedComponent_ != nullptr
+            && tabbedComponent_->getCoachRoomState() == CoachRoomState::Welcome;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -504,6 +669,11 @@ namespace mixcoach {
             else {
                 placeholderLabel_.setBounds(area);
             }
+
+
+            // Walkthrough overlay cubre toda la UI
+            if (walkthroughOverlay_ != nullptr)
+                walkthroughOverlay_->setBounds(getLocalBounds());
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             earlyCrashLog("RESIZE", "SEH capturado en resized");
@@ -527,6 +697,16 @@ namespace mixcoach {
             for (int gx = 0; gx < getWidth(); gx += 32) {
                 g.fillRect(gx, gy, 1, 1);
             }
+        }
+
+        if (isWelcomeActive()) {
+            headerTab1Bounds_ = {};
+            headerTab2Bounds_ = {};
+            headerVerifyBounds_ = {};
+            headerMenuIconBounds_ = {};
+            headerHelpIconBounds_ = {};
+            headerSettingsIconBounds_ = {};
+            return;
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -610,7 +790,7 @@ namespace mixcoach {
 
         g.setFont(juce::Font(juce::FontOptions(20.0f)));
         g.setColour(MixCoachTheme::accentGlow());
-        g.drawText(juce::CharPointer_UTF8("\xE2\x9A\xA1"), iconArea, juce::Justification::centred);
+        g.drawText(juce::CharPointer_UTF8("[BOLT]"), iconArea, juce::Justification::centred);
 
         leftArea.removeFromLeft(2);
 
@@ -623,8 +803,9 @@ namespace mixcoach {
         // ═══════════════════════════════════════════════════════════════════════
         //  CENTER: Custom tabs con hover glow y underline animado
         // ═══════════════════════════════════════════════════════════════════════
-        auto centreArea = headerInner.removeFromLeft(280);
+        auto centreArea = headerInner.removeFromLeft(analyzersTabVisible_ ? 280 : 124);
         int tabH        = centreArea.getHeight();
+        juce::ignoreUnused(tabH);
 
         // ─── Tab 1: AI COACH ─────────────────────────────────────────────────
         auto tab1Area      = centreArea.removeFromLeft(100);
@@ -650,34 +831,42 @@ namespace mixcoach {
                                     : MixCoachTheme::textDim());
         g.drawText("AI COACH", tab1Area.reduced(0, 4), juce::Justification::centred);
 
-        centreArea.removeFromLeft(4);
+        juce::Rectangle<int> tab2Area;
+        bool isTab2Active = (headerActiveTab_ == 1);
+        bool isTab2Hovered = false;
 
-        // ─── Tab 2: ANALYZERS ────────────────────────────────────────────────
-        auto tab2Area      = centreArea.removeFromLeft(110);
-        headerTab2Bounds_  = tab2Area;
-        bool isTab2Active  = (headerActiveTab_ == 1);
-        bool isTab2Hovered = (hoveredHeaderElement_ == 1);
+        if (analyzersTabVisible_) {
+            centreArea.removeFromLeft(4);
 
-        if (isTab2Hovered && !isTab2Active) {
-            g.setColour(MixCoachTheme::accent().withAlpha(0.06f));
-            g.fillRoundedRectangle(tab2Area.toFloat().reduced(2, 2), 4.0f);
+            // ─── Tab 2: ANALYZERS ────────────────────────────────────────────
+            tab2Area         = centreArea.removeFromLeft(110);
+            headerTab2Bounds_ = tab2Area;
+            isTab2Hovered    = (hoveredHeaderElement_ == 1);
+
+            if (isTab2Hovered && !isTab2Active) {
+                g.setColour(MixCoachTheme::accent().withAlpha(0.06f));
+                g.fillRoundedRectangle(tab2Area.toFloat().reduced(2, 2), 4.0f);
+            }
+
+            if (isTab2Active) {
+                g.setColour(juce::Colour(0x14FFFFFF));
+                g.fillRoundedRectangle(tab2Area.toFloat().reduced(2, 2), 4.0f);
+            }
+
+            g.setColour(isTab2Active    ? MixCoachTheme::accent()
+                        : isTab2Hovered ? MixCoachTheme::accentDim()
+                                        : MixCoachTheme::textDim());
+            g.drawText("ANALYZERS", tab2Area.reduced(0, 4), juce::Justification::centred);
         }
-
-        if (isTab2Active) {
-            g.setColour(juce::Colour(0x14FFFFFF));
-            g.fillRoundedRectangle(tab2Area.toFloat().reduced(2, 2), 4.0f);
+        else {
+            headerTab2Bounds_ = {};
         }
-
-        g.setColour(isTab2Active    ? MixCoachTheme::accent()
-                    : isTab2Hovered ? MixCoachTheme::accentDim()
-                                    : MixCoachTheme::textDim());
-        g.drawText("ANALYZERS", tab2Area.reduced(0, 4), juce::Justification::centred);
 
         // ─── Animated underline (slides smoothly between tabs via SmoothValue) ──
         {
-            float animPos = headerTabAnim_.getCurrent(); // 0.0 = tab1, 1.0 = tab2
+            float animPos = analyzersTabVisible_ ? headerTabAnim_.getCurrent() : 0.0f; // 0.0 = tab1, 1.0 = tab2
             float tab1CX  = (float)(tab1Area.getX() + tab1Area.getWidth() / 2);
-            float tab2CX  = (float)(tab2Area.getX() + tab2Area.getWidth() / 2);
+            float tab2CX  = analyzersTabVisible_ ? (float)(tab2Area.getX() + tab2Area.getWidth() / 2) : tab1CX;
             float cx      = tab1CX + (tab2CX - tab1CX) * animPos;
 
             float underW = 28.0f;
@@ -722,7 +911,7 @@ namespace mixcoach {
         }
         g.setFont(juce::Font(juce::FontOptions(14.0f)));
         g.setColour(settingsHovered ? MixCoachTheme::accentGlow() : MixCoachTheme::textMuted());
-        g.drawText(juce::CharPointer_UTF8("\xE2\x9A\x99"), settingsIconArea, juce::Justification::centred);
+        g.drawText(juce::CharPointer_UTF8("[GEAR]"), settingsIconArea, juce::Justification::centred);
 
         // Help icon ?
         auto helpIconArea     = iconsArea.removeFromRight(iconW);
@@ -746,7 +935,7 @@ namespace mixcoach {
         }
         g.setFont(juce::Font(juce::FontOptions(16.0f)));
         g.setColour(menuHovered ? MixCoachTheme::accentGlow() : MixCoachTheme::textMuted());
-        g.drawText(juce::CharPointer_UTF8("\xE2\x89\xA1"), menuIconArea, juce::Justification::centred);
+        g.drawText(juce::CharPointer_UTF8("[MENU]"), menuIconArea, juce::Justification::centred);
 
         rightArea.removeFromRight(8);
 
@@ -825,13 +1014,13 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     void MixCoachAudioProcessorEditor::mouseMove(const juce::MouseEvent& e)
     {
-        if (editorBeingDestroyed_) return;
+        if (editorBeingDestroyed_ || isWelcomeActive()) return;
 
         auto pos     = e.getPosition();
         int newHover = -1;
 
         if (headerTab1Bounds_.contains(pos)) newHover = 0;
-        else if (headerTab2Bounds_.contains(pos))
+        else if (analyzersTabVisible_ && headerTab2Bounds_.contains(pos))
             newHover = 1;
         else if (headerVerifyBounds_.contains(pos))
             newHover = 2;
@@ -855,7 +1044,7 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     void MixCoachAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
     {
-        if (editorBeingDestroyed_ || !tabbedComponent_) return;
+        if (editorBeingDestroyed_ || !tabbedComponent_ || isWelcomeActive()) return;
 
         auto pos = e.getPosition();
 
@@ -863,16 +1052,16 @@ namespace mixcoach {
         if (headerTab1Bounds_.contains(pos) && headerActiveTab_ != 0) {
             headerActiveTab_ = 0;
             headerTabAnim_.setTargetValue(0.0f);
-            tabbedComponent_->setCurrentTabIndex(0);
+            tabbedComponent_->setActiveTab(TabBarComponent::Coach);
             repaint();
             return;
         }
 
         // ─── Tab click: ANALYZERS (tab 1) ────────────────────────────────────
-        if (headerTab2Bounds_.contains(pos) && headerActiveTab_ != 1) {
+        if (analyzersTabVisible_ && headerTab2Bounds_.contains(pos) && headerActiveTab_ != 1) {
             headerActiveTab_ = 1;
             headerTabAnim_.setTargetValue(1.0f);
-            tabbedComponent_->setCurrentTabIndex(1);
+            tabbedComponent_->setActiveTab(TabBarComponent::Tools);
             repaint();
             return;
         }
@@ -885,11 +1074,9 @@ namespace mixcoach {
                 coachPanel.addSystemMessage("🔄 Verificando progreso... Analizando mezcla...");
             }
 
-            // Trigger a full re-scan + coach analysis
-            if (sharedData_) {
-                bgBackupScanRequested_.store(true);
-                bgForceSyncRequested_.store(true);
-            }
+            // Trigger a full re-scan via the background service (lives in processor)
+            processorRef_.getBgService().requestFullSync();
+            processorRef_.getBgService().requestBackupScan();
 
             // Notificar al coach engine para evaluar progreso
             auto* coach = processorRef_.getCoachEngine();
@@ -901,17 +1088,12 @@ namespace mixcoach {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  Detección de nuevos Messengers
+    //  INCREMENTO 1: Detección de nuevos Messengers via bg service
     // ═══════════════════════════════════════════════════════════════════════════
-    void MixCoachAudioProcessorEditor::ensureSlotFFT()
-    {
-        if (slotFFTPrepared_) return;
-        slotFFT_ = std::make_unique<juce::dsp::FFT>(kSlotFftOrder);
-        for (int i = 0; i < kSlotFftSize; ++i)
-            slotHann_[i] = 0.5f * (1.0f - std::cos(2.0f * juce::MathConstants<float>::pi * i / (kSlotFftSize - 1)));
-        slotFFTPrepared_ = true;
-    }
-
+    // Antes: accedía a bgLock_ + SlotRegistry directamente.
+    // Ahora: usa processorRef_.getBgService().forEachActiveSlot() que es
+    // thread-safe y protege el SlotRegistry internamente.
+    // ensureSlotFFT() se movió a MixCoachBgService (en el processor).
     void MixCoachAudioProcessorEditor::detectNewMessengers()
     {
         if (!sharedData_ || !tabbedComponent_) return;
@@ -921,32 +1103,37 @@ namespace mixcoach {
 
         int currentActiveCount = 0;
 
-        // ═══ tryLock no-bloqueante (protegido del background worker) ═════╗
-        if (bgLock_.tryEnter()) {
-            auto& registry = sharedData_->getSlotRegistry();
+        // ═══ Single pass: collect active slot indices while announcing new ones ═══
+        // Performance: O(n) instead of O(n*m) in the old code.
+        std::vector<int> activeSlots;
+        activeSlots.reserve(SlotRegistry::kMaxSlots);
 
-            currentActiveCount = registry.activeCount();
+        processorRef_.getBgService().forEachActiveSlot([&](const SlotInfo& info) {
+            currentActiveCount++;
+            int idx = info.slotIndex;
+            activeSlots.push_back(idx);
 
-            registry.forEachActive([&](const SlotInfo& info) {
-                int idx = info.slotIndex;
-                if (idx >= 0 && idx < SlotRegistry::kMaxSlots && !s_announcedSlots_[idx]) {
-                    s_announcedSlots_[idx] = true;
-                    coach->announceNewTrack(idx, juce::String(info.trackName), info.colour);
-                }
-            });
-
-            if (currentActiveCount < lastActiveSlotCount_) {
-                for (int i = 0; i < SlotRegistry::kMaxSlots; ++i) {
-                    auto info = registry.getSlotInfo(i);
-                    if (!info.active && s_announcedSlots_[i]) {
-                        s_announcedSlots_[i] = false;
-                    }
-                }
+            if (idx >= 0 && idx < SlotRegistry::kMaxSlots && !s_announcedSlots_[idx]) {
+                s_announcedSlots_[idx] = true;
+                coach->announceNewTrack(idx, juce::String(info.trackName), info.colour);
             }
+        });
 
-            lastActiveSlotCount_ = currentActiveCount;
-            bgLock_.exit();
+        // Clean up announced slots that are no longer active
+        if (currentActiveCount < lastActiveSlotCount_) {
+            // Build a lookup set for O(1) membership test
+            std::vector<bool> activeLookup(SlotRegistry::kMaxSlots, false);
+            for (int idx : activeSlots) {
+                if (idx >= 0 && idx < SlotRegistry::kMaxSlots)
+                    activeLookup[idx] = true;
+            }
+            for (int i = 0; i < SlotRegistry::kMaxSlots; ++i) {
+                if (s_announcedSlots_[i] && !activeLookup[i])
+                    s_announcedSlots_[i] = false;
+            }
         }
+
+        lastActiveSlotCount_ = currentActiveCount;
     }
 
 } // namespace mixcoach

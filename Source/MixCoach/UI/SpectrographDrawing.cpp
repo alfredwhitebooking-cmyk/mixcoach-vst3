@@ -108,22 +108,39 @@ namespace mixcoach {
         }
 
         // ─── Vertical lines at key frequencies ───────────────────────────────
-        for (int fi = 0; fi < (int)(sizeof(kLabelFreqsHz) / sizeof(kLabelFreqsHz[0])); ++fi) {
-            const float freq = kLabelFreqsHz[fi];
-            const float x    = freqToX(freq, plot);
+        // When zoom is active, generate dynamic vertical lines for the visible range
+        if (displayMinFreq_ > kMinFreq || displayMaxFreq_ < kMaxFreq) {
+            // Zoom mode: finer grid lines within the zoomed range
+            const float lo = displayMinFreq_;
+            const float hi = displayMaxFreq_;
+            // Generate ~10 grid lines evenly spaced in log space
+            const int kZoomLines = 10;
+            for (int i = 0; i <= kZoomLines; ++i) {
+                const float t    = (float)i / (float)kZoomLines;
+                const float freq = lo * std::pow(hi / lo, t);
+                const float x    = freqToX(freq, plot);
+                const bool isMajor = (i == 0 || i == kZoomLines);
+                g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.12f : 0.06f));
+                g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
+            }
+        } else {
+            // Full-range mode: standard grid lines
+            for (int fi = 0; fi < (int)(sizeof(kLabelFreqsHz) / sizeof(kLabelFreqsHz[0])); ++fi) {
+                const float freq = kLabelFreqsHz[fi];
+                const float x    = freqToX(freq, plot);
+                bool isMajor = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f);
+                g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.10f : 0.05f));
+                g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
+            }
 
-            bool isMajor = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f);
-            g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.10f : 0.05f));
-            g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
-        }
-
-        // ─── Extra sub-100Hz grid density ────────────────────────────────────
-        constexpr float subFreqs[] = {
-            25.0f, 30.0f, 35.0f, 40.0f, 45.0f, 50.0f, 55.0f, 60.0f, 65.0f, 70.0f, 75.0f, 80.0f, 85.0f, 90.0f, 95.0f};
-        for (float freq : subFreqs) {
-            const float x = freqToX(freq, plot);
-            g.setColour(MixCoachTheme::textMuted().withAlpha(0.025f));
-            g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
+            // ─── Extra sub-100Hz grid density ────────────────────────────────
+            constexpr float subFreqs[] = {
+                25.0f, 30.0f, 35.0f, 40.0f, 45.0f, 50.0f, 55.0f, 60.0f, 65.0f, 70.0f, 75.0f, 80.0f, 85.0f, 90.0f, 95.0f};
+            for (float freq : subFreqs) {
+                const float x = freqToX(freq, plot);
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.025f));
+                g.drawVerticalLine(juce::roundToInt(x), plot.getY(), plot.getBottom());
+            }
         }
     }
 
@@ -300,24 +317,6 @@ namespace mixcoach {
 
     void SpectrographComponent::drawFreqAxis(juce::Graphics& g, juce::Rectangle<float> plot) const
     {
-        juce::ignoreUnused(plot);
-        static constexpr float kLabelFreqsHz[] = {20.0f,
-                                                  30.0f,
-                                                  50.0f,
-                                                  70.0f,
-                                                  100.0f,
-                                                  200.0f,
-                                                  300.0f,
-                                                  500.0f,
-                                                  700.0f,
-                                                  1000.0f,
-                                                  2000.0f,
-                                                  3000.0f,
-                                                  5000.0f,
-                                                  7000.0f,
-                                                  10000.0f,
-                                                  20000.0f};
-
         const float labelH = 18.0f;
         const float labelY = (float)getHeight() - labelH - 2.0f;
         auto labelRow      = juce::Rectangle<float>(0.0f, labelY, (float)getWidth(), labelH);
@@ -337,23 +336,44 @@ namespace mixcoach {
         g.setGradientFill(edgeGrad);
         g.fillRect(edgeGlow);
 
-        for (float freq : kLabelFreqsHz) {
-            const float x = freqToX(freq, plot);
-            bool isMajor  = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f);
-            g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.25f : 0.12f));
-            g.drawVerticalLine(juce::roundToInt(x), labelRow.getY(), labelRow.getBottom());
-        }
-
         auto formatFreqLabel = [](float hz) -> juce::String {
             if (hz >= 1000.0f) return juce::String(hz / 1000.0f, hz >= 10000.0f ? 0 : 1) + "k";
             return juce::String((int)hz);
         };
 
-        for (float freq : kLabelFreqsHz) {
+        // Generate dynamic labels for zoom or full-range mode
+        juce::Array<float> labelFreqs;
+        if (displayMinFreq_ > kMinFreq || displayMaxFreq_ < kMaxFreq) {
+            // Zoom mode: ~8 evenly-spaced (log) labels within the visible range
+            const float lo = displayMinFreq_;
+            const float hi = displayMaxFreq_;
+            const int kZoomLabels = 8;
+            for (int i = 0; i <= kZoomLabels; ++i) {
+                const float t    = (float)i / (float)kZoomLabels;
+                const float freq = lo * std::pow(hi / lo, t);
+                labelFreqs.add(freq);
+            }
+        } else {
+            // Full-range mode: standard labels
+            labelFreqs.addArray({20.0f, 30.0f, 50.0f, 70.0f, 100.0f, 200.0f, 300.0f, 500.0f,
+                                 700.0f, 1000.0f, 2000.0f, 3000.0f, 5000.0f, 7000.0f, 10000.0f, 20000.0f});
+        }
+
+        // Draw tick marks
+        for (float freq : labelFreqs) {
+            const float x = freqToX(freq, plot);
+            bool isMajor  = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f)
+                         || (labelFreqs.size() <= 10 && (freq == labelFreqs.getFirst() || freq == labelFreqs.getLast()));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(isMajor ? 0.25f : 0.12f));
+            g.drawVerticalLine(juce::roundToInt(x), labelRow.getY(), labelRow.getBottom());
+        }
+
+        // Draw label text
+        for (float freq : labelFreqs) {
             const float x = freqToX(freq, plot);
             const float w = (freq >= 1000.0f) ? 30.0f : 22.0f;
-
-            bool isMajor = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f);
+            bool isMajor  = (freq == 100.0f || freq == 1000.0f || freq == 10000.0f)
+                         || (labelFreqs.size() <= 10 && (freq == labelFreqs.getFirst() || freq == labelFreqs.getLast()));
             if (isMajor) {
                 g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall - 1.5f)).boldened());
                 g.setColour(juce::Colours::white.withAlpha(0.92f));

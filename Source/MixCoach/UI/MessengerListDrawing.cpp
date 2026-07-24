@@ -103,9 +103,9 @@ namespace mixcoach {
                 int xOff = healthBar.getX();
 
                 // Row 1: Detailed TrackHealth pills (legacy)
-                drawPill(crit, MixCoachTheme::error(), "\xE2\x9D\x97", xOff);
-                drawPill(warn, MixCoachTheme::warning(), "\xE2\x9A\xA0", xOff);
-                drawPill(clean, MixCoachTheme::success(), "\xE2\x9C\x93", xOff);
+                drawPill(crit, MixCoachTheme::error(), "[EXCLAMATION]", xOff);
+                drawPill(warn, MixCoachTheme::warning(), "[WARN]", xOff);
+                drawPill(clean, MixCoachTheme::success(), "[OK]", xOff);
                 drawPill(silent, textMuted(), "\xE2\x9C\xB0", xOff);
 
                 // Separator before consolidated pills
@@ -118,9 +118,9 @@ namespace mixcoach {
                     xOff += 10;
 
                     // Row 2: Consolidated TrackAdvice status pills
-                    drawPill(consOffTarget,  MixCoachTheme::error(),   "\xE2\x97\x8B", xOff);
+                    drawPill(consOffTarget,  MixCoachTheme::error(),   "[EMPTY]", xOff);
                     drawPill(consNearTarget, MixCoachTheme::warning(), "\xE2\x97\xAF", xOff);
-                    drawPill(consOnTarget,   MixCoachTheme::success(), "\xE2\x97\x89", xOff);
+                    drawPill(consOnTarget,   MixCoachTheme::success(), "[ACTIVE]", xOff);
                 }
 
                 // Sprint 1: Identity progress badge 🎯 X/Y (confirmed / identified)
@@ -129,7 +129,7 @@ namespace mixcoach {
                     if (prog.totalActive > 0 && prog.identified > 0) {
                         bool allConfirmed   = (prog.pendingInferred == 0);
                         auto idCol          = allConfirmed ? MixCoachTheme::success() : MixCoachTheme::accentCyan();
-                        juce::String idText = "\xF0\x9F\x8E\xAF " // 🎯
+                        juce::String idText = "[TARGET] " // 🎯
                                               + juce::String(prog.confirmed) + "/" + juce::String(prog.identified);
                         int idW = juce::GlyphArrangement::getStringWidthInt(interFont(9.0f).boldened(), idText) + 14;
                         auto idPill = juce::Rectangle<int>(xOff, healthBar.getY() + 3, idW, healthBar.getHeight() - 6);
@@ -676,9 +676,9 @@ namespace mixcoach {
 
             // Confidence icon ✅/⚠️/❌ inside the pill
             juce::String confIcon;
-            if (entry.roleConfidence >= 0.75f) confIcon = "\xE2\x9C\x93"; // ✓
+            if (entry.roleConfidence >= 0.75f) confIcon = "[OK]"; // ✓
             else if (entry.roleConfidence >= 0.4f)
-                confIcon = "\xE2\x9A\xA0"; // ⚠
+                confIcon = "[WARN]"; // ⚠
             else
                 confIcon = "\xE2\x9D\x8C"; // ❌
 
@@ -723,7 +723,7 @@ namespace mixcoach {
             // Lightning bolt text
             g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)).boldened());
             g.setColour(MixCoachTheme::accentCyan().withAlpha(pulseText * fade));
-            g.drawFittedText("\xE2\x9A\xA1", badgeArea, juce::Justification::centred, 1);
+            g.drawFittedText("[BOLT]", badgeArea, juce::Justification::centred, 1);
         }
 
         // ─── 3. L/R peak values ─────────────────────────────────────────────

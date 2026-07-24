@@ -249,7 +249,7 @@ namespace mixcoach {
         g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeMicro)).boldened());
         g.setColour(MixCoachTheme::textDim().withAlpha(0.5f));
         g.drawText(
-            juce::String::fromUTF8("\xF0\x9F\x93\x8A POR FRECUENCIA"), labelArea, juce::Justification::centredLeft);
+            juce::String::fromUTF8("[CHART] POR FRECUENCIA"), labelArea, juce::Justification::centredLeft);
 
         // ─── Barras ──────────────────────────────────────────────────────────
         float gap       = 2.0f;

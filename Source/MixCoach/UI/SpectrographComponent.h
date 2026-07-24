@@ -60,6 +60,9 @@ namespace mixcoach {
         // más suaves. Cada banda RTA agrega ~34 puntos high-res en promedio.
         static constexpr int kHighResPoints     = 2048;
         static constexpr int kMaxFFTBins        = 8192;
+        // Dynamic frequency range — defaults to 20Hz-20kHz, zooms when highlight is set
+        float displayMinFreq_ = 20.0f;
+        float displayMaxFreq_ = 20000.0f;
         static constexpr float kMinFreq         = 20.0f;
         static constexpr float kMaxFreq         = 20000.0f;
         static constexpr float kDisplayTopDb    = 0.0f;
@@ -271,17 +274,70 @@ namespace mixcoach {
         /** Limpia todos los marcadores de frecuencia. */
         void clearFrequencyMarkers();
 
+        // ═══ Frequency Region Highlight — glowing band overlay (SCENE 9) ═══
+        /** Resalta una región de frecuencia en el espectro como banda glow.
+            Se usa cuando el Coach dice "Mira aquí" y señala 60 Hz, 3 kHz, etc.
+            @param frequencyHz  Frecuencia central (Hz)
+            @param bandwidthHz  Ancho de banda (Hz). 0 = auto (1/3 octava)
+            @param label        Etiqueta descriptiva (ej: "60 Hz — Kick")
+            @param colour       Color del glow (default = accent violeta) */
+        void setHighlightFrequency(float frequencyHz,
+                                   float bandwidthHz = 0.0f,
+                                   const juce::String& label = {},
+                                   juce::Colour colour = juce::Colour());
+
+        /** Igual que setHighlightFrequency pero ademÃ¡s hace ZOOM en la regiÃ³n.
+            El espectro se reescala para mostrar solo Â±1.5 octavas alrededor
+            de la frecuencia problema, dando un efecto de lupa/espectroscopio.
+            Se llama desde NavigationShell::setSpectrumHighlight().
+            @param frequencyHz  Frecuencia central (Hz)
+            @param label        Etiqueta (ej: "2500 Hz — Masking")
+            @param zoomOctaves  CuÃ¡ntas octavas mostrar alrededor (default 1.5) */
+        void setZoomHighlight(float frequencyHz,
+                              const juce::String& label,
+                              float zoomOctaves = 1.5f);
+
+        /** Limpia el highlight + zoom, volviendo al rango completo 20Hz-20kHz. */
+        void clearHighlight();
+
+        /** Limpia solo el zoom (mantiene el highlight visual). */
+        void clearZoom();
+
+        /** Retorna true si el zoom estÃ¡ activo. */
+        [[nodiscard]] bool isZoomActive() const noexcept
+        {
+            return displayMinFreq_ > kMinFreq || displayMaxFreq_ < kMaxFreq;
+        }
+
+        /** Retorna true si hay un highlight activo. */
+        [[nodiscard]] bool isHighlightActive() const noexcept { return highlightActive_; }
+
+        /** Retorna la frecuencia central del highlight activo (Hz). */
+        [[nodiscard]] float getHighlightFrequency() const noexcept { return highlightFreqHz_; }
+
     private:
         void pruneFrequencyMarkers();
         void drawFrequencyMarkers(juce::Graphics& g, juce::Rectangle<float> plot) const;
+        void drawFrequencyHighlight(juce::Graphics& g, juce::Rectangle<float> plot) const;
 
         std::vector<FrequencyMarker> frequencyMarkers_;
         mutable int64_t lastMarkerPruneMs_        = 0;
         static constexpr int kMaxFrequencyMarkers = 20;
 
+        // ═══ Frequency highlight state ═══════════════════════════════════════
+        bool highlightActive_ = false;
+        float highlightFreqHz_ = 0.0f;         // Center frequency
+        float highlightLowHz_  = 0.0f;         // Low edge
+        float highlightHighHz_ = 0.0f;         // High edge
+        juce::String highlightLabel_;          // Descriptive label
+        juce::Colour highlightColour_;         // Glow colour
+        float highlightPulsePhase_ = 0.0f;     // Animated pulse (0..2pi)
+
         // ═══ Diagnostic bridge (owned by PluginProcessor, injected) ═══════════
         DiagnosticBridge* diagnosticBridge_ = nullptr;
         std::vector<BandDiagnostic> activeDiagnostics_;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SpectrographComponent)
     };
 
 } // namespace mixcoach

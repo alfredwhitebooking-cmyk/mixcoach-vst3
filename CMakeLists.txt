@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS NO)
 
 # ─── JUCE Integration ─────────────────────────────────────────────────────────
 # Use CACHE variable so CI can override with: -DJUCE_ROOT=<path>
-set(JUCE_ROOT "C:/MIXCOA~1/juce-8.0.13-windows/MixCoachAI/JUCE" CACHE PATH "Ruta a JUCE framework")
+set(JUCE_ROOT "C:/Proyectos/MixCoach/libs/JUCE" CACHE PATH "Ruta a JUCE framework")
 
 if(NOT EXISTS "${JUCE_ROOT}/CMakeLists.txt")
     message(WARNING "JUCE no encontrado en ${JUCE_ROOT}. Configura: -DJUCE_ROOT=<ruta>")
@@ -121,12 +121,19 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/core/ReferenceAudioPlayer.h
     Source/MixCoach/core/PluginEditor.h
     Source/MixCoach/core/PluginEditor.cpp
+    Source/MixCoach/core/CelebrationChime.h
     Source/MixCoach/core/PluginEditorTimer.cpp
     Source/MixCoach/core/PluginEditorBackground.cpp
+    Source/MixCoach/core/MixCoachBgService.h
+    Source/MixCoach/core/MixCoachBgService.cpp
+    Source/MixCoach/core/UrlDownloader.h
+    Source/MixCoach/core/UrlDownloader.cpp
     Source/MixCoach/engine/PhaseManager.h
     Source/MixCoach/engine/PhaseManager.cpp
     Source/MixCoach/engine/CoachEngine.h
+    Source/MixCoach/engine/CommandTelemetry.h
     Source/MixCoach/engine/CoachEngine.cpp
+    Source/MixCoach/engine/CommandTelemetry.cpp
     Source/MixCoach/engine/CoachEngineCommands.cpp
     Source/MixCoach/engine/CoachEngineCorrection.cpp
     Source/MixCoach/engine/CoachEngineIssues.cpp
@@ -136,6 +143,52 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/engine/CoachEngine_Analysis.cpp
     Source/MixCoach/engine/CoachEngine_Identity.cpp
     Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/CoachEngine_Reverb.cpp
+    Source/MixCoach/engine/LlmCommandInterpreter.h
+    Source/MixCoach/engine/LlmCommandInterpreter.cpp
+    Source/MixCoach/engine/SceneManager.h
+    Source/MixCoach/engine/SceneManager.cpp
+    Source/MixCoach/engine/PanelRevealManager.h
+    Source/MixCoach/engine/PanelRevealManager.cpp
+    Source/MixCoach/engine/ExperienceManager.h
+    Source/MixCoach/engine/ExperienceManager.cpp
+    Source/MixCoach/engine/TrackGainAnalyzer.h
+    Source/MixCoach/engine/TrackGainAnalyzer.cpp
+    Source/MixCoach/engine/TrackDynamicsAnalyzer.h
+    Source/MixCoach/engine/TrackDynamicsAnalyzer.cpp
+    Source/MixCoach/engine/TrackTonalAnalyzer.h
+    Source/MixCoach/engine/TrackTonalAnalyzer.cpp
+    Source/MixCoach/engine/GenreProfile.h
+    Source/MixCoach/engine/TrackPhaseAnalyzer.h
+    Source/MixCoach/engine/TrackPhaseAnalyzer.cpp
+    Source/MixCoach/engine/CoachingStageManager.h
+    Source/MixCoach/engine/CoachingStageManager.cpp
+    Source/MixCoach/engine/SessionEventLog.h
+    Source/MixCoach/engine/ProblemAnalyzerMap.h
+    Source/MixCoach/engine/ProblemAnalyzerMap.cpp
+    Source/MixCoach/engine/EvidenceViewMapper.h
+    Source/MixCoach/engine/EvidenceViewMapper.cpp
+    Source/MixCoach/engine/CoachingNarrativeTypes.h
+    Source/MixCoach/engine/ChatMessageSequencer.h
+    Source/MixCoach/engine/ChatMessageSequencer.cpp
+    Source/MixCoach/engine/CoachingNarrativeDirector.h
+    Source/MixCoach/engine/CoachingNarrativeDirector.cpp
+    Source/MixCoach/engine/SessionProgression.h
+    Source/MixCoach/engine/SessionProgression.cpp
+    Source/MixCoach/engine/RefinementProfile.h
+    Source/MixCoach/engine/RefinementProfile.cpp
+    Source/MixCoach/engine/ReferenceProfile.h
+    Source/MixCoach/engine/ReferenceProfile.cpp
+    Source/MixCoach/engine/ReferenceProfileCache.cpp
+    Source/MixCoach/engine/CoachPersona.h
+    Source/MixCoach/engine/AnalyzerManager.h
+    Source/MixCoach/engine/AnalyzerManager.cpp
+    Source/MixCoach/engine/DensityAnalyzer.h
+    Source/MixCoach/engine/DensityAnalyzer.cpp
+    Source/MixCoach/engine/SectionDetector.h
+    Source/MixCoach/engine/SectionDetector.cpp
+    Source/MixCoach/engine/ProgressTracker.h
+    Source/MixCoach/engine/ProgressTracker.cpp
     Source/MixCoach/engine/TrackRole.h
     Source/MixCoach/engine/SpectralProfiler.h
     Source/MixCoach/engine/SpectralProfiler.cpp
@@ -143,6 +196,8 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/engine/SemanticComparator.cpp
     Source/MixCoach/engine/ReferenceDrivenEngine.h
     Source/MixCoach/engine/ReferenceDrivenEngine.cpp
+    Source/MixCoach/engine/ReferenceSummary.h
+    Source/MixCoach/engine/ReferenceSummary.cpp
     Source/MixCoach/engine/DifferenceProfile.h
     Source/MixCoach/engine/DifferenceProfile.cpp
     Source/MixCoach/engine/CorrectionLearner.h
@@ -160,6 +215,13 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/engine/WorkflowDetector.cpp
     Source/MixCoach/engine/AnalyzerInterpreter.h
     Source/MixCoach/engine/AnalyzerInterpreter.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/MixCoach/engine/PluginDatabase.h
+    Source/MixCoach/engine/PluginDatabase.cpp
+    Source/MixCoach/engine/PluginSuggestionsProvider.h
+    Source/MixCoach/engine/PluginSuggestionsProvider.cpp
+    Source/MixCoach/engine/PluginScanner.h
+    Source/MixCoach/engine/PluginScanner.cpp
     Source/MixCoach/engine/SessionMap.cpp
     Source/MixCoach/audio/AudioAnalyzer.h
     Source/MixCoach/audio/AudioAnalyzer.cpp
@@ -169,6 +231,8 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/UI/MainTabbedComponent.h
     Source/MixCoach/UI/MainTabbedComponent.cpp
     Source/MixCoach/UI/CoachChatComponent.h            Source/MixCoach/UI/CoachChatComponent.cpp
+    Source/MixCoach/UI/CoachChatComponent_Sprint1.cpp
+    Source/MixCoach/UI/ChatMessagesComponent_InlineCards.cpp
             Source/MixCoach/UI/MixMapComponent.cpp
     Source/MixCoach/UI/MasterMeterPanel.h
     Source/MixCoach/UI/MasterMeterPanel.cpp
@@ -177,6 +241,15 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/UI/AnalyzersPanelComponent.h
     Source/MixCoach/UI/AnalyzersPanelComponent.cpp
     Source/MixCoach/UI/AnalyzersPanelDrawing.h
+    # ─── Independent Analyzers (Coach-opened evidence panels) ──
+    Source/MixCoach/Analyzers/LevelMeter.h
+    Source/MixCoach/Analyzers/LevelMeter.cpp
+    Source/MixCoach/Analyzers/PhaseMeter.h
+    Source/MixCoach/Analyzers/PhaseMeter.cpp
+    Source/MixCoach/Analyzers/SpectrumAnalyzer.h
+    Source/MixCoach/Analyzers/SpectrumAnalyzer.cpp
+    Source/MixCoach/Analyzers/TargetMarkers.h
+    Source/MixCoach/Analyzers/TargetMarkers.cpp
     Source/MixCoach/UI/MeterCard.h
     Source/MixCoach/UI/MeterCard.cpp
     Source/MixCoach/UI/MeterPanel.h
@@ -202,11 +275,84 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/UI/AudioDNAComponent.h
     Source/MixCoach/UI/CrestPanel.cpp
     Source/MixCoach/UI/AudioDNAComponent.cpp
+    Source/MixCoach/UI/CoachRoomState.h
+    Source/MixCoach/UI/NavigationShell.h
+    Source/MixCoach/UI/NavigationShell.cpp
+    Source/MixCoach/UI/EvidencePanel.h
+    Source/MixCoach/UI/EvidencePanel.cpp
+    Source/MixCoach/UI/FocusOverlay.h
+    Source/MixCoach/UI/FocusOverlay.cpp
+    Source/MixCoach/UI/WalkthroughOverlay.h
+    Source/MixCoach/UI/WalkthroughOverlay.cpp
+    Source/MixCoach/UI/ProgressScreen.h
+    Source/MixCoach/UI/ProgressScreen.cpp
+    Source/MixCoach/UI/EndOfSessionComponent.h
+    Source/MixCoach/UI/EndOfSessionComponent.cpp
+    Source/MixCoach/UI/TabBarComponent.h
+    Source/MixCoach/UI/TabBarComponent.cpp
+    Source/MixCoach/UI/RobotAvatarComponent.h
+    Source/MixCoach/UI/RobotAvatarComponent.cpp
+    Source/MixCoach/UI/MixBotComponent.h
+    Source/MixCoach/UI/MixBotComponent.cpp
+    Source/MixCoach/UI/WelcomeComponent.h
+    Source/MixCoach/UI/WelcomeComponent.cpp
+    Source/MixCoach/UI/ModeSelectionCard.h
+    Source/MixCoach/UI/ModeSelectionCard.cpp
+    Source/MixCoach/UI/GenreSelectionCard.h
+    Source/MixCoach/UI/GenreSelectionCard.cpp
+    Source/MixCoach/UI/GenreSelectionGrid.h
+    Source/MixCoach/UI/GenreSelectionGrid.cpp
+    Source/MixCoach/UI/ReferenceOnboardingCard.h
+    Source/MixCoach/UI/ReferenceOnboardingCard.cpp
+    Source/MixCoach/UI/ReferenceAnalysisProgressCard.h
+    Source/MixCoach/UI/ReferenceAnalysisProgressCard.cpp
+    Source/MixCoach/UI/SessionScanCard.h
+    Source/MixCoach/UI/SessionScanCard.cpp
+    Source/MixCoach/UI/PhaseProgressBar.h
+    Source/MixCoach/UI/PhaseProgressBar.cpp
+    Source/MixCoach/UI/OptionCardComponent.h
+    Source/MixCoach/UI/OptionCardComponent.cpp
+    Source/MixCoach/UI/BackgroundEffectsComponent.h
+    Source/MixCoach/UI/BackgroundEffectsComponent.cpp
+    Source/MixCoach/UI/QuickReplyBar.h
+    Source/MixCoach/UI/QuickReplyBar.cpp
+    Source/MixCoach/UI/TrackProblemCard.h
+    Source/MixCoach/UI/TrackProblemBuilder.h
+    Source/MixCoach/UI/TrackProblemCard.cpp
+    Source/MixCoach/UI/TrackProblemBuilder.cpp
+    Source/MixCoach/UI/MixMapDetailPanel.h
+    Source/MixCoach/UI/MixMapDetailPanel.cpp
+    Source/MixCoach/UI/CoachingEvidenceHost.h
+    Source/MixCoach/UI/CoachingEvidenceHost.cpp
+    Source/MixCoach/UI/GainStagingPanel.h
+    Source/MixCoach/UI/GainStagingPanel.cpp
+    Source/MixCoach/UI/EQPanel.h
+    Source/MixCoach/UI/EQPanel.cpp
+    Source/MixCoach/UI/CompressionPanel.h
+    Source/MixCoach/UI/CompressionPanel.cpp
+    Source/MixCoach/UI/SpacePanel.h
+    Source/MixCoach/UI/SpacePanel.cpp
+    Source/MixCoach/UI/MasterCheckPanel.h
+    Source/MixCoach/UI/MasterCheckPanel.cpp
+    Source/MixCoach/UI/PluginConfirmationPanel.h
+    Source/MixCoach/UI/PluginConfirmationPanel.cpp
+    Source/MixCoach/UI/AutomationPanel.h
+    Source/MixCoach/UI/AutomationPanel.cpp
+    Source/MixCoach/UI/ScoreRingComponent.h
+    Source/MixCoach/UI/ScoreRingComponent.cpp
+    Source/MixCoach/UI/SessionPrepChecklist.h
+    Source/MixCoach/UI/SessionPrepChecklist.cpp
+    Source/MixCoach/UI/CoachingGuideWidget.h
+    Source/MixCoach/UI/CoachingGuideWidget.cpp
+    Source/MixCoach/UI/DecayGraphComponent.h
+    Source/MixCoach/UI/DecayGraphComponent.cpp
     Source/MixCoach/ai/AiCoachAdapter.h
     Source/MixCoach/ai/AiCoachAdapterPrompts.cpp
     Source/MixCoach/ai/AiCoachAdapterSession.cpp
     Source/MixCoach/ai/LlmClient.h
     Source/MixCoach/ai/LlmClient.cpp
+    Source/MixCoach/ai/LlmChatSession.h
+    Source/MixCoach/ai/LlmChatSession.cpp
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -287,6 +433,50 @@ set_target_properties(TestSmoothValue PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: LlmCommandInterpreter — parseCommands, processResponse, executeCommand, buildCommandInstructions ──
+add_executable(TestLlmCommandInterpreter
+    tests/TestLlmCommandInterpreter.cpp
+    Source/MixCoach/engine/LlmCommandInterpreter.h
+    Source/MixCoach/engine/LlmCommandInterpreter.cpp
+    Source/MixCoach/engine/CommandTelemetry.h
+    Source/MixCoach/engine/CommandTelemetry.cpp
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestLlmCommandInterpreter PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestLlmCommandInterpreter PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestLlmCommandInterpreter PRIVATE /W4)
+set_target_properties(TestLlmCommandInterpreter PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: CoachingNarrativeTypes — NarrativeStep, EvidenceView, EvidenceConfig validation ──
+add_executable(TestCoachingNarrativeTypes
+    tests/TestCoachingNarrativeTypes.cpp
+)
+target_include_directories(TestCoachingNarrativeTypes PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestCoachingNarrativeTypes PRIVATE
+    juce_core
+)
+target_compile_options(TestCoachingNarrativeTypes PRIVATE /W4)
+set_target_properties(TestCoachingNarrativeTypes PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Test: PhaseManager (con JUCE) ──────────────────────────────────────────
 add_executable(TestPhaseManager
     tests/TestPhaseManager.cpp
@@ -327,8 +517,18 @@ add_executable(TestCoachEngine
     Source/MixCoach/engine/CoachEngineReference.cpp
     Source/MixCoach/engine/CoachEngineSetup.cpp
     Source/MixCoach/engine/CoachEngine_Analysis.cpp
-    Source/MixCoach/engine/CoachEngine_Identity.cpp
-    Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/CoachEngine_Identity.cpp    Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/CoachEngine_Reverb.cpp
+    # ─── Dependencies for CoachEngine: Plugin system + ReferenceSummary ──
+    Source/MixCoach/engine/ReferenceSummary.h
+    Source/MixCoach/engine/ReferenceSummary.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/MixCoach/engine/PluginDatabase.h
+    Source/MixCoach/engine/PluginDatabase.cpp
+    Source/MixCoach/engine/PluginSuggestionsProvider.h
+    Source/MixCoach/engine/PluginSuggestionsProvider.cpp
+    Source/MixCoach/engine/PluginScanner.h
+    Source/MixCoach/engine/PluginScanner.cpp
     Source/MixCoach/engine/PhaseManager.h
     Source/MixCoach/engine/PhaseManager.cpp
     Source/MixCoach/engine/TrackRole.h
@@ -384,6 +584,7 @@ add_executable(TestCoachEngine
     Source/Common/types/Types.h
     Source/Common/types/LogHelper.h
 )
+
 target_include_directories(TestCoachEngine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source
     ${JUCE_ROOT}/modules
@@ -725,6 +926,11 @@ add_executable(TestExperienceLevel
     Source/MixCoach/ai/AiCoachAdapterSession.cpp
     Source/MixCoach/ai/LlmClient.h
     Source/MixCoach/ai/LlmClient.cpp
+    Source/MixCoach/engine/LlmCommandInterpreter.h
+    Source/MixCoach/engine/LlmCommandInterpreter.cpp
+    # ─── Dependencies for LlmCommandInterpreter ──
+    Source/MixCoach/engine/CommandTelemetry.h
+    Source/MixCoach/engine/CommandTelemetry.cpp
     Source/MixCoach/engine/CoachEngine.h
     Source/MixCoach/engine/CoachEngine.cpp
     Source/MixCoach/engine/CoachEngineCommands.cpp
@@ -736,6 +942,17 @@ add_executable(TestExperienceLevel
     Source/MixCoach/engine/CoachEngine_Analysis.cpp
     Source/MixCoach/engine/CoachEngine_Identity.cpp
     Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/CoachEngine_Reverb.cpp
+    # ─── Dependencies for CoachEngine: Plugin system + ReferenceSummary ──
+    Source/MixCoach/engine/ReferenceSummary.h
+    Source/MixCoach/engine/ReferenceSummary.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/MixCoach/engine/PluginDatabase.h
+    Source/MixCoach/engine/PluginDatabase.cpp
+    Source/MixCoach/engine/PluginSuggestionsProvider.h
+    Source/MixCoach/engine/PluginSuggestionsProvider.cpp
+    Source/MixCoach/engine/PluginScanner.h
+    Source/MixCoach/engine/PluginScanner.cpp
     Source/MixCoach/engine/PhaseManager.h
     Source/MixCoach/engine/PhaseManager.cpp
     Source/MixCoach/engine/TrackRole.h
@@ -910,7 +1127,212 @@ set_target_properties(TestStereoWidthMeter PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
+# ─── Test: MixMapDetailPanel (reference overlay, pin toggle, track data, edge cases) ──
+# ─── Test: MessengerCPU — benchmarks simulando 100K processBlock calls ──
+add_executable(TestMessengerCPU
+    tests/TestMessengerCPU.cpp
+)
+target_include_directories(TestMessengerCPU PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+)
+target_compile_options(TestMessengerCPU PRIVATE /W4 /std:c++20)
+set_target_properties(TestMessengerCPU PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+add_executable(TestMixMapDetailPanel
+    tests/TestMixMapDetailPanel.cpp
+    Source/MixCoach/UI/MixMapDetailPanel.h
+    Source/MixCoach/UI/MixMapDetailPanel.cpp
+    Source/MixCoach/UI/SmoothValue.h
+    Source/MixCoach/UI/SmoothValue.cpp
+    Source/MixCoach/UI/MixCoachTheme.h
+)
+target_include_directories(TestMixMapDetailPanel PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestMixMapDetailPanel PRIVATE
+    juce_core
+    juce_graphics
+    juce_gui_basics
+)
+target_compile_options(TestMixMapDetailPanel PRIVATE /W4)
+if(MSVC)
+    target_compile_options(TestMixMapDetailPanel PRIVATE
+        /MP1
+        /bigobj
+    )
+endif()
+set_target_properties(TestMixMapDetailPanel PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 # ─── Test: IPC Integration (SlotRegistry → Backup → SharedMemory pipeline) ──
+
+# ─── Test: MixBotComponent — triggerNod, setWaveActive, setGaze, expression sync ──
+add_executable(TestMixBotComponent
+    tests/TestMixBotComponent.cpp
+    Source/MixCoach/UI/MixBotComponent.h
+    Source/MixCoach/UI/MixBotComponent.cpp
+    Source/MixCoach/UI/RobotAvatarComponent.h
+    Source/MixCoach/UI/RobotAvatarComponent.cpp
+)
+target_include_directories(TestMixBotComponent PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestMixBotComponent PRIVATE
+    juce_core
+    juce_graphics
+    juce_gui_basics
+)
+target_compile_options(TestMixBotComponent PRIVATE /W4)
+if(MSVC)
+    target_compile_options(TestMixBotComponent PRIVATE
+        /MP1
+        /bigobj
+    )
+endif()
+set_target_properties(TestMixBotComponent PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: SessionTransitions — Onboarding + Coaching paths, AnalysisScope (P1) ──
+add_executable(TestSessionTransitions
+    tests/TestSessionTransitions.cpp
+    Source/MixCoach/engine/PanelRevealManager.h
+    Source/MixCoach/engine/PanelRevealManager.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/MixCoach/engine/ProblemAnalyzerMap.h
+    Source/MixCoach/engine/ProblemAnalyzerMap.cpp
+    Source/MixCoach/engine/EvidenceViewMapper.h
+    Source/MixCoach/engine/EvidenceViewMapper.cpp
+)
+include_directories(TestSessionTransitions PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestSessionTransitions PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestSessionTransitions PRIVATE /W4)
+set_target_properties(TestSessionTransitions PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: NavigationAnimations — SetupFadeAnim constants + fade-in math (P1-P6) ──
+add_executable(TestNavigationAnimations
+    tests/TestNavigationAnimations.cpp
+)
+target_include_directories(TestNavigationAnimations PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestNavigationAnimations PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestNavigationAnimations PRIVATE /W4)
+set_target_properties(TestNavigationAnimations PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: CoachingGuideWidget — LiveMeterData, stage info, tier defaults, color thresholds ──
+add_executable(TestCoachingGuideWidget
+    tests/TestCoachingGuideWidget.cpp
+)
+target_compile_options(TestCoachingGuideWidget PRIVATE /W4)
+set_target_properties(TestCoachingGuideWidget PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: ChatInlineCards — drawTrackGroupCard + addTrackGroupCard
+#     + populatePluginSuggestions + getSuggestionsForProblem ──
+add_executable(TestChatInlineCards
+    tests/TestChatInlineCards.cpp
+    Source/MixCoach/UI/ChatMessagesComponent_InlineCards.cpp
+    Source/MixCoach/UI/OptionCardComponent.h
+    Source/MixCoach/UI/OptionCardComponent.cpp
+    Source/MixCoach/UI/TrackProblemCard.h
+    Source/MixCoach/UI/TrackProblemCard.cpp
+    Source/MixCoach/engine/PluginSuggestionsProvider.h
+    Source/MixCoach/engine/PluginSuggestionsProvider.cpp
+    Source/MixCoach/engine/PluginDatabase.h
+    Source/MixCoach/engine/PluginDatabase.cpp
+    Source/MixCoach/engine/PluginScanner.h
+    Source/MixCoach/engine/PluginScanner.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestChatInlineCards PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestChatInlineCards PRIVATE
+    juce_core
+    juce_graphics
+    juce_gui_basics
+    juce_data_structures
+)
+target_compile_options(TestChatInlineCards PRIVATE /W4)
+if(MSVC)
+    target_compile_options(TestChatInlineCards PRIVATE
+        /MP1
+        /bigobj
+    )
+endif()
+set_target_properties(TestChatInlineCards PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: PluginDatabase — problemCache_, findByProblem, getSuggestionsByTier, interpolateAction ──
+add_executable(TestPluginDatabase
+    tests/TestPluginDatabase.cpp
+    Source/MixCoach/engine/PluginDatabase.h
+    Source/MixCoach/engine/PluginDatabase.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestPluginDatabase PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestPluginDatabase PRIVATE
+    juce_core
+    juce_graphics
+    juce_data_structures
+)
+target_compile_options(TestPluginDatabase PRIVATE /W4)
+set_target_properties(TestPluginDatabase PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
 add_executable(TestIPCIntegration
     tests/TestIPCIntegration.cpp
     Source/Common/memory/SlotRegistry.h
@@ -931,6 +1353,33 @@ target_link_libraries(TestIPCIntegration PRIVATE
 )
 target_compile_options(TestIPCIntegration PRIVATE /W4)
 set_target_properties(TestIPCIntegration PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: Deterministic Throughput — 50 Messengers @ 48kHz x 10s, ≤1% overrun ──
+add_executable(TestIPCDeterministicThroughput
+    tests/TestIPCDeterministicThroughput.cpp
+    Source/Common/memory/SharedMemory.h
+    Source/Common/memory/SharedMemory.cpp
+    Source/Common/memory/SharedAudioMemoryV2.h
+    Source/Common/memory/SharedAudioMemoryV2.cpp
+    Source/Common/memory/SlotRegistry.h
+    Source/Common/memory/SlotRegistry.cpp
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestIPCDeterministicThroughput PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestIPCDeterministicThroughput PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestIPCDeterministicThroughput PRIVATE /W4)
+set_target_properties(TestIPCDeterministicThroughput PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
@@ -961,6 +1410,47 @@ target_link_libraries(TestTrackFeedCore PRIVATE
 )
 target_compile_options(TestTrackFeedCore PRIVATE /W4)
 set_target_properties(TestTrackFeedCore PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# ─── Test: TrackAnalyzerCore — TrackGainAdvice, TrackDynamicsAdvice, TrackTonalAdvice (Sprints 6A-6C) ──
+add_executable(TestTrackAnalyzerCore
+    tests/TestTrackAnalyzerCore.cpp
+    Source/MixCoach/engine/TrackGainAnalyzer.h
+    Source/MixCoach/engine/TrackGainAnalyzer.cpp
+    Source/MixCoach/engine/TrackDynamicsAnalyzer.h
+    Source/MixCoach/engine/TrackDynamicsAnalyzer.cpp
+    Source/MixCoach/engine/TrackTonalAnalyzer.h
+    Source/MixCoach/engine/TrackTonalAnalyzer.cpp
+    Source/MixCoach/engine/GenreProfile.h
+    Source/MixCoach/engine/TrackRole.h
+    Source/Common/memory/SharedData.h
+    Source/Common/memory/SharedData.cpp
+    Source/Common/memory/SlotRegistry.h
+    Source/Common/memory/SlotRegistry.cpp
+    Source/Common/memory/SharedMemory.h
+    Source/Common/memory/SharedMemory.cpp
+    Source/Common/memory/SharedAudioMemory.h
+    Source/Common/memory/SharedAudioMemory.cpp
+    Source/Common/memory/SharedAudioMemoryV2.h
+    Source/Common/memory/SharedAudioMemoryV2.cpp
+    Source/Common/types/Constants.h
+    Source/Common/types/Types.h
+    Source/Common/types/LogHelper.h
+)
+target_include_directories(TestTrackAnalyzerCore PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
+    ${JUCE_ROOT}/modules
+)
+target_link_libraries(TestTrackAnalyzerCore PRIVATE
+    juce_core
+    juce_graphics
+)
+target_compile_options(TestTrackAnalyzerCore PRIVATE /W4)
+set_target_properties(TestTrackAnalyzerCore PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
@@ -1103,8 +1593,18 @@ add_executable(TestMixScore
     Source/MixCoach/engine/CoachEngineReference.cpp
     Source/MixCoach/engine/CoachEngineSetup.cpp
     Source/MixCoach/engine/CoachEngine_Analysis.cpp
-    Source/MixCoach/engine/CoachEngine_Identity.cpp
-    Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/CoachEngine_Identity.cpp    Source/MixCoach/engine/CoachEngine_Messages.cpp
+    Source/MixCoach/engine/CoachEngine_Reverb.cpp
+    # ─── Dependencies for CoachEngine: Plugin system + ReferenceSummary ──
+    Source/MixCoach/engine/ReferenceSummary.h
+    Source/MixCoach/engine/ReferenceSummary.cpp
+    Source/MixCoach/engine/PluginSuggestion.h
+    Source/MixCoach/engine/PluginDatabase.h
+    Source/MixCoach/engine/PluginDatabase.cpp
+    Source/MixCoach/engine/PluginSuggestionsProvider.h
+    Source/MixCoach/engine/PluginSuggestionsProvider.cpp
+    Source/MixCoach/engine/PluginScanner.h
+    Source/MixCoach/engine/PluginScanner.cpp
     Source/MixCoach/engine/PhaseManager.h
     Source/MixCoach/engine/PhaseManager.cpp
     Source/MixCoach/engine/TrackRole.h
@@ -1160,6 +1660,7 @@ add_executable(TestMixScore
     Source/Common/types/Types.h
     Source/Common/types/LogHelper.h
 )
+
 target_include_directories(TestMixScore PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source
     ${JUCE_ROOT}/modules
@@ -1187,12 +1688,86 @@ set_target_properties(TestMixScore PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
 )
 
-# ─── Target: build + run all tests ──────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CTest Integration — enable_testing + add_test for each test executable
+#
+#  Usage:
+#    ctest --test-dir build -C Release -V
+#    or:
+#    cmake -S . -B build && cmake --build build --target run_tests
+# ═══════════════════════════════════════════════════════════════════════════════
+include(CTest)
+enable_testing()
+
+# ─── Helper macro: register each test for CTest ────────────────────────────
+# Each test executable gets a CTest entry that runs it directly.
+# Timeout set per test based on complexity.
+macro(add_mixcoach_test test_name timeout_sec)
+    add_test(NAME ${test_name}
+        COMMAND ${test_name}
+        CONFIGURATIONS Release
+    )
+    set_tests_properties(${test_name} PROPERTIES
+        TIMEOUT ${timeout_sec}
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/tests/Release"
+    )
+endmacro()
+
+# ─── Register individual test executables ──────────────────────────────────
+add_mixcoach_test(TestSmoothValue 15)
+add_mixcoach_test(TestLlmCommandInterpreter 15)
+add_mixcoach_test(TestCoachingNarrativeTypes 15)
+add_mixcoach_test(TestPhaseManager 15)
+add_mixcoach_test(TestSlotRegistry 15)
+add_mixcoach_test(TestNavigationAnimations 15)
+add_mixcoach_test(TestCoachingGuideWidget 15)
+add_mixcoach_test(TestChatInlineCards 15)
+add_mixcoach_test(TestMixBotComponent 15)
+add_mixcoach_test(TestMixMapDetailPanel 15)
+add_mixcoach_test(TestSessionTransitions 15)
+add_mixcoach_test(TestCoachEngine 30)
+add_mixcoach_test(TestTrackFeedCore 15)
+add_mixcoach_test(TestTrackAnalyzerCore 15)
+add_mixcoach_test(TestSemanticComparator 15)
+add_mixcoach_test(TestMixPriorityEngine 15)
+add_mixcoach_test(TestMixScore 30)
+add_mixcoach_test(TestExpectedProfiles 15)
+add_mixcoach_test(TestGenreProfiles 15)
+add_mixcoach_test(TestDifferenceProfile 15)
+add_mixcoach_test(TestExperienceLevel 15)
+add_mixcoach_test(TestReferenceAudioPlayer 15)
+add_mixcoach_test(TestAudioAnalyzer 15)
+add_mixcoach_test(TestAudioDescriptors 15)
+add_mixcoach_test(TestLUFSMeter 15)
+add_mixcoach_test(TestSpectralBands 15)
+add_mixcoach_test(TestSpectrographComponent 15)
+add_mixcoach_test(TestVectorscopeComponent 15)
+add_mixcoach_test(TestPhaseCorrelationMeter 15)
+add_mixcoach_test(TestStereoWidthMeter 15)
+add_mixcoach_test(TestSharedMemory 30)
+add_mixcoach_test(TestIPCIntegration 30)
+add_mixcoach_test(TestIPCDeterministicThroughput 30)
+add_mixcoach_test(TestStress50Tracks 60)
+add_mixcoach_test(TestStress128Slots 60)
+
+# ─── CTest resource groups (optional: parallel execution limits) ────────────
+# Tests can run in parallel by default since they don't share state.
+# Stress tests use shared memory names — run sequentially.
+set_tests_properties(TestStress50Tracks TestStress128Slots PROPERTIES
+    RUN_SERIAL TRUE
+)
+set_tests_properties(TestSharedMemory TestIPCIntegration TestIPCDeterministicThroughput PROPERTIES
+    RUN_SERIAL TRUE
+)
+
+# ─── Target: build + run all tests (legacy, via cmake --build) ─────────────
 add_custom_target(run_tests
+    COMMAND $<TARGET_FILE:TestLlmCommandInterpreter>
     COMMAND $<TARGET_FILE:TestSmoothValue>
     COMMAND $<TARGET_FILE:TestPhaseManager>
     COMMAND $<TARGET_FILE:TestCoachEngine>
     COMMAND $<TARGET_FILE:TestIPCIntegration>
+    COMMAND $<TARGET_FILE:TestIPCDeterministicThroughput>
     COMMAND $<TARGET_FILE:TestSharedMemory>
     COMMAND $<TARGET_FILE:TestSlotRegistry>
     COMMAND $<TARGET_FILE:TestLUFSMeter>
@@ -1206,22 +1781,30 @@ add_custom_target(run_tests
     COMMAND $<TARGET_FILE:TestAudioDescriptors>
     COMMAND $<TARGET_FILE:TestReferenceAudioPlayer>
     COMMAND $<TARGET_FILE:TestStereoWidthMeter>
+    COMMAND $<TARGET_FILE:TestMixBotComponent>
+    COMMAND $<TARGET_FILE:TestNavigationAnimations>
+    COMMAND $<TARGET_FILE:TestCoachingGuideWidget>
+    COMMAND $<TARGET_FILE:TestChatInlineCards>
+    COMMAND $<TARGET_FILE:TestMixMapDetailPanel>
     COMMAND $<TARGET_FILE:TestTrackFeedCore>
+    COMMAND $<TARGET_FILE:TestTrackAnalyzerCore>
     COMMAND $<TARGET_FILE:TestSemanticComparator>
     COMMAND $<TARGET_FILE:TestExpectedProfiles>
     COMMAND $<TARGET_FILE:TestGenreProfiles>
     COMMAND $<TARGET_FILE:TestMixPriorityEngine>
     COMMAND $<TARGET_FILE:TestMixScore>
 
-    DEPENDS TestSmoothValue TestPhaseManager TestCoachEngine TestIPCIntegration
+    DEPENDS TestCoachingGuideWidget TestMixBotComponent TestChatInlineCards TestLlmCommandInterpreter TestSmoothValue TestPhaseManager TestCoachEngine TestIPCIntegration TestIPCDeterministicThroughput
             TestSharedMemory TestSlotRegistry TestStress50Tracks TestStress128Slots
             TestLUFSMeter TestSpectralBands TestSpectrographComponent TestVectorscopeComponent
             TestPhaseCorrelationMeter
             TestStereoWidthMeter
+            TestMixMapDetailPanel
             TestAudioAnalyzer
             TestAudioDescriptors
             TestReferenceAudioPlayer
             TestTrackFeedCore
+            TestTrackAnalyzerCore
             TestSemanticComparator
             TestExpectedProfiles
             TestGenreProfiles

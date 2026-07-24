@@ -3,6 +3,7 @@
 #include <cmath>
 #include <thread>
 #include "../../Common/types/Constants.h"
+#include "../engine/ProgressTracker.h"
 #include "../../Common/types/LogHelper.h"
 #include "../engine/CoachEngine.h"
 
@@ -20,7 +21,7 @@ namespace mixcoach {
             juce::AudioFormatManager formatMgr;
             formatMgr.registerBasicFormats();
 
-            auto* reader = formatMgr.createReaderFor(file);
+            std::unique_ptr<juce::AudioFormatReader> reader(formatMgr.createReaderFor(file));
             if (reader == nullptr) return info;
 
             info.sampleRate = (int)reader->sampleRate;
@@ -30,7 +31,7 @@ namespace mixcoach {
                 info.durationSeconds = 0.0;
             info.valid = true;
 
-            delete reader;
+            // reader se destruye automáticamente al salir del ámbito
         }
         catch (const std::exception& e) {
             LogHelper::writeToLog("[ReferencePanel] Excepcion al leer audio: " + juce::String(e.what()));
@@ -245,9 +246,9 @@ namespace mixcoach {
                     juce::String emoji;
                     if (url.contains("youtube.com") || url.contains("youtu.be")) emoji = "\xF0\x9F\x8E\xAC ";
                     else if (url.contains("spotify.com"))
-                        emoji = "\xF0\x9F\x8E\xB5 ";
+                        emoji = "[MUSIC] ";
                     else if (url.contains("soundcloud.com"))
-                        emoji = "\xF0\x9F\x8E\xB5 ";
+                        emoji = "[MUSIC] ";
                     else
                         emoji = "\xF0\x9F\x94\x97 ";
 
@@ -265,7 +266,7 @@ namespace mixcoach {
     juce::String ReferencePanelComponent::extractURLName(const juce::String& url)
     {
         auto scName = extractSoundCloudName(url);
-        if (scName.isNotEmpty()) return "\xF0\x9F\x8E\xB5 " + scName + " (SoundCloud)";
+        if (scName.isNotEmpty()) return "[MUSIC] " + scName + " (SoundCloud)";
 
         if (url.contains("youtube.com") || url.contains("youtu.be") || url.contains("spotify.com")) {
             return {};
@@ -323,11 +324,11 @@ namespace mixcoach {
                 name     = tempName;
             }
             else if (url.contains("spotify.com")) {
-                tempName = "\xF0\x9F\x8E\xB5 Spotify Reference";
+                tempName = "[MUSIC] Spotify Reference";
                 name     = tempName;
             }
             else if (url.contains("soundcloud.com")) {
-                tempName = "\xF0\x9F\x8E\xB5 SoundCloud Reference";
+                tempName = "[MUSIC] SoundCloud Reference";
                 name     = tempName;
             }
             else {
@@ -338,8 +339,13 @@ namespace mixcoach {
                 auto safeThis = juce::Component::SafePointer<ReferencePanelComponent>(this);
                 int refIdx    = static_cast<int>(references_.size());
 
-                std::thread([safeThis, url, refIdx, tempName]() {
+                // Vector de jthreads: cada URL fetch tiene su propio hilo,
+                // todos se unen en el destructor. El vector previene std::terminate
+                // que ocurriría al reasignar un jthread joinable.
+                urlFetchThreads_.emplace_back(std::jthread([safeThis, url, refIdx, tempName](const std::stop_token& st) {
+                    if (st.stop_requested()) return;
                     auto title = ReferencePanelComponent::fetchURLTitle(url);
+                    if (st.stop_requested()) return;
                     if (title.isNotEmpty()) {
                         juce::MessageManager::callAsync([safeThis, title, refIdx, tempName]() {
                             if (safeThis != nullptr && refIdx < (int)safeThis->references_.size()
@@ -362,7 +368,7 @@ namespace mixcoach {
                             }
                         });
                     }
-                }).detach();
+                }));
             }
         }
 
@@ -428,6 +434,191 @@ namespace mixcoach {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    //  Timeline graph — Mini line chart with up to 6 points
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void ReferencePanelComponent::setTimelineData(const std::vector<ProgressSnapshot>& snapshots)
+    {
+        timelinePoints_ = snapshots;
+        repaint();
+    }
+
+    void ReferencePanelComponent::drawTimelineGraph(juce::Graphics& g, juce::Rectangle<int> bounds)
+    {
+        if (timelinePoints_.empty()) return;
+
+        const float cr = 4.0f;
+        auto graphArea = bounds.toFloat().reduced(2.0f, 2.0f);
+
+        // ─── Background panel ────────────────────────────────────────────────
+        g.setColour(MixCoachTheme::bgDarker().withAlpha(0.20f));
+        g.fillRoundedRectangle(graphArea, cr);
+        g.setColour(MixCoachTheme::border().withAlpha(0.10f));
+        g.drawRoundedRectangle(graphArea, cr, 0.5f);
+
+        // Internal padding
+        auto plotArea = graphArea.reduced(6.0f, 4.0f);
+
+        int numPoints = (int)timelinePoints_.size();
+        if (numPoints < 2) {
+            // With only 1 point, just show a small label
+            g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+            g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
+            g.drawText(juce::String((int)timelinePoints_[0].matchScore) + "%", plotArea, juce::Justification::centred);
+            return;
+        }
+
+        // ─── Find range ─────────────────────────────────────────────────────
+        float minScore = 100.0f, maxScore = 0.0f;
+        for (auto& pt : timelinePoints_) {
+            minScore = juce::jmin(minScore, pt.matchScore);
+            maxScore = juce::jmax(maxScore, pt.matchScore);
+        }
+        // Add margin so line doesn't touch top/bottom
+        float scoreRange = juce::jmax(15.0f, maxScore - minScore);
+        float midScore   = (maxScore + minScore) * 0.5f;
+        float plotTop    = midScore + scoreRange * 0.55f;
+        float plotBottom = midScore - scoreRange * 0.55f;
+        if (plotTop > 100.0f) { plotTop = 100.0f; plotBottom = 100.0f - scoreRange; }
+        if (plotBottom < 0.0f) { plotBottom = 0.0f; plotTop = scoreRange; }
+
+        float plotH = plotTop - plotBottom;
+        if (plotH < 1.0f) { plotH = 15.0f; plotTop = minScore + 10.0f; plotBottom = minScore - 5.0f; }
+
+        // ─── Milestone threshold lines (faint) ─────────────────────────────
+        const float kThresholds[] = {45.0f, 60.0f, 75.0f};
+        const char* kThresholdLabels[] = {"45%", "60%", "75%"};
+        for (int t = 0; t < 3; ++t) {
+            float ty = plotArea.getY() + (plotTop - kThresholds[t]) / plotH * plotArea.getHeight();
+            if (ty > plotArea.getY() + 4 && ty < plotArea.getBottom() - 4) {
+                g.setColour(MixCoachTheme::accent().withAlpha(0.07f));
+                g.drawHorizontalLine((int)ty, plotArea.getX() + 2, plotArea.getRight() - 2);
+                // Small label on the right
+                g.setFont(juce::Font(juce::FontOptions(5.5f)));
+                g.setColour(MixCoachTheme::textMuted().withAlpha(0.25f));
+                g.drawText(kThresholdLabels[t],
+                           juce::Rectangle<float>(plotArea.getRight() - 22.0f, ty - 5.0f, 20.0f, 8.0f),
+                           juce::Justification::centredRight);
+            }
+        }
+
+        // ─── Calculate points ───────────────────────────────────────────────
+        int count     = juce::jmin(numPoints, 6);
+        float stepX   = plotArea.getWidth() / (float)(count - 1);
+        std::vector<juce::Point<float>> points(count);
+
+        for (int i = 0; i < count; ++i) {
+            // Take the i-th point from the END (most recent last)
+            auto& pt = timelinePoints_[numPoints - count + i];
+            float x  = plotArea.getX() + (float)i * stepX;
+            // Map score: higher score = higher Y (invert Y axis)
+            float normalizedY = (pt.matchScore - plotBottom) / plotH;
+            float y           = plotArea.getBottom() - normalizedY * plotArea.getHeight();
+            y                 = juce::jlimit(plotArea.getY() + 2.0f, plotArea.getBottom() - 2.0f, y);
+            points[i]         = {x, y};
+        }
+
+        if (count < 2) return;
+
+        // ─── Area fill under the line ───────────────────────────────────────
+        juce::Path areaPath;
+        areaPath.startNewSubPath(points[0].x, plotArea.getBottom());
+        areaPath.lineTo(points[0].x, points[0].y);
+        for (int i = 1; i < count; ++i)
+            areaPath.lineTo(points[i].x, points[i].y);
+        areaPath.lineTo(points[count - 1].x, plotArea.getBottom());
+        areaPath.closeSubPath();
+
+        juce::ColourGradient areaGrad(MixCoachTheme::accentCyan().withAlpha(0.15f),
+                                      points[0].x, points[0].y,
+                                      MixCoachTheme::accentCyan().withAlpha(0.02f),
+                                      points[count - 1].x, plotArea.getBottom(),
+                                      false);
+        g.setGradientFill(areaGrad);
+        g.fillPath(areaPath);
+
+        // ─── Trend line ─────────────────────────────────────────────────────
+        juce::Path linePath;
+        linePath.startNewSubPath(points[0].x, points[0].y);
+        for (int i = 1; i < count; ++i)
+            linePath.lineTo(points[i].x, points[i].y);
+
+        g.setColour(MixCoachTheme::accentCyan().withAlpha(0.6f));
+        g.strokePath(linePath, juce::PathStrokeType(1.2f));
+
+        // ─── Glow line (wider, fainter) ────────────────────────────────────
+        g.setColour(MixCoachTheme::accentCyan().withAlpha(0.12f));
+        g.strokePath(linePath, juce::PathStrokeType(3.5f));
+
+        // ─── Data dots ─────────────────────────────────────────────────────
+        for (int i = 0; i < count; ++i) {
+            float dotR = (i == count - 1) ? 3.0f : 2.0f; // Last dot bigger
+            // Outer glow
+            g.setColour(MixCoachTheme::accentCyan().withAlpha(0.10f));
+            g.fillEllipse(points[i].x - dotR - 2.0f, points[i].y - dotR - 2.0f, (dotR + 2.0f) * 2.0f, (dotR + 2.0f) * 2.0f);
+            // Core dot
+            g.setColour(i == count - 1 ? MixCoachTheme::accentCyan() : MixCoachTheme::accentCyan().withAlpha(0.6f));
+            g.fillEllipse(points[i].x - dotR, points[i].y - dotR, dotR * 2.0f, dotR * 2.0f);
+            // White highlight (top-left)
+            g.setColour(juce::Colours::white.withAlpha(0.3f));
+            g.fillEllipse(points[i].x - dotR * 0.4f, points[i].y - dotR * 0.4f, dotR * 0.5f, dotR * 0.5f);
+        }
+
+        // ─── Score label on the rightmost point ────────────────────────────
+        if (count > 0) {
+            auto& lastPt = timelinePoints_.back();
+            auto labelBounds = juce::Rectangle<float>(points[count - 1].x + 5.0f,
+                                                       points[count - 1].y - 6.0f,
+                                                       36.0f, 12.0f);
+            // Background pill
+            g.setColour(MixCoachTheme::bgDarker().withAlpha(0.6f));
+            g.fillRoundedRectangle(labelBounds, 3.0f);
+            g.setColour(MixCoachTheme::accentCyan().withAlpha(0.3f));
+            g.drawRoundedRectangle(labelBounds, 3.0f, 0.5f);
+            // Score text
+            g.setFont(juce::Font(juce::FontOptions(7.0f)).boldened());
+            g.setColour(MixCoachTheme::accentCyan());
+            g.drawText(juce::String((int)lastPt.matchScore) + "%", labelBounds, juce::Justification::centred);
+        }
+
+        // ─── Time axis labels ──────────────────────────────────────────────
+        if (count >= 2) {
+            int64_t firstTime = timelinePoints_[numPoints - count].timestampUs;
+            int64_t lastTime  = timelinePoints_.back().timestampUs;
+            double durationSec = (double)(lastTime - firstTime) / 1'000'000.0;
+
+            // First and last time labels
+            auto formatTime = [](int64_t us) -> juce::String {
+                int totalSec = (int)(us / 1'000'000);
+                int mins     = totalSec / 60;
+                int secs     = totalSec % 60;
+                return juce::String(mins) + ":" + juce::String(secs).paddedLeft('0', 2);
+            };
+
+            g.setFont(juce::Font(juce::FontOptions(5.5f)));
+            g.setColour(MixCoachTheme::textMuted().withAlpha(0.30f));
+            g.drawText(formatTime(firstTime),
+                       juce::Rectangle<float>(plotArea.getX(), plotArea.getBottom() + 1.0f, 30.0f, 8.0f),
+                       juce::Justification::centredLeft);
+            g.drawText(formatTime(lastTime),
+                       juce::Rectangle<float>(plotArea.getRight() - 30.0f, plotArea.getBottom() + 1.0f, 30.0f, 8.0f),
+                       juce::Justification::centredRight);
+
+            // Delta label (if significant)
+            float delta = timelinePoints_.back().matchScore - timelinePoints_[numPoints - count].matchScore;
+            if (std::abs(delta) >= 2.0f) {
+                juce::String deltaStr = (delta > 0.0f ? "+\u25B2" : "\u25BC") + juce::String(std::abs(delta), 0) + "%";
+                g.setFont(juce::Font(juce::FontOptions(6.0f)).boldened());
+                g.setColour(delta > 0.0f ? MixCoachTheme::success().withAlpha(0.5f)
+                                         : MixCoachTheme::error().withAlpha(0.5f));
+                g.drawText(deltaStr,
+                           juce::Rectangle<float>(plotArea.getCentreX() - 20.0f, plotArea.getBottom() + 1.0f, 40.0f, 8.0f),
+                           juce::Justification::centred);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     //  Timer callback — SmoothValue animation at ~60 fps
     // ═══════════════════════════════════════════════════════════════════════════
 
@@ -484,6 +675,15 @@ namespace mixcoach {
         }
         else {
             refProgressBounds_ = {};
+        }
+
+        // ─── Timeline graph (mini line chart, below progress bar) ────────────
+        if (referenceDrivenMode_ && !timelinePoints_.empty()) {
+            timelineBounds_ = area.removeFromTop(48).reduced(4, 2);
+            area.removeFromTop(2);
+        }
+        else {
+            timelineBounds_ = {};
         }
 
         // ─── Content ─────────────────────────────────────────────────────────
@@ -721,7 +921,7 @@ namespace mixcoach {
             float smoothDeltaMagnitude = std::abs(deltaSmooth_.getCurrent());
             if (std::abs(referenceDeltaRaw_) > 0.01f && smoothDeltaMagnitude > 0.005f) {
                 float arrowAlpha   = juce::jlimit(0.15f, 1.0f, smoothDeltaMagnitude * 6.0f);
-                juce::String arrow = (referenceDeltaRaw_ > 0.0f) ? "\xE2\x96\xB2" : "\xE2\x96\xBC"; // ▲ or ▼
+                juce::String arrow = (referenceDeltaRaw_ > 0.0f) ? "[EXPAND]" : "[COLLAPSE]"; // ▲ or ▼
                 g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeNano)).boldened());
                 g.setColour(MixCoachTheme::textPrimary().withAlpha(0.55f));
                 g.drawText(pctText, prog.reduced(3, 0), juce::Justification::centredLeft);
@@ -747,6 +947,11 @@ namespace mixcoach {
             g.setFont(juce::Font(juce::FontOptions(5.5f)));
             g.setColour(MixCoachTheme::textDim().withAlpha(0.35f));
             g.drawText("MATCH", prog.reduced(3, 0), juce::Justification::centredRight);
+        }
+
+        // ─── Timeline graph (mini line chart, below progress bar) ────────────
+        if (referenceDrivenMode_ && timelineBounds_.getWidth() > 0 && !timelinePoints_.empty()) {
+            drawTimelineGraph(g, timelineBounds_);
         }
 
         // ─── Reference count badge (top-right pill) ───────────────────────────

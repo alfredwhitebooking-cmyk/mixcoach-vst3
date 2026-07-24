@@ -1,5 +1,8 @@
 #include "CorrectionLearner.h"
 #include "../../Common/types/LogHelper.h"
+#include "../../Common/memory/SlotRegistry.h"
+#include "../../Common/memory/SharedData.h"
+#include "../UI/CoachChatComponent.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -13,6 +16,67 @@ namespace mixcoach {
     {
         return CorrectionLearner::spectralSimilarity(
             p, bandLevelDb, crestDb, correlation, transientRatio, avgStereoWidth);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  startTransportWindow — Registra la posición del transporte cuando
+    //  se propone una corrección. Útil para invalidar verificaciones cuando
+    //  la canción cambió de sección.
+    // ═══════════════════════════════════════════════════════════════════════════
+    void CorrectionLearner::startTransportWindow(double positionSec, double bpm,
+                                                   int tsNum, int tsDen) noexcept
+    {
+        transportWindowSec_ = positionSec;
+        transportWindowBpm_ = (bpm > 0.0) ? bpm : 120.0;
+        transportWindowTsNum_ = (tsNum > 0) ? tsNum : 4;
+        transportWindowTsDen_ = (tsDen > 0) ? tsDen : 4;
+        transportValid_ = true;
+
+        LogHelper::writeToLog("[CorrectionLearner] Transport window started: pos="
+                              + juce::String(positionSec, 1) + "s, bpm=" + juce::String(bpm, 1)
+                              + " ts=" + juce::String(tsNum) + "/" + juce::String(tsDen));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  isSectionChanged — Verifica si el transporte se movió más de 2 compases
+    //  desde que se registró la ventana. Si es así, la canción cambió de
+    //  sección y la verificación debe invalidarse.
+    //
+    //  Fórmula: duración de 2 compases = 2 * (60 / BPM) * (tsNum * 4 / tsDen)
+    //  Ej: a 128 BPM en 4/4 → 2 compases = 2 * 240/128 = 3.75s
+    // ═══════════════════════════════════════════════════════════════════════════
+    bool CorrectionLearner::isSectionChanged(double currentPositionSec, double currentBpm,
+                                              int tsNum, int tsDen) const noexcept
+    {
+        if (!transportValid_) return false;
+        if (transportWindowSec_ < 0.0) return false;
+        if (currentPositionSec < 0.0) return false;
+
+        // Usar BPM y time signature actuales (o de la ventana si no hay datos nuevos)
+        double effectiveBpm = (currentBpm > 0.0) ? currentBpm : transportWindowBpm_;
+        int effectiveTsNum = (tsNum > 0) ? tsNum : transportWindowTsNum_;
+        int effectiveTsDen = (tsDen > 0) ? tsDen : transportWindowTsDen_;
+
+        // Calcular duración de un compás en segundos
+        // Un compás = (60 / BPM) * beats per bar
+        // beats per bar = timeSigNumerator * (4 / timeSigDenominator)
+        double beatsPerBar = effectiveTsNum * 4.0 / effectiveTsDen;
+        double secondsPerBar = (60.0 / juce::jmax(1.0, effectiveBpm)) * beatsPerBar;
+        double maxAllowedJumpSec = secondsPerBar * 2.0; // 2 compases
+
+        // Calcular salto real
+        double jumpSec = std::abs(currentPositionSec - transportWindowSec_);
+
+        bool changed = (jumpSec > maxAllowedJumpSec);
+
+        if (changed) {
+            LogHelper::writeToLog("[CorrectionLearner] Section change detected! Jump="
+                                  + juce::String(jumpSec, 1) + "s > max="
+                                  + juce::String(maxAllowedJumpSec, 1) + "s (2 bars at "
+                                  + juce::String(effectiveBpm, 0) + " BPM)");
+        }
+
+        return changed;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -140,6 +204,106 @@ namespace mixcoach {
         }
 
         return TrackRole::Unknown;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  recordMixCorrection — Trackea correcciones de mezcla
+    // ═══════════════════════════════════════════════════════════════════════════
+    void CorrectionLearner::recordMixCorrection(const juce::String& trackName,
+                                                  const juce::String& domain,
+                                                  float beforeValue,
+                                                  float afterValue)
+    {
+        // Por ahora, solo loggeamos la corrección.
+        // En el futuro, esto podría alimentar un modelo de preferencias
+        // para ajustar recomendaciones según el estilo del usuario.
+        LogHelper::writeToLog("[CorrectionLearner] Mix correction: \"" + trackName
+                              + "\" domain=" + domain
+                              + " before=" + juce::String(beforeValue, 1) + "dB"
+                              + " after=" + juce::String(afterValue, 1) + "dB");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  verifyMixCorrection — Verifica una corrección midiendo el valor actual
+    //  y comparando contra el target. Actualiza CorrectionCardData in-place.
+    // ═══════════════════════════════════════════════════════════════════════════
+    void CorrectionLearner::verifyMixCorrection(
+        CorrectionCardData& data,
+        const SlotRegistry& registry,
+        const SharedData& shared,
+        std::function<float(int slotIndex, const juce::String& metric)> readValueCallback)
+    {
+        if (data.status >= CorrectionCardData::Status::Verified)
+            return;
+
+        data.status = CorrectionCardData::Status::Applied;
+
+        if (readValueCallback) {
+            // Usar callback externo si se proporciona (permite al caller
+            // personalizar la lectura de datos sin acoplar CorrectionLearner
+            // a la infraestructura exacta de SharedData)
+            data.verifiedAfter = readValueCallback(-1, data.trackName);
+        } else {
+            // Fallback: buscar slot por nombre en el registry
+            int slot = -1;
+            registry.forEachActive([&](const SlotInfo& info) {
+                juce::String name(info.trackName);
+                if (name.toLowerCase().contains(data.trackName.toLowerCase()))
+                    slot = info.slotIndex;
+            });
+
+            if (slot < 0) {
+                data.status = CorrectionCardData::Status::Verified;
+                data.feedbackMessage = "Gracias! El cambio debería notarse en la mezcla.";
+                return;
+            }
+
+            // Leer valor actual desde telemetría según la métrica
+            float currentValue = -100.0f;
+            auto tr = shared.getTrackAudioResult(slot);
+
+            if (data.verifyMetric == "peak") {
+                currentValue = juce::jmax(tr.peakLeft, tr.peakRight);
+            } else if (data.verifyMetric.startsWith("band_")) {
+                int band = data.verifyMetric.substring(5).getIntValue();
+                if (band >= 0 && band < 30 && tr.bandEnergies != nullptr)
+                    currentValue = tr.bandEnergies[band];
+            } else if (data.verifyMetric == "crest") {
+                float crestSum = 0.0f;
+                int crestCount = 0;
+                for (int b = 0; b < 6; ++b) {
+                    if (tr.crestPerBand[b] > 0.01f) {
+                        crestSum += tr.crestPerBand[b];
+                        crestCount++;
+                    }
+                }
+                currentValue = (crestCount > 0) ? (crestSum / (float)crestCount) : 0.0f;
+            }
+
+            data.verifiedAfter = currentValue;
+            data.verifiedDelta = std::abs(currentValue - data.targetValue);
+
+            // Determinar resultado
+            if (currentValue < -80.0f) {
+                data.status = CorrectionCardData::Status::Pending;
+                data.feedbackMessage = "No puedo verificar — parece que el track no tiene señal.";
+            } else if (data.verifiedDelta < 0.5f) {
+                data.status = CorrectionCardData::Status::Verified;
+                data.feedbackMessage = "¡Perfecto! El cambio se aplicó correctamente ("
+                    + juce::String(currentValue, 1) + " dB).";
+            } else if (data.verifiedDelta < 2.0f) {
+                data.status = CorrectionCardData::Status::Partial;
+                data.feedbackMessage = "Casi — el valor actual es " + juce::String(currentValue, 1)
+                    + " dB (target: " + juce::String(data.targetValue, 1) + " dB). Ajusta un poco más.";
+            } else {
+                data.status = CorrectionCardData::Status::Failed;
+                data.feedbackMessage = "No se detectó el cambio. El valor actual es "
+                    + juce::String(currentValue, 1) + " dB (target: " + juce::String(data.targetValue, 1) + " dB). ¿Seguro que aplicaste el cambio?";
+            }
+        }
+
+        // Registrar la corrección para futuras recomendaciones
+        recordMixCorrection(data.trackName, data.domain, data.beforeValue, data.verifiedAfter);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

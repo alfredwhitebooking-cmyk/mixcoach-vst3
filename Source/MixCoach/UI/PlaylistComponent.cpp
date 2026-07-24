@@ -15,7 +15,7 @@ namespace mixcoach {
 
     PlaylistComponent::PlaylistComponent()
     {
-        headerLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x93\x8B Playlist"), juce::dontSendNotification);
+        headerLabel_.setText(juce::CharPointer_UTF8("[NOTES] Playlist"), juce::dontSendNotification);
         headerLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
         headerLabel_.setJustificationType(juce::Justification::centredLeft);
         headerLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textPrimary());
@@ -234,7 +234,7 @@ namespace mixcoach {
         if (activeCount_ == 0) {
             g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
             g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)));
-            g.drawText("\xF0\x9F\x94\x8C No hay Messengers conectados", area, juce::Justification::centred);
+            g.drawText("[PLUGIN] No hay Messengers conectados", area, juce::Justification::centred);
             return;
         }
 
@@ -345,19 +345,19 @@ namespace mixcoach {
         juce::String typeIcon;
         switch (entry.info.bus) {
             case BusType::Drums:
-                typeIcon = juce::CharPointer_UTF8("\xF0\x9F\xA5\x81");
+                typeIcon = juce::CharPointer_UTF8("[DRUM]");
                 break;
             case BusType::Bass:
-                typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB8");
+                typeIcon = juce::CharPointer_UTF8("[MUSIC]");
                 break;
             case BusType::Guitars:
-                typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB8");
+                typeIcon = juce::CharPointer_UTF8("[MUSIC]");
                 break;
             case BusType::Keys:
-                typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xB9");
+                typeIcon = juce::CharPointer_UTF8("[MUSIC]");
                 break;
             case BusType::Vocals:
-                typeIcon = juce::CharPointer_UTF8("\xF0\x9F\x8E\xA4");
+                typeIcon = juce::CharPointer_UTF8("[MIC]");
                 break;
             default:
                 typeIcon.clear();

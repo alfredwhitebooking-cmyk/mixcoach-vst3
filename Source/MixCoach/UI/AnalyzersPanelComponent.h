@@ -86,6 +86,8 @@ namespace mixcoach {
 
         SpectrographComponent& getSpectrograph() noexcept { return spectrograph_; }
 
+        PhaseScopePanel& getPhaseScopePanel() noexcept { return phaseScope_; }
+
         void setDiagnosticBridge(DiagnosticBridge* bridge);
 
         void setCentroidInfo(const SpectrographComponent::CentroidInfo& info) { spectrograph_.setCentroidInfo(info); }

@@ -11,19 +11,19 @@ namespace mixcoach {
     {
         switch (bus) {
             case BusType::Drums:
-                return "\xF0\x9F\xA5\x81";
+                return "[DRUM]";
             case BusType::Bass:
-                return "\xF0\x9F\x8E\xB8";
+                return "[MUSIC]";
             case BusType::Guitars:
-                return "\xF0\x9F\x8E\xB8";
+                return "[MUSIC]";
             case BusType::Keys:
-                return "\xF0\x9F\x8E\xB9";
+                return "[MUSIC]";
             case BusType::Vocals:
-                return "\xF0\x9F\x8E\xA4";
+                return "[MIC]";
             case BusType::FX:
-                return "\xF0\x9F\x8E\x9B";
+                return "[COACH]";
             case BusType::Melody:
-                return "\xF0\x9F\x8E\xB5";
+                return "[MUSIC]";
             default:
                 return "\xF0\x9F\x93\x8D";
         }
@@ -70,7 +70,7 @@ namespace mixcoach {
         }
         if (rmsDb > -10.0f) {
             result.text = busEmoji + "\xF0\x9F\x9F\xA2 RMS " + juce::String(rmsDb, 1)
-                      + "dB \xE2\x80\x94 nivel " "\xC3\xB3" "ptimo \xE2\x9C\x85";
+                      + "dB \xE2\x80\x94 nivel " "\xC3\xB3" "ptimo [DONE]";
             result.status = SuggestionStatus::Green;
             return result;
         }
@@ -142,8 +142,8 @@ namespace mixcoach {
                         break;
                     case TrackRecommendation::Status::Applied:
                         entry.coachAdviceStatus = SuggestionStatus::Green;
-                        entry.coachAdviceText   = emoji + "\xE2\x9C\x85 Corregido! " + juce::String(rec->beforeValue, 1)
-                                                  + " \xE2\x86\x92 " + juce::String(rec->expectedAfter, 1) + " dB";
+                        entry.coachAdviceText   = emoji + "[DONE] Corregido! " + juce::String(rec->beforeValue, 1)
+                                                  + " [RIGHT] " + juce::String(rec->expectedAfter, 1) + " dB";
                         break;
                     case TrackRecommendation::Status::Ignored:
                     case TrackRecommendation::Status::Superseded:
@@ -152,12 +152,12 @@ namespace mixcoach {
                         break;
                     case TrackRecommendation::Status::OverApplied:
                         entry.coachAdviceStatus = SuggestionStatus::Red;
-                        entry.coachAdviceText = emoji + "\xE2\x9A\xA0 Exceso! Bajaste " + juce::String(delta, 1)
+                        entry.coachAdviceText = emoji + "[WARN] Exceso! Bajaste " + juce::String(delta, 1)
                         + " dB (" + juce::String(delta - change, 1) + " dB de m" "\xC3\xA1s" ")";
                         break;
                     case TrackRecommendation::Status::UnderApplied:
                         entry.coachAdviceStatus = SuggestionStatus::Red;
-                        entry.coachAdviceText = emoji + "\xE2\x9A\xA0 Faltan " + juce::String(delta - change, 1)
+                        entry.coachAdviceText = emoji + "[WARN] Faltan " + juce::String(delta - change, 1)
                         + " dB \xE2\x80\x94 ajusta m" "\xC3\xA1s";
                         break;
                     default:

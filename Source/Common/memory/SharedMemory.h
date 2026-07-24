@@ -54,24 +54,112 @@ namespace mixcoach {
         // V9: +faderDb + panValue (nivel de fader y paneo del channel strip).
         // Nota: SharedMemory.cpp se modificó (healthCheck refactor a helper SEH),
         // pero SharedSlotEntry no cambió, por lo que kCurrentStructVersion sigue en 9.
-        static constexpr uint32_t kCurrentStructVersion = 9;
+        // V10: +slotHeartbeats (array de timestamps lock-free para audio thread)
+        // Los Messengers escriben su heartbeat aquí desde processBlock() sin
+        // adquirir el spinlock. MixCoach lee estos timestamps para detectar
+        // slots vivos sin bloquear el audio thread.
+        static constexpr uint32_t kCurrentStructVersion = 10;
         uint32_t structVersion                          = kCurrentStructVersion;
     };
 
     // ─── Bloque completo de memoria compartida ─────────────────────────────────
+    // ═══ V10: slotHeartbeats — Array de timestamps lock-free ═══════════════
+    // Cada Messenger escribe su heartbeat aquí desde processBlock() (~2ms
+    // a 48kHz) usando InterlockedExchange64 — SIN adquirir el spinlock.
+    // MixCoach lee estos timestamps para detectar slots activos.
+    //
+    // Los timestamps son milisegundos desde el startup del Messenger
+    // (juce::Time::getMillisecondCounter()). Si un slot no actualiza su
+    // heartbeat por > 5 segundos, se marca como stale.
+    //
+    // Esta separación elimina el spinlock del audio thread de Messenger,
+    // que es la violación más crítica de tiempo real en la arquitectura.
     struct SharedMemoryBlock
     {
         SharedMemoryHeader header;
+        // Lock-free heartbeats — escrito por Messenger audio thread,
+        // leído por MixCoach bg service. Sin locks, sin I/O.
+        // Usar InterlockedExchange64/CompareExchange64 para acceso.
+        volatile int64_t slotHeartbeats[kSharedMaxSlots];
         SharedSlotEntry slots[kSharedMaxSlots];
     };
 
 #pragma pack(pop)
 
     // ─── Version del struct para detección de mismatch ───────────────────────
-    static constexpr uint32_t kSharedMemoryStructVersion = 9;
+    static constexpr uint32_t kSharedMemoryStructVersion = 10;
 
     // ─── Verificación de tamaño (no debe exceder ~1MB para mapeo eficiente) ─────
     static_assert(sizeof(SharedMemoryBlock) < 1024 * 1024, "SharedMemoryBlock demasiado grande");
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SessionDiscovery — Negociación de GUID de sesión entre Messenger y MixCoach
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MixCoach crea una shared memory con nombre fijo que contiene el GUID de la
+    // sesión actual. Los Messengers leen esta memoria para conectarse a la sesión
+    // correcta, permitiendo que múltiples proyectos DAW convivan sin compartir slots.
+    //
+    // Formato del GUID: "MixCoach_<32-char-hex>" (ej: "MixCoach_A1B2C3D4E5F67890ABCDEF1234567890")
+    //
+    // Nombres de shared memory resultantes:
+    //   Slots:  Local\MixCoach_<GUID>_Slots
+    //   Audio:  Local\MixCoach_<GUID>_Audio
+
+#pragma pack(push, 8)
+
+    struct SessionDiscoveryBlock
+    {
+        char sessionGUID[48] = {};      // "MixCoach_<32-hex>" + null
+        uint32_t timestampMs  = 0;       // Último heartbeat de MixCoach
+        uint32_t active       = 0;       // 1 si MixCoach está vivo
+        uint32_t protocolVer  = 1;       // Versión del protocolo de discovery
+    };
+
+#pragma pack(pop)
+
+    // ─── Nombre fijo de la shared memory de discovery ────────────────────────
+    static constexpr const char* kSessionDiscoveryName = "Local\\MixCoachSessionV3";
+
+    // ─── Logger de sesión para shared memory fixa ────────────────────────────
+    class SessionDiscovery
+    {
+    public:
+        SessionDiscovery();
+        ~SessionDiscovery();
+
+        /** Crea o abre la shared memory de discovery. */
+        bool initialize();
+
+        /** Escribe un GUID de sesión (MixCoach). Marca active=true. */
+        void publishGUID(const juce::String& guid);
+
+        /** Lee el GUID de sesión actual (Messenger). Retorna vacío si no hay sesión. */
+        juce::String readGUID() const;
+
+        /** Marca active=false y limpia (MixCoach shutdown). */
+        void closeSession();
+
+        /** Libera el file mapping de descubrimiento. */
+        void closeDiscovery();
+
+        bool isInitialized() const noexcept { return block_ != nullptr; }
+
+    private:
+        void* fileMapping_  = nullptr;
+        void* fileView_     = nullptr;
+        SessionDiscoveryBlock* block_ = nullptr;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SessionDiscovery)
+    };
+
+    /** Genera un GUID único para la sesión: "MixCoach_<timestamp>_<random16>" */
+    juce::String generateSessionGUID();
+
+    /** Construye el nombre de shared memory para slots a partir de un GUID. */
+    juce::String makeSlotShmName(const juce::String& guid);
+
+    /** Construye el nombre de shared memory para audio a partir de un GUID. */
+    juce::String makeAudioShmName(const juce::String& guid);
 
     // ─── Gestor de memoria compartida (singleton por proceso) ──────────────────
     class SharedMemoryManager
@@ -119,6 +207,20 @@ namespace mixcoach {
 
         // Liberar slot (thread-safe, adquiere lock internamente)
         void releaseSlot(int index) noexcept;
+
+        // ═══ V10: Heartbeat lock-free — SIN spinlock ═════════════════════
+        // Escribe un timestamp heartbeat para un slot específico.
+        // Llamado desde el audio thread de Messenger (processBlock).
+        // NO adquiere ningún lock — usa InterlockedExchange64 directo.
+        // @param slotIndex  Índice del slot (0-127)
+        // @param timestampMs  Valor del heartbeat (juce::Time::getMillisecondCounter())
+        void writeHeartbeat(int slotIndex, int64_t timestampMs) noexcept;
+
+        /** Lee el heartbeat timestamp de un slot.
+            NO adquiere ningún lock — usa InterlockedCompareExchange64 directo.
+            @param slotIndex  Índice del slot (0-127)
+            @return Timestamp en ms, o 0 si el slot no es válido. */
+        int64_t readHeartbeat(int slotIndex) const noexcept;
 
         // ─── Health check y reconexión ───────────────────────────────────────
         // Verifica que el mapeo de memoria sigue siendo accesible.

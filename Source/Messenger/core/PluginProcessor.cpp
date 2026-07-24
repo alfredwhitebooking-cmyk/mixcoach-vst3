@@ -148,14 +148,25 @@ namespace mixcoach {
             }
         }
 
-        // ─── Heartbeat (cada ~85ms a 48kHz)
-        // Señal de vida: MixCoach detecta si el Messenger sigue activo
-        lastHeartbeatMs_.store(juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+        // ─── Heartbeat lock-free (V10) — SIN spinlock
+        // ═════════════════════════════════════════════════════════════════════
+        // El audio thread NO debe adquirir locks. setActive() usaba readSlot()
+        // + writeSlot() con spinlock (InterlockedExchange). Eso puede causar
+        // dropouts con 50+ Messengers (~4,687 intentos de lock/segundo).
+        //
+        // V10: Solo escribimos un heartbeat timestamp atómico usando
+        // InterlockedExchange64 directamente sobre la shared memory.
+        // MixCoach lee este timestamp para detectar slots vivos.
+        // La identidad completa (trackName, colour, etc.) se sincroniza
+        // en registerSlot() (una vez) y via updateSlot*() (solo cuando
+        // el usuario cambia algo en la UI).
+        //
+        // lastHeartbeatMs_ se mantiene para compatibilidad con el editor.
+        int64_t nowMs = static_cast<int64_t>(juce::Time::getMillisecondCounter());
+        lastHeartbeatMs_.store(static_cast<uint32_t>(nowMs), std::memory_order_relaxed);
 
-        // ─── Mantener slot activo en shared memory
-        if (!muted_.load(std::memory_order_relaxed)) {
-            auto& registry = sharedData_->getSlotRegistry();
-            registry.setActive(slotIndex_, true);
+        if (!muted_.load(std::memory_order_relaxed) && sharedData_ != nullptr) {
+            sharedData_->getSlotRegistry().setActiveHeartbeat(slotIndex_, nowMs);
         }
     }
 

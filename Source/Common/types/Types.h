@@ -128,8 +128,8 @@ namespace mixcoach {
     {
         Spotify          = 0, // -14 LUFS, -1 dBTP
         AppleMusic       = 1, // -16 LUFS, -1 dBTP
-        YouTube          = 2, // -14 LUFS, -1 dBTP
-        Club             = 3, // -8 LUFS, -0.5 dBTP
+        YouTube          = 2, // -13 LUFS, -1 dBTP
+        SoundCloud       = 3, // -8 LUFS, -0.5 dBTP
         StreamingGeneral = 4, // -14 LUFS, -1 dBTP (Spotify/Apple/YT genérico)
         CD               = 5  // -9 LUFS, -0.1 dBTP
     };
@@ -157,8 +157,8 @@ namespace mixcoach {
             case MasterDestination::AppleMusic:
                 return -16.0f;
             case MasterDestination::YouTube:
-                return -14.0f;
-            case MasterDestination::Club:
+                return -13.0f;
+            case MasterDestination::SoundCloud:
                 return -8.0f;
             case MasterDestination::StreamingGeneral:
                 return -14.0f;
@@ -179,7 +179,7 @@ namespace mixcoach {
                 return -1.0f;
             case MasterDestination::YouTube:
                 return -1.0f;
-            case MasterDestination::Club:
+            case MasterDestination::SoundCloud:
                 return -0.5f;
             case MasterDestination::StreamingGeneral:
                 return -1.0f;
@@ -191,7 +191,7 @@ namespace mixcoach {
     }
 
     inline constexpr const char* destinationNames[] = {
-        "Spotify", "Apple Music", "YouTube", "Club", "Streaming General", "CD"};
+        "Spotify", "Apple Music", "YouTube", "SoundCloud", "Streaming General", "CD"};
 
     // ─── Logros de gamificación (MASTER VISION v3) ────────────────────────────────
     enum class Achievement

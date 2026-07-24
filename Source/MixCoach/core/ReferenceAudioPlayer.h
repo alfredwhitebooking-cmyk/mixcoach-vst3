@@ -33,7 +33,17 @@ namespace mixcoach {
         ReferenceAudioPlayer()  = default;
         ~ReferenceAudioPlayer() = default;
 
-        void prepare(double sampleRate, int /*samplesPerBlock*/) { sampleRate_ = sampleRate; }
+        void prepare(double sampleRate, int samplesPerBlock)
+        {
+            sampleRate_ = sampleRate;
+            maxSamplesPerBlock_ = samplesPerBlock;
+            // Pre-allocar buffers de resampling (evita allocs en audio thread)
+            if (static_cast<size_t>(samplesPerBlock) > resampleBuf_[0].size()) {
+                resampleBuf_[0].resize(static_cast<size_t>(samplesPerBlock), 0.0f);
+                resampleBuf_[1].resize(static_cast<size_t>(samplesPerBlock), 0.0f);
+            }
+            resamplerNeedsReset_.store(true, std::memory_order_relaxed);
+        }
 
         void releaseResources() { clearBuffer(); }
 
@@ -96,6 +106,7 @@ namespace mixcoach {
 
             loadedTotalSamples_ = totalSamples;
             loadedSampleRate_   = reader->sampleRate;
+            loadedNumChannels_  = numChannels;
             return true;
         }
 
@@ -144,6 +155,7 @@ namespace mixcoach {
             //
             // El audio thread lee en orden inverso: isPlaying_ → readIndex_ → bufferSize_
             // Los acquire/release garantizan visibilidad total sin race conditions.
+            resamplerNeedsReset_.store(true, std::memory_order_relaxed);
             bufferSize_.store(loadedTotalSamples_, std::memory_order_release);
             bufferSampleRate_.store(loadedSampleRate_, std::memory_order_release);
             readIndex_.store(0, std::memory_order_release);
@@ -163,6 +175,7 @@ namespace mixcoach {
             isPlaying_.store(false);
             readIndex_.store(0);
             playingRefIndex_.store(-1);
+            resamplerNeedsReset_.store(true, std::memory_order_relaxed);
             currentFilePath_.clear();
             currentFileName_.clear();
             clearBuffer();
@@ -187,6 +200,7 @@ namespace mixcoach {
             int64_t idx   = static_cast<int64_t>(juce::jmax(0.0, seconds) * sr);
             idx           = (bSize > 0) ? juce::jmin(idx, bSize - 1) : idx;
             readIndex_.store(idx, std::memory_order_release);
+            resamplerNeedsReset_.store(true, std::memory_order_relaxed);
         }
 
         double getPosition() const noexcept
@@ -215,6 +229,16 @@ namespace mixcoach {
 
         int getPlayingRefIndex() const noexcept { return playingRefIndex_.load(); }
 
+        // ─── QUICK WIN 2: API de control A/B seguro ───────────────────────
+        void setReferenceBypass(bool bypass) noexcept { referenceBypassed_.store(bypass); }
+        bool isReferenceBypassed() const noexcept { return referenceBypassed_.load(); }
+
+        void setReferenceGain(float gain) noexcept { referenceGain_.store(juce::jlimit(0.0f, 1.0f, gain)); }
+        float getReferenceGain() const noexcept { return referenceGain_.load(); }
+
+        void setRenderSafe(bool safe) noexcept { renderSafe_.store(safe); }
+        bool isRenderSafe() const noexcept { return renderSafe_.load(); }
+
         juce::String getCurrentFileName() const { return currentFileName_; }
 
         // ─── Acceso al buffer cargado (para Fase 3: reusar en analyzeReferenceFile) ─
@@ -234,16 +258,18 @@ namespace mixcoach {
         double getLoadedSampleRate() const noexcept { return loadedSampleRate_; }
 
         // ─── Mezclar en buffer de salida (audio thread) ─────────────────────
-        void mixIntoBuffer(juce::AudioBuffer<float>& outputBuffer, float volume = 0.5f)
+        void mixIntoBuffer(juce::AudioBuffer<float>& outputBuffer, float volume = -1.0f)
         {
+            // ═══ QUICK WIN 2: Bypass + Render-Safe + Gain configurable ═══
+            if (referenceBypassed_.load(std::memory_order_acquire)) return;
+            if (renderSafe_.load(std::memory_order_acquire)) return;
+            if (volume < 0.0f) volume = referenceGain_.load(std::memory_order_acquire);
+
             // ═══ SIN File I/O, SIN JUCE Transport, SIN locks ═══════════════
-            // Solo lectura de buffers en memoria + posición atómica.
-            // Esto NO puede crashear porque no hay recursos externos.
             if (!isPlaying_.load()) return;
 
             const int numChannels = outputBuffer.getNumChannels();
             const int numSamples  = outputBuffer.getNumSamples();
-
             if (numSamples <= 0 || numChannels <= 0) return;
 
             if (refBufferL_.empty()) {
@@ -251,41 +277,106 @@ namespace mixcoach {
                 return;
             }
 
-            // ─── Leer posición actual atómicamente ──────────────────────────
-            // ORDEN: Primero isPlaying_ (gate), luego readIndex_, luego bufferSize_.
-            // Esto garantiza que si playFile() está escribiendo, vemos isPlaying_=false
-            // y salimos antes de tocar los buffers.
-            int64_t idx   = readIndex_.load(std::memory_order_acquire);
-            int64_t bSize = bufferSize_.load(std::memory_order_acquire);
+            // ─── Leer posición y sample rate atómicamente ───────────────────
+            int64_t idx         = readIndex_.load(std::memory_order_acquire);
+            int64_t bSize       = bufferSize_.load(std::memory_order_acquire);
+            double srcSampleRate = bufferSampleRate_.load(std::memory_order_acquire);
 
             if (idx >= bSize) {
-                // Llegó al final
                 isPlaying_.store(false, std::memory_order_release);
                 playingRefIndex_.store(-1, std::memory_order_release);
                 return;
             }
 
-            int64_t samplesToCopy      = juce::jmin(static_cast<int64_t>(numSamples), bSize - idx);
-            const int samplesToCopyInt = static_cast<int>(samplesToCopy);
+            // ═══ DECIDIR: ¿resampling necesario? ═══════════════════════════
+            bool needsResampling = (srcSampleRate > 0.0 && sampleRate_ > 0.0
+                                    && std::abs(srcSampleRate - sampleRate_) > 1.0);
 
-            // ─── Copiar samples usando FloatVectorOperations (RÁPIDO) ───────
-            if (samplesToCopyInt > 0) {
+            if (needsResampling)
+            {
+                // ─── Resampling path ─────────────────────────────────────
+                // speedRatio = source / destination
+                // > 1.0 → downsampling (e.g. 96k → 48k, consume 2 src per 1 dst)
+                // < 1.0 → upsampling   (e.g. 44.1k → 48k, consume 0.92 src per 1 dst)
+                const double speedRatio = srcSampleRate / sampleRate_;
+
+                if (resamplerNeedsReset_.load(std::memory_order_relaxed)) {
+                    channelResampler_[0].reset();
+                    channelResampler_[1].reset();
+                    resamplerNeedsReset_.store(false, std::memory_order_relaxed);
+                }
+
+                const int64_t remainingSrc = bSize - idx;
+                // Cuántos OUTPUT samples podemos producir con remainingSrc input
+                const int maxOutput = static_cast<int>(static_cast<double>(remainingSrc) / speedRatio);
+                const int toProduce = juce::jmin(numSamples, maxOutput);
+
+                if (toProduce <= 0) {
+                    // No hay suficientes samples fuente ni para 1 output
+                    readIndex_.store(bSize, std::memory_order_release);
+                    isPlaying_.store(false, std::memory_order_release);
+                    playingRefIndex_.store(-1, std::memory_order_release);
+                    return;
+                }
+
+                // ═══ SAFETY: resampleBuf_ pre-allocado en prepare() con maxSamplesPerBlock_
+                // toProduce <= numSamples <= maxSamplesPerBlock_ (garantizado por JUCE).
+                // Si el assert falla, es bug en prepare() o en el host.
+                jassert(toProduce <= maxSamplesPerBlock_);
+
+                // Resamplear canal L
+                const int consumed = channelResampler_[0].process(
+                    speedRatio,
+                    &refBufferL_[static_cast<size_t>(idx)],
+                    resampleBuf_[0].data(),
+                    toProduce);
+
+                // Resamplear canal R
+                channelResampler_[1].process(
+                    speedRatio,
+                    &refBufferR_[static_cast<size_t>(idx)],
+                    resampleBuf_[1].data(),
+                    toProduce);
+
+                // Mezclar salida resampleada en el buffer de audio
                 for (int ch = 0; ch < numChannels && ch < 2; ++ch) {
-                    const float* src = (ch == 0) ? &refBufferL_[static_cast<size_t>(idx)]
-                                                 : &refBufferR_[static_cast<size_t>(idx)];
-
                     float* writePtr = outputBuffer.getWritePointer(ch);
-                    juce::FloatVectorOperations::addWithMultiply(writePtr, src, volume, samplesToCopyInt);
+                    const float* src = resampleBuf_[ch].data();
+                    juce::FloatVectorOperations::addWithMultiply(writePtr, src, volume, toProduce);
+                }
+
+                // Avanzar posición por samples de fuente CONSUMIDOS
+                const int64_t newIdx = idx + consumed;
+                readIndex_.store(newIdx, std::memory_order_release);
+
+                // Si no produjimos todo el bloque o llegamos al final
+                if (toProduce < numSamples || newIdx >= bSize) {
+                    isPlaying_.store(false, std::memory_order_release);
+                    playingRefIndex_.store(-1, std::memory_order_release);
                 }
             }
+            else
+            {
+                // ─── Non-resampling path (original, optimizado) ────────────
+                int64_t samplesToCopy      = juce::jmin(static_cast<int64_t>(numSamples), bSize - idx);
+                const int samplesToCopyInt = static_cast<int>(samplesToCopy);
 
-            // ─── Avanzar posición de lectura ────────────────────────────────
-            readIndex_.store(idx + samplesToCopy, std::memory_order_release);
+                if (samplesToCopyInt > 0) {
+                    for (int ch = 0; ch < numChannels && ch < 2; ++ch) {
+                        const float* src = (ch == 0) ? &refBufferL_[static_cast<size_t>(idx)]
+                                                     : &refBufferR_[static_cast<size_t>(idx)];
 
-            // Si no copiamos todo (final del archivo), marcar como terminado
-            if (samplesToCopy < numSamples) {
-                isPlaying_.store(false, std::memory_order_release);
-                playingRefIndex_.store(-1, std::memory_order_release);
+                        float* writePtr = outputBuffer.getWritePointer(ch);
+                        juce::FloatVectorOperations::addWithMultiply(writePtr, src, volume, samplesToCopyInt);
+                    }
+                }
+
+                readIndex_.store(idx + samplesToCopy, std::memory_order_release);
+
+                if (samplesToCopy < numSamples) {
+                    isPlaying_.store(false, std::memory_order_release);
+                    playingRefIndex_.store(-1, std::memory_order_release);
+                }
             }
         }
 
@@ -299,6 +390,7 @@ namespace mixcoach {
             bufferSampleRate_.store(0.0, std::memory_order_release);
             isPlaying_.store(false, std::memory_order_release);
             readIndex_.store(0, std::memory_order_release);
+            resamplerNeedsReset_.store(true, std::memory_order_relaxed);
         }
 
         // ─── Buffer de audio completo en memoria ─────────────────────────────
@@ -310,6 +402,16 @@ namespace mixcoach {
         double loadedSampleRate_    = 0.0;
         int loadedNumChannels_      = 0;
 
+        // ═══ Resampling (JUCE LagrangeInterpolator) ═══════════════════════
+        juce::LagrangeInterpolator channelResampler_[2];
+        std::vector<float> resampleBuf_[2];
+        int maxSamplesPerBlock_ = 512;
+        // ⚠ Atómico: se escribe desde UI thread (playFile/setPosition/stop)
+        // y se lee+escribe desde audio thread (mixIntoBuffer).
+        // Usamos memory_order_relaxed porque está protegido por las barreras
+        // acquire/release de isPlaying_ y bufferSize_ que lo flanquean.
+        std::atomic<bool> resamplerNeedsReset_{true};
+
         // ═══ CAMPOS ATÓMICOS (thread-safe UI ↔ Audio, sin locks) ══════════
         // Todos se leen desde mixIntoBuffer() (audio thread) con memory_order_acquire
         // y se escriben desde playFile()/stop() (UI thread) con memory_order_release.
@@ -318,6 +420,21 @@ namespace mixcoach {
         std::atomic<int64_t> readIndex_{0};
         std::atomic<bool> isPlaying_{false};
         std::atomic<int> playingRefIndex_{-1};
+
+        // ═══ QUICK WIN 2: Control A/B seguro ══════════════════════════════
+        // Bypass: cuando true, mixIntoBuffer() no mezcla la referencia.
+        // El usuario puede togglear desde la UI para comparar A/B.
+        std::atomic<bool> referenceBypassed_{false};
+
+        // Ganancia de la referencia (0.0 = silencio, 1.0 = unity).
+        // Reemplaza el hardcoded 0.5f en mixIntoBuffer().
+        std::atomic<float> referenceGain_{0.5f};
+
+        // Render-safe: cuando true, mixIntoBuffer() se salta automáticamente.
+        // Se activa cuando el DAW está en modo render/bounce.
+        // El procesador llama setRenderSafe(true) en processBlock si
+        // isNonRealtime() == true.
+        std::atomic<bool> renderSafe_{false};
 
         double sampleRate_ = 44100.0;
         juce::String currentFilePath_;

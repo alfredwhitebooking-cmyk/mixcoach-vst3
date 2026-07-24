@@ -389,36 +389,102 @@ namespace mixcoach {
         }
     }
 
-    // ─── Stale detection (V3: basado en active flag, sin telemetría) ────────────
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  V10: Heartbeat lock-free — sin spinlock
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void SlotRegistry::setActiveHeartbeat(int slotIndex, int64_t timestampMs) noexcept
+    {
+        if (slotIndex < 0 || slotIndex >= kMaxSlots) return;
+
+        // Actualizar estado local
+        slots_[slotIndex].active = true;
+        slots_[slotIndex].stale  = false;
+        ++localChangeCount_;
+
+        // Escribir heartbeat lock-free a shared memory
+        if (shm_ != nullptr) {
+            shm_->writeHeartbeat(slotIndex, timestampMs);
+        }
+    }
+
+    int64_t SlotRegistry::getHeartbeat(int slotIndex) const noexcept
+    {
+        if (slotIndex < 0 || slotIndex >= kMaxSlots) return 0;
+        if (shm_ == nullptr) return 0;
+        return shm_->readHeartbeat(slotIndex);
+    }
+
+    // ─── Stale detection (V10: basado en heartbeat timestamps, lock-free) ──────
+    // En V10, el audio thread del Messenger solo escribe un heartbeat timestamp
+    // (InterlockedExchange64, sin spinlock). MixCoach lee estos timestamps
+    // para detectar slots vivos sin adquirir el spinlock.
+    //
+    // Si un slot activo no actualiza su heartbeat por > kHeartbeatTimeoutMs,
+    // se marca como stale (Messenger probablemente se cerró o crasheó).
+    // Si no hay shared memory disponible (modo local), caemos al legacy
+    // basado en el flag active local.
+    static constexpr int kHeartbeatTimeoutMs = 5000; // 5s sin heartbeat = stale
 
     void SlotRegistry::checkStaleSlots()
     {
-        // En V3, los slots se marcan como stale cuando active=false
-        // o cuando forceFullSyncFromShm() detecta que el slot fue liberado.
-        // Este método verifica consistencia con shared memory.
-        if (shm_ == nullptr) return;
+        if (shm_ == nullptr) {
+            // Modo local (sin shared memory): legacy basado en active flag
+            for (int i = 0; i < kMaxSlots; ++i) {
+                if (!slots_[i].active && !slots_[i].stale) continue;
+                if (slots_[i].active) {
+                    // En modo local, los slots nunca se marcan stale automáticamente
+                    // porque no hay forma de detectar si el Messenger se desconectó
+                }
+            }
+            return;
+        }
+
+        uint32_t now = juce::Time::getMillisecondCounter();
 
         for (int i = 0; i < kMaxSlots; ++i) {
-            SharedSlotEntry entry;
-            if (!shm_->readSlot(i, entry)) {
-                if (slots_[i].active && !slots_[i].stale) {
+            // Leer heartbeat lock-free (sin spinlock)
+            int64_t hb = shm_->readHeartbeat(i);
+            bool hbActive = (hb > 0 && (now - static_cast<uint32_t>(hb)) < kHeartbeatTimeoutMs);
+
+            if (slots_[i].active && !slots_[i].stale) {
+                if (!hbActive && hb > 0) {
+                    // Slot activo pero heartbeat expiró → stale
                     slots_[i].stale = true;
-                    logSlot("STALE", i, "shared memory no responde");
+                    logSlot("STALE", i, "heartbeat expirado (" + juce::String(now - (uint32_t)hb) + "ms sin senal)");
                     if (onSlotChanged) onSlotChanged(i);
                 }
-                continue;
             }
-
-            if (slots_[i].active && !entry.active && !slots_[i].stale) {
-                slots_[i].stale = true;
-                logSlot("STALE", i, "slot liberado en SHM");
-                if (onSlotChanged) onSlotChanged(i);
-            }
-            else if (slots_[i].stale && entry.active) {
+            else if (slots_[i].stale && hbActive) {
+                // Slot stale pero heartbeat renovado → reconectado
                 slots_[i].stale  = false;
                 slots_[i].active = true;
-                logSlot("STALE_CLEAR", i, "track reconectado");
+                logSlot("STALE_CLEAR", i, "heartbeat renovado — track reconectado");
                 if (onSlotChanged) onSlotChanged(i);
+            }
+
+            // También verificar el active flag legacy para backward compat
+            SharedSlotEntry entry;
+            if (shm_->readSlot(i, entry)) {
+                if (slots_[i].active && !entry.active && !slots_[i].stale && !hbActive) {
+                    slots_[i].stale = true;
+                    logSlot("STALE", i, "slot liberado en SHM (legacy)");
+                    if (onSlotChanged) onSlotChanged(i);
+                }
+
+                // Recuperación: slot estaba stale pero SHM lo muestra activo de nuevo
+                // (por ej. registro directo vía SHM sin heartbeat de Messenger).
+                // ═══ FIX: No limpiar stale si el heartbeat fue la causa ═══════
+                // Si hb > 0, la stale se detectó por heartbeat expirado, y la
+                // recuperación debe venir del heartbeat (hbActive), no del entry SHM.
+                // Si hb == 0, no hay heartbeat mechanism — solo legacy SHM —
+                // entonces la reactivación SHM sí debe limpiar stale.
+                if (slots_[i].stale && entry.active && hb == 0) {
+                    slots_[i].stale = false;
+                    slots_[i].active = true;
+                    logSlot("STALE_CLEAR", i, "slot reactivado en SHM (legacy, sin heartbeat)");
+                    if (onSlotChanged) onSlotChanged(i);
+                }
             }
         }
     }

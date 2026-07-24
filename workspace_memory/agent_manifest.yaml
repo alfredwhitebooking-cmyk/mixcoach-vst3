@@ -1,0 +1,151 @@
+# 👥 MixCoach — Agent Manifest
+# Manifiesto machine-readable del sistema de agentes especializados.
+# Versión: 1.0 | Última actualización: 26 junio 2026
+
+agents:
+  - id: chief-architect
+    name: "Chief Architect"
+    emoji: "🏗️"
+    file: "workspace_memory/agents/01_CHIEF_ARCHITECT.md"
+    domain: "architecture"
+    mission: "Proteger la arquitectura y evitar deuda técnica"
+    never: ["UI", "CSS", "colors", "prompts", "DSP", "tests"]
+    invoke_with: "@Chief-Architect"
+    invoke_when:
+      - "Nueva feature mayor"
+      - "Refactor de módulo existente"
+      - "Cambio en IPC o SharedMemory"
+      - "Nueva dependencia externa"
+      - "Modificación de Types.h o Constants.h"
+
+  - id: audio-intelligence
+    name: "Audio Intelligence Engineer"
+    emoji: "🎧"
+    file: "workspace_memory/agents/02_AUDIO_INTELLIGENCE_ENGINEER.md"
+    domain: "dsp"
+    mission: "Garantizar precisión en todo análisis de audio"
+    never: ["UI", "prompts", "IPC", "animations"]
+    invoke_with: "@Audio-Intelligence"
+    invoke_when:
+      - "Nueva métrica de audio"
+      - "Modificar FFT/LUFS/fase"
+      - "Cambiar thresholds de análisis"
+      - "Agregar analyzer especializado"
+      - "Modificar perfiles de género"
+
+  - id: ai-systems
+    name: "AI Systems Engineer"
+    emoji: "🤖"
+    file: "workspace_memory/agents/03_AI_SYSTEMS_ENGINEER.md"
+    domain: "llm"
+    mission: "Diseñar la voz de MixCoach y su interacción con el LLM"
+    never: ["DSP", "FFT", "UI", "IPC", "audio analysis"]
+    invoke_with: "@AI-Systems"
+    invoke_when:
+      - "Modificar system prompt"
+      - "Cambiar formato de datos al LLM"
+      - "Nuevo tipo de respuesta del coach"
+      - "Modificar memoria de sesión"
+      - "Cambiar comportamiento de fallback"
+
+  - id: ux-designer
+    name: "UX/Product Designer"
+    emoji: "🎨"
+    file: "workspace_memory/agents/04_UX_PRODUCT_DESIGNER.md"
+    domain: "ux"
+    mission: "Garantizar experiencia intuitiva coherente con el mentor"
+    never: ["IPC", "FFT", "engine", "prompts", "thresholds"]
+    invoke_with: "@UX-Designer"
+    invoke_when:
+      - "Nueva pantalla o componente visual"
+      - "Modificar layout existente"
+      - "Cambiar navegación"
+      - "Nuevo tipo de interacción"
+      - "Revisar microcopy"
+
+  - id: qa-reliability
+    name: "QA & Reliability Engineer"
+    emoji: "🔍"
+    file: "workspace_memory/agents/05_QA_RELIABILITY_ENGINEER.md"
+    domain: "testing"
+    mission: "Encontrar problemas antes de que lleguen a producción"
+    never: ["features nuevas", "UI", "prompts", "DSP nuevo"]
+    invoke_with: "@QA"
+    invoke_when:
+      - "Después de cualquier cambio"
+      - "Antes de mergear PR"
+      - "Para generar tests"
+      - "Bug encontrado (reproducir + test)"
+      - "Antes de release candidate"
+
+  - id: performance-engineer
+    name: "Performance Engineer"
+    emoji: "⚡"
+    file: "workspace_memory/agents/06_PERFORMANCE_ENGINEER.md"
+    domain: "performance"
+    mission: "Vigilar CPU, RAM, latencia y tiempo real"
+    never: ["features nuevas", "UI decorativa", "prompts"]
+    invoke_with: "@Performance"
+    invoke_when:
+      - "Hot path de audio modificado"
+      - "Nuevo análisis en audio thread"
+      - "Cambio en datos compartidos entre threads"
+      - "Antes de release candidate"
+      - "Reports de xruns o pops"
+
+  - id: guardian
+    name: "Guardian de la Visión"
+    emoji: "👁️"
+    file: "workspace_memory/agents/07_GUARDIAN_DE_LA_VISION.md"
+    domain: "vision"
+    mission: "Vetar cambios que contradicen la identidad de MixCoach"
+    never: ["escribe código", "UI", "prompts", "DSP"]
+    invoke_with: "@Guardian"
+    invoke_when:
+      - "SIEMPRE antes de mergear cambios mayores"
+      - "Nueva feature mayor"
+      - "Cambio en experiencia central"
+      - "Cambio en comportamiento del LLM"
+      - "Nuevo componente UI"
+      - "Cualquier cambio tocando 00_PROJECT_IDENTITY.md"
+
+# ─── Reglas de invocación automática ──────────────────────
+
+auto_invoke:
+  pre_change:
+    - chief-architect
+  post_change:
+    - qa-reliability
+  pre_merge:
+    - performance-engineer     # si toca audio
+    - guardian                 # si es cambio mayor
+
+# ─── Flujos por tipo de tarea ──────────────────────────────
+
+workflows:
+  new_audio_feature:
+    - chief-architect
+    - audio-intelligence
+    - qa-reliability
+    - guardian
+
+  new_ui_feature:
+    - chief-architect
+    - ux-designer
+    - qa-reliability
+    - guardian
+
+  new_llm_feature:
+    - ai-systems
+    - qa-reliability
+    - guardian
+
+  bug_fix:
+    - audio-intelligence   # si es bug de audio
+    - qa-reliability
+
+  release:
+    - qa-reliability
+    - performance-engineer
+    - guardian
+    - fundador             # aprobación final

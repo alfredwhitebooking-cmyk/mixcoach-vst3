@@ -58,6 +58,12 @@ namespace mixcoach {
         ReferenceAnalyzer()  = default;
         ~ReferenceAnalyzer() = default;
 
+        // ─── Progreso del análisis (opcional) ────────────────────────────────
+        /** Callback de progreso durante el análisis. Se llama desde loadFile()
+            con valores 0.0→1.0 en etapas: 0.10 (lectura), 0.30 (decodificado),
+            0.60 (FFT), 0.80 (LUFS), 1.00 (completado). */
+        std::function<void(float)> onProgress;
+
         // ─── Carga y análisis ─────────────────────────────────────────────────
         /** Carga un archivo de audio, lo procesa por AudioAnalysis + LoudnessAnalyzer.
             Retorna true si el archivo se cargó y analizó correctamente.

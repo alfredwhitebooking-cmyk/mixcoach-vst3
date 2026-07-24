@@ -108,6 +108,29 @@ namespace mixcoach {
             return cfg;
         }
 
+        /** Construye una Config para NVIDIA AI Foundation API.
+            Usa el endpoint OpenAI-compatible de NVIDIA.
+            Modelos recomendados:
+              - meta/llama-3.1-70b-instruct (potente, ~70B params)
+              - meta/llama-3.1-8b-instruct  (rápido, ~8B params)
+              - nvidia/nemotron-4-340b-instruct (máxima capacidad)
+              - mistralai/mixtral-8x22b-v0.1 (buen balance calidad/velocidad)
+            @param apiKey  API key con prefijo "nvapi-"
+            @param model   Model ID (default: meta/llama-3.1-70b-instruct) */
+        static Config makeNvidiaConfig(const juce::String& apiKey,
+                                       const juce::String& model = "meta/llama-3.1-70b-instruct")
+        {
+            Config cfg;
+            cfg.provider    = Provider::OpenAICompatible;
+            cfg.endpointUrl = "https://integrate.api.nvidia.com/v1";
+            cfg.apiKey      = apiKey;
+            cfg.model       = model;
+            cfg.temperature = 0.7f;
+            cfg.maxTokens   = 1024;
+            cfg.timeoutMs   = 30000;
+            return cfg;
+        }
+
         // ─── Callback para respuestas ─────────────────────────────────────────
         using ResponseCallback =
             std::function<void(bool success, const juce::String& response, const juce::String& error)>;
@@ -170,6 +193,85 @@ namespace mixcoach {
                 default:
                     return "Unknown";
             }
+        }
+
+        /** Obtiene un nombre de proveedor legible para la UI,
+            identificando servicios específicos por su endpoint URL. */
+        juce::String getProviderDisplayName() const noexcept
+        {
+            switch (config_.provider) {
+                case Provider::Ollama:
+                    return "Ollama";
+                case Provider::OpenAICompatible: {
+                    juce::String url = config_.endpointUrl.toLowerCase();
+                    if (url.contains("nvidia"))     return "NVIDIA";
+                    if (url.contains("groq"))        return "Groq";
+                    if (url.contains("openrouter"))  return "OpenRouter";
+                    if (url.contains("deepseek"))    return "DeepSeek";
+                    if (url.contains("googleapis") || url.contains("generativelanguage"))
+                        return "Gemini";
+                    return "Cloud AI";
+                }
+                default:
+                    return "Unknown";
+            }
+        }
+
+        /** Obtiene un nombre de modelo legible para la UI.
+            Convierte IDs técnicos como "meta/llama-3.1-70b-instruct"
+            en "Llama 3.1 70B" y "qwen2.5:7b" en "Qwen 2.5 7B". */
+        juce::String getModelDisplayName() const noexcept
+        {
+            juce::String raw  = config_.model;
+            juce::String name = raw;
+
+            // Quitar prefijo "org/" (ej: "meta/llama-..." → "llama-...")
+            int slashPos = name.indexOfChar('/');
+            if (slashPos >= 0) name = name.substring(slashPos + 1);
+
+            // Quitar sufijos comunes de modelos instruct/chat
+            name = name.replace("-instruct", "", true);
+            name = name.replace("-chat", "", true);
+            name = name.replace("-it", "", true);
+            name = name.replace("-vision", "", true);
+
+            // Separar palabras: convertir "llama-3.1-70b" → "llama 3.1 70b"
+            name = name.replace("-", " ", true);
+            name = name.replace(":", " ", true);
+            name = name.replace("_", " ", true);
+
+            // Capitalizar "b" después de dígitos (70b → 70B, 7b → 7B)
+            for (int i = 0; i < name.length() - 1; ++i) {
+                if (juce::CharacterFunctions::isDigit(name[i]) && name[i + 1] == 'b') {
+                    name = name.substring(0, i + 1) + 'B' + name.substring(i + 2);
+                }
+            }
+
+            // Capitalizar primera letra de cada palabra
+            juce::String result;
+            bool newWord = true;
+            for (int i = 0; i < name.length(); ++i) {
+                juce::juce_wchar c = name[i];
+                if (c == ' ') {
+                    newWord = true;
+                    result += ' ';
+                }
+                else if (newWord) {
+                    result += (juce::juce_wchar)juce::CharacterFunctions::toUpperCase(c);
+                    newWord = false;
+                }
+                else {
+                    result += c;
+                }
+            }
+
+            return result;
+        }
+
+        /** Obtiene un string combinado "Proveedor: Modelo" para mostrar en UI. */
+        juce::String getProviderModelLabel() const noexcept
+        {
+            return getProviderDisplayName() + ": " + getModelDisplayName();
         }
 
     private:

@@ -36,6 +36,31 @@ namespace mixcoach {
             El componente dibujará un glow de advertencia y texto informativo. */
         void setPhaseDiagnostic(const PhaseDiagnostic* diagnostic);
 
+        // ═══ Ideal Correlation Overlay ═════════════════════════════════════
+        /** Establece un target de correlación ideal para mostrar como overlay.
+            Cuando se setea, dibuja un círculo/corona ideal punteado mostrando
+            cómo debería verse la correlación en el vectorscope.
+            @param targetCorrelation  Valor de correlación objetivo (0.0-1.0)
+            @param label  Etiqueta opcional (ej: "Objetivo: 0.85") */
+        /** Establece un target de correlación ideal para mostrar como overlay.
+            Cuando se setea, dibuja un círculo/corona ideal punteado mostrando
+            cómo debería verse la correlación en el vectorscope.
+            El overlay late (pulse) suavemente cuando la correlación actual
+            difiere del target, ayudando al usuario a ver hacia dónde ir.
+            @param targetCorrelation  Valor de correlación objetivo (0.0-1.0)
+            @param label  Etiqueta opcional (ej: "Objetivo: 0.85") */
+        void setTargetCorrelation(float targetCorrelation,
+                                  const juce::String& label = {});
+
+        /** Limpia el overlay de correlación ideal. */
+        void clearTargetCorrelation();
+
+        /** Retorna true si hay un target de correlación activo. */
+        [[nodiscard]] bool hasTargetCorrelation() const noexcept
+        {
+            return hasTargetCorrelation_;
+        }
+
     private:
         static constexpr int kTraceLen = 1024;
 
@@ -58,10 +83,17 @@ namespace mixcoach {
         PhaseDiagnostic phaseDiagnostic_;
         bool hasPhaseDiagnostic_ = false;
 
+        // ─── Target correlation overlay state ──────────────────────────────
+        bool hasTargetCorrelation_ = false;
+        float targetCorrelation_ = 0.85f; // Valor por defecto
+        juce::String targetCorrelationLabel_;
+        float targetPulsePhase_ = 0.0f; // Para animación pulsing del overlay
+
         // ─── Drawing methods ───────────────────────────────────────────────
         void drawGrid(juce::Graphics& g, juce::Rectangle<float> circleArea);
         void drawTrace(juce::Graphics& g, juce::Rectangle<float> circleArea);
         void drawPhaseOverlay(juce::Graphics& g, juce::Rectangle<float> circleArea);
+        void drawTargetOverlay(juce::Graphics& g, juce::Rectangle<float> circleArea);
         void rebuildGridCache();
 
         [[nodiscard]] juce::Rectangle<float> plotCircleArea() const;

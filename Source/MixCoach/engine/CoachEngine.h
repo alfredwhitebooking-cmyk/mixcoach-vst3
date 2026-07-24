@@ -21,8 +21,22 @@
 #include "MixPriorityEngine.h"
 #include "ReferenceDrivenEngine.h"
 #include "WorkflowDetector.h"
+#include "SessionProgression.h"
+#include "SessionEventLog.h"
+#include "SpectralData.h"
+#include "CoachingStageManager.h"
+#include "SceneManager.h"
 #include "DifferenceProfile.h"
 #include "CorrectionLearner.h"
+#include "ReferenceSummary.h"
+#include "RefinementProfile.h"
+#include "CoachPersona.h"
+#include "FeedbackCollector.h"
+#include "PluginSuggestionsProvider.h"
+#include "ProgressTracker.h"
+#include "SectionDetector.h"
+#include "DensityAnalyzer.h"
+#include "AnalyzerManager.h"
 
 namespace mixcoach {
 
@@ -62,8 +76,8 @@ namespace mixcoach {
         /** Retorna emoji de tendencia: ▲ mejorando, ▼ empeorando, ➡ estable. */
         [[nodiscard]] const char* trendEmoji() const noexcept
         {
-            if (delta > 0.03f) return "\xE2\x96\xB2";  // ▲
-            if (delta < -0.03f) return "\xE2\x96\xBC"; // ▼
+            if (delta > 0.03f) return "[EXPAND]";  // ▲
+            if (delta < -0.03f) return "[COLLAPSE]"; // ▼
             return "\xE2\x9E\xA1";                     // ➡
         }
 
@@ -177,7 +191,9 @@ namespace mixcoach {
     //  de referencia, extraído al cargar un WAV/MP3/FLAC en el ReferencePanel.
     //  El CoachEngine lo usa para comparar la mezcla actual contra la referencia.
     // ═══════════════════════════════════════════════════════════════════════════
-    struct ReferenceFingerprint
+    
+#ifndef SPECTRAL_DATA_DEFINED_REFERENCEFINGERPRINT
+struct ReferenceFingerprint
     {
         // 30 bandas de frecuencia (definidas en Constants.h kSpectralBandBins / kNumSpectralBands)
         // Mismas bandas que el análisis per-track en backgroundRunLoop
@@ -208,16 +224,20 @@ namespace mixcoach {
 
         bool valid = false;
     };
+#endif // SPECTRAL_DATA_DEFINED_REFERENCEFINGERPRINT
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  ReferenceMatchData — Datos de comparación mix vs referencia
     //  Se computa en CoachEngine y se envía al ReferencePanelComponent
     //  para visualización del matching espectral y de loudness.
     // ═══════════════════════════════════════════════════════════════════════════
-    struct ReferenceMatchData
+    
+#ifndef SPECTRAL_DATA_DEFINED_REFERENCEMATCHDATA
+struct ReferenceMatchData
     {
         // 6 regiones espectrales (Sub, Bass, LoMid, HiMid, Pres, Air)
         float mixRegionEnergy[6] = {-100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f};
+
         float refRegionEnergy[6] = {-100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f};
 
         // LUFS
@@ -237,11 +257,14 @@ namespace mixcoach {
 
         bool valid = false; // false si no hay referencia cargada o datos insuficientes
     };
+#endif // SPECTRAL_DATA_DEFINED_REFERENCEMATCHDATA
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  ReferenceMetadata — Metadatos de la referencia (archivo o URL)
     // ═══════════════════════════════════════════════════════════════════════════
-    struct ReferenceMetadata
+    
+#ifndef SPECTRAL_DATA_DEFINED_REFERENCEMETADATA
+struct ReferenceMetadata
     {
         enum class Type
         {
@@ -260,13 +283,16 @@ namespace mixcoach {
 
         bool valid() const { return type != Type::None && name.isNotEmpty(); }
     };
+#endif // SPECTRAL_DATA_DEFINED_REFERENCEMETADATA
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  BusGroupSummary — Métricas agregadas por familia de instrumentos
     //  Computado por computeBusSummaries() a partir de telemetría individual
     //  Agrupa tracks por BusType y calcula promedios/sumas para análisis de mezcla
     // ═══════════════════════════════════════════════════════════════════════════
-    struct BusGroupSummary
+    
+#ifndef SPECTRAL_DATA_DEFINED_BUSGROUPSUMMARY
+struct BusGroupSummary
     {
         BusType busType           = BusType::None;
         int trackCount            = 0;
@@ -278,11 +304,13 @@ namespace mixcoach {
                                      -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f,
                                      -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f,
                                      -100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f};
+
         juce::String loudestTrackName;
         float loudestTrackPeak = -100.0f;
 
         [[nodiscard]] bool hasData() const noexcept { return trackCount > 0 && peakMax > -90.0f; }
     };
+#endif // SPECTRAL_DATA_DEFINED_BUSGROUPSUMMARY
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  SessionContext — Fotografía completa de la sesión en un solo struct
@@ -490,12 +518,76 @@ namespace mixcoach {
 
         void setDiagnosticUpdateCallback(DiagnosticUpdateCallback callback) { diagnosticUpdateCb_ = callback; }
 
+        /** Solicita una actualizacion de diagnostico on-demand.
+            Dispara diagnosticUpdateCb_ inmediatamente (si esta cableado)
+            para que el DiagnosticBridge se actualice con datos frescos.
+            Util cuando el Coach (LLM) pide ver evidencia visual en el
+            spectrograph o quiere confirmar que los overlays estan sincronizados. */
+        void requestDiagnosticUpdate();
+
+        
+        enum class SetupStep : uint8_t
+        {
+            NotStarted,            // No greeting sent yet
+            WaitingForName,        // Preguntar nombre del ingeniero
+            WaitingForMode,        // V4: Preguntar Mix o Master
+            WaitingForReferenceFirst, // V6: Referencia ANTES que genero
+            WaitingForReference,      // Esperando referencia
+            WaitingForSetupInstructions, // Pide insertar Messengers
+            WaitingForGenre,       // Asked for genre (Mix Mode)
+            WaitingForConfirm,     // Genre set, asking to scan/confirm
+            WaitingForDestination, // V4: Preguntar destino (Master Mode only)
+            Complete               // Setup done, ready to advance
+        };
+
+        
+
+// ═══ Callback para cambios de SetupStep ═══
+        using SetupStepChangedCallback = std::function<void(SetupStep oldStep, SetupStep newStep)>;
+        void setSetupStepChangedCallback(SetupStepChangedCallback callback) { setupStepChangedCb_ = callback; }
+
+        // ═══ Callback para cambios de CoachingStage ═══
+        using StageChangedCallback = std::function<void(CoachingStage oldStage, CoachingStage newStage)>;
+        void setStageChangedCallback(StageChangedCallback callback) { stageChangedCb_ = callback; }
+
+        // ═══ Callback para issues críticos (clipping) ═══
+        using CriticalIssueCallback = std::function<void(bool hasClipping, int clippingCount)>;
+        void setCriticalIssueCallback(CriticalIssueCallback callback) { criticalIssueCb_ = callback; }
+
+        // ═══ Callback para eventos de workflow (plugin changes) ═══
+        using WorkflowEventCallback = std::function<void(const WorkflowEvent&)>;
+        void setWorkflowEventCallback(WorkflowEventCallback callback) { workflowEventCb_ = callback; }
+
+        // ═══ Callback para eventos del Director (SceneManager) ═══
+        using DirectorEventCallback = std::function<void(const DirectorEvent&)>;
+        void setDirectorEventCallback(DirectorEventCallback callback) { directorEventCb_ = callback; }
+
         // ═══ Callback para mensajes del coach al chat UI ═══
         // El bool indica si es mensaje del sistema (true) o respuesta LLM (false).
         // Los mensajes del sistema se renderizan en formato compacto y dimmed.
+        /** Callback para notificar a la UI que se detectó mezcla "seca".
+            analyzeSpaceReal() lo dispara cuando encuentra tracks candidatas
+            para reverb durante la fase Espacio. */
+        using ReverbSuggestedCallback = std::function<void(float preDelayMs, float decaySec,
+                                                            float highCutHz, float mixPct,
+                                                            const juce::String& genre,
+                                                            const juce::String& algorithm,
+                                                            const std::vector<juce::String>& trackNames,
+                                                            const std::vector<juce::String>& trackRoles)>;
+
         using MessagePushedCallback = std::function<void(const juce::String&, bool isSystem)>;
 
+        void setReverbSuggestedCallback(ReverbSuggestedCallback callback) { reverbSuggestedCb_ = callback; }
+
         void setMessagePushedCallback(MessagePushedCallback callback) { messagePushedCallback_ = callback; }
+
+        // ═══ Callback para respuestas COMPLETAS del LLM al Director ═══
+        /** Se llama cuando el LLM termina de generar una respuesta completa,
+            con el texto final. El Director (vía NavigationShell) usa esto
+            para integrar la respuesta del LLM en el ciclo narrativo. */
+        using LlmResponseCompleteCallback = std::function<void(const juce::String& fullResponse)>;
+
+        void setLlmResponseCompleteCallback(LlmResponseCompleteCallback callback) { llmResponseCompleteCb_ = callback; }
 
         // ═══ Callbacks para streaming de tokens del LLM al chat UI ═══
         /** Se llama cuando empieza un nuevo mensaje en streaming (abre la burbuja). */
@@ -551,6 +643,65 @@ namespace mixcoach {
         void setMatchDataCallback(MatchDataCallback callback) { matchDataCallback_ = callback; }
 
         [[nodiscard]] bool isLlmEnabled() const noexcept { return llmEnabled_; }
+
+        // ═══ LLM Status — Estado del asistente AI (Conectado / Fallback / Offline) ═══
+        enum class LlmStatus : uint8_t
+        {
+            Connected, // LLM respondiendo normalmente
+            Fallback,  // Sin LLM principal, usando análisis local DSP
+            Offline    // Sin conexión, sin LLM disponible
+        };
+
+        void setLlmStatus(LlmStatus status)
+        {
+            if (llmStatus_ != status) {
+                LlmStatus oldStatus = llmStatus_;
+                llmStatus_ = status;
+                if (llmStatusChangedCb_) llmStatusChangedCb_(oldStatus, status);
+            }
+        }
+
+        [[nodiscard]] LlmStatus getLlmStatus() const noexcept { return llmStatus_; }
+
+        /** Retorna nombre legible del estado LLM. */
+        [[nodiscard]] static const char* llmStatusName(LlmStatus s) noexcept
+        {
+            switch (s) {
+                case LlmStatus::Connected: return "Conectado";
+                case LlmStatus::Fallback:  return "Fallback (analisis local)";
+                case LlmStatus::Offline:   return "Sin conexion";
+                default:                   return "Desconocido";
+            }
+        }
+
+        /** Retorna emoji del estado LLM. */
+        [[nodiscard]] static const char* llmStatusEmoji(LlmStatus s) noexcept
+        {
+            switch (s) {
+                case LlmStatus::Connected: return "\xF0\x9F\x9F\xA2"; // 🟢
+                case LlmStatus::Fallback:  return "\xF0\x9F\x9F\xA1"; // 🟡
+                case LlmStatus::Offline:   return "\xF0\x9F\x94\xB4"; // 🔴
+                default:                   return "\xE2\x9D\x93";     // ❓
+            }
+        }
+
+        using LlmStatusChangedCallback = std::function<void(LlmStatus oldStatus, LlmStatus newStatus)>;
+        void setLlmStatusChangedCallback(LlmStatusChangedCallback callback) { llmStatusChangedCb_ = callback; }
+
+        // ═══ Coach Persona — Personalidad del coach (Motivador / Técnico / Directo) ═══
+        void setCoachPersona(CoachPersona persona) noexcept { coachPersona_ = persona; }
+        [[nodiscard]] CoachPersona getCoachPersona() const noexcept { return coachPersona_; }
+        /** Retorna el nombre legible de la persona activa. */
+        [[nodiscard]] const char* getCoachPersonaName() const noexcept { return personaName(coachPersona_); }
+        /** Retorna el icono de la persona activa. */
+        [[nodiscard]] const char* getCoachPersonaIcon() const noexcept { return personaIcon(coachPersona_); }
+        /** Cambia a la siguiente persona (cíclicamente) y retorna la nueva. */
+        CoachPersona cycleCoachPersona() noexcept
+        {
+            coachPersona_ = nextPersona(coachPersona_);
+            return coachPersona_;
+        }
+
 
         // ═══ Callback para consultas LLM durante el setup (FASE 0) ═══
         using SetupLlmCallback =
@@ -645,17 +796,6 @@ namespace mixcoach {
 
         // ═══ FASE 0: Setup Steps — Diálogo interactivo de bienvenida ═══════
         // V4 Dual Mode: el primer paso ahora es elegir Mix Mode o Master Mode
-        enum class SetupStep : uint8_t
-        {
-            NotStarted,            // No greeting sent yet
-            WaitingForName,        // Preguntar nombre del ingeniero
-            WaitingForMode,        // V4: Preguntar Mix o Master
-            WaitingForGenre,       // Asked for genre (Mix Mode)
-            WaitingForConfirm,     // Genre set, asking to scan/confirm
-            WaitingForDestination, // V4: Preguntar destino (Master Mode only)
-            Complete               // Setup done, ready to advance
-        };
-
         CoachEngine(PhaseManager& phaseManager, SharedData& sharedData, AudioAnalyzer& audioAnalyzer);
 
         // ─── Interfaz pública ─────────────────────────────────────────────────
@@ -697,6 +837,13 @@ namespace mixcoach {
 
         /** Retorna el perfil objetivo para un género dado. Si no se encuentra, retorna perfil genérico. */
         static const GenreTargetProfile& getGenreProfile(const juce::String& genre);
+
+        /** Retorna un mensaje formateado con características sónicas del género.
+            Ej: "El Afrobeat necesita:\n✓ Groove\n✓ Punch\n✓ Mucho movimiento estéreo..."
+            @param genreKey   Clave del género en minúsculas ("afrobeat", "trap", "" = default)
+            @param genreLabel Nombre legible del género ("Afrobeat", "Reggaetón") */
+        static juce::String getGenreCharacteristicsMessage(const juce::String& genreKey, const juce::String& genreLabel);
+
         /** Retorna la lista de géneros conocidos. */
         static juce::StringArray getKnownGenres();
 
@@ -708,7 +855,22 @@ namespace mixcoach {
 
         [[nodiscard]] const juce::String& getSetupGenre() const noexcept { return setupGenre_; }
 
+        void setSetupGenre(const juce::String& genre) noexcept { setupGenre_ = genre; }
+
         void forceSetupComplete(); // For /skip or cuando el usuario quiera saltarse el setup
+
+        // ═══ Detect methods públicos — sincronizan el setup desde NavigationShell ═══
+        /** Detecta y guarda el nombre del ingeniero desde el mensaje del usuario.
+            Avanza setupStep_ a WaitingForMode y postea respuesta via respondWithPremium. */
+        void detectAndSetEngineerName(const juce::String& message);
+        /** Detecta Mix vs Master Mode desde el mensaje del usuario.
+            Avanza setupStep_ a WaitingForGenre (Mix) o WaitingForDestination (Master). */
+        void detectAndSetMode(const juce::String& message);
+        /** Detecta el destino de masterizaci\xC3\xB3n (solo Master Mode). */
+        void detectAndSetDestination(const juce::String& message);
+        /** Detecta el g\xC3\xA9nero musical desde el mensaje del usuario.
+            Avanza setupStep_ a WaitingForConfirm y postea caracter\xC3\xADsticas + confirmaci\xC3\xB3n. */
+        void detectAndSetGenre(const juce::String& message);
 
         // ═══ Sprint 2: Confirmar Mapa — Marca el ruteo como validado y avanza fase ═══
         /** Called when the user confirms the mix map (all bus assignments correct).
@@ -726,6 +888,9 @@ namespace mixcoach {
         void clearReferenceGapTracking() noexcept { previousReferenceGaps_.clear(); }
 
         [[nodiscard]] juce::String getReferenceName() const;
+
+        /** Retorna el ReferenceSummary cachead. */
+        [[nodiscard]] ReferenceSummary getReferenceSummary() const noexcept;
 
         [[nodiscard]] juce::String getReferenceGenre() const { return referenceMetadata_.genre; }
 
@@ -770,6 +935,39 @@ namespace mixcoach {
                 return referenceSections_[idx].fingerprint;
             return referenceFingerprint_;
         }
+
+    // ═══ FeedbackCollector access ═══
+    FeedbackCollector& getFeedbackCollector() noexcept { return feedbackCollector_; }
+    const FeedbackCollector& getFeedbackCollector() const noexcept { return feedbackCollector_; }
+
+    PluginSuggestionsProvider& getPluginSuggestionsProvider() noexcept { return pluginSuggestionsProvider_; }
+    const PluginSuggestionsProvider& getPluginSuggestionsProvider() const noexcept { return pluginSuggestionsProvider_; }
+        // ═══ Track identification confidence flow ═══
+        /** Retorna true si hay una confirmación de rol pendiente (confianza < 75%). */
+        [[nodiscard]] bool hasPendingConfirmation() const noexcept { return pendingConfirmationSlot_ >= 0; }
+
+        /** Retorna el slotIndex de la pista pendiente de confirmación (-1 si ninguna). */
+        [[nodiscard]] int getPendingConfirmationSlot() const noexcept { return pendingConfirmationSlot_; }
+
+        /** Retorna el nombre de la pista pendiente de confirmación. */
+        [[nodiscard]] const juce::String& getPendingConfirmationTrackName() const noexcept { return pendingConfirmationTrackName_; }
+
+        /** Retorna el nombre del rol inferido para la pista pendiente. */
+        [[nodiscard]] const juce::String& getPendingConfirmationRoleName() const noexcept { return pendingConfirmationRoleName_; }
+
+        /** Retorna la confianza de la inferencia pendiente (0.0-1.0). */
+        [[nodiscard]] float getPendingConfirmationConfidence() const noexcept { return pendingConfirmationConfidence_; }
+
+        /** Busca la primera pista inferida con confianza < 75% y prepara la pregunta.
+            Si hay una pista pendiente, postea un mensaje en el chat preguntando.
+            Retorna true si encontró una pista pendiente. */
+        bool askNextPendingConfirmation();
+
+        /** Maneja la respuesta del usuario a la confirmación de rol.
+            @param slotIndex  El slot de la pista
+            @param confirmed  true = sí, false = no correcto
+            @param alternativeRole  Si está vacío y confirmed=false, el usuario quiere sugerir otro rol */
+        void handleConfirmationResponse(int slotIndex, bool confirmed, const juce::String& alternativeRole = {});
 
         // ═══ Referencia: acceso para background worker ═══════════════════════════
         /** Retorna true si hay una referencia pendiente de analizar. */
@@ -847,6 +1045,31 @@ namespace mixcoach {
 
         [[nodiscard]] const SharedData& getSharedData() const noexcept { return sharedData_; }
 
+        /** Acceso a la SessionProgression para ExperienceManager. */
+        [[nodiscard]] SessionProgression& getSessionProgression() noexcept { return sessionProgression_; }
+        [[nodiscard]] const SessionProgression& getSessionProgression() const noexcept { return sessionProgression_; }
+
+        /** Acceso al SessionEventLog para registrar eventos desde la UI. */
+        [[nodiscard]] SessionEventLog& getEventLog() noexcept { return eventLog_; }
+        [[nodiscard]] const SessionEventLog& getEventLog() const noexcept { return eventLog_; }
+
+        // ═══ ProgressTracker — Snapshots de match contra referencia ═══════
+        /** Retorna el SectionDetector para acceso a la sección musical actual. */
+        [[nodiscard]] SectionDetector& getSectionDetector() noexcept { return sectionDetector_; }
+        [[nodiscard]] const SectionDetector& getSectionDetector() const noexcept { return sectionDetector_; }
+
+        /** Retorna el DensityAnalyzer para acceso al análisis de congestión espectral. */
+        [[nodiscard]] DensityAnalyzer& getDensityAnalyzer() noexcept { return densityAnalyzer_; }
+        [[nodiscard]] const DensityAnalyzer& getDensityAnalyzer() const noexcept { return densityAnalyzer_; }
+
+        /** Retorna el ProgressTracker para acceso a snapshots y resumen de sesión. */
+        [[nodiscard]] ProgressTracker& getProgressTracker() noexcept { return progressTracker_; }
+        [[nodiscard]] const ProgressTracker& getProgressTracker() const noexcept { return progressTracker_; }
+
+        // ═══ AnalyzerManager — Abrir/cerrar analizadores como evidencia ═══
+        [[nodiscard]] AnalyzerManager& getAnalyzerManager() noexcept { return analyzerManager_; }
+        [[nodiscard]] const AnalyzerManager& getAnalyzerManager() const noexcept { return analyzerManager_; }
+
     private:
         PlanManager planManager_;
 
@@ -901,7 +1124,6 @@ namespace mixcoach {
         void detectFirstSignal();
         void inferBySilenceOrder();
 
-
         /** Computa la comparación completa mix vs referencia usando ReferenceAnalyzer.
             Almacena el resultado en lastReferenceComparison_ y genera mensajes
             de coach si hay diferencias significativas. */
@@ -933,6 +1155,27 @@ namespace mixcoach {
         void respondWith(const juce::String& text, MentorMessage::Type type);
         void respondWithPremium(const juce::String& text, MentorMessage::Type type);
 
+        /** Personaliza un mensaje insertando el nombre del usuario cada ~5 mensajes.
+            Busca el marcador {name} o lo inserta al inicio si no encuentra.
+            Reinicia el contador cada vez que usa el nombre. */
+        juce::String personalize(const juce::String& text);
+
+        TrackTelemetry getLatestTelemetry(int slotIndex) const;
+
+        // ═══ Acciones Directas desde TrackProblemCard — Día 3-4: Aplicado/Omitir/Explícame ═══
+        /** El usuario hizo clic en "✅ Aplicado" en una TrackProblemCard.
+            Registra la corrección en MixHistory con dominio y track,
+            y responde confirmando la acción con tono de coach. */
+        void recordManualApplication(int slotIndex, const juce::String& domain, const juce::String& trackName);
+
+        /** El usuario hizo clic en "⏭️ Omitir" en una TrackProblemCard.
+            Registra la omisión en MixHistory y responde que no hay problema. */
+        void skipProblem(int slotIndex, const juce::String& trackName);
+
+        /** El usuario hizo clic en "🔍 Explícame" en una TrackProblemCard.
+            Genera una explicación técnica detallada según el tipo de problema. */
+        void explainProblem(int slotIndex, const juce::String& problemType, const juce::String& trackName);
+
     private:
         void respondWithContext(const juce::String& text, const juce::String& context, MentorMessage::Type type);
 
@@ -944,14 +1187,9 @@ namespace mixcoach {
 
         /** Responde con texto del LLM (no es mensaje del sistema, se renderiza como burbuja premium). */
         void respondWithLLM(const juce::String& text);
-        TrackTelemetry getLatestTelemetry(int slotIndex) const;
 
         // ═══ FASE 0 — Diálogo de setup ═════════════════════════════════════
-        // V4 Dual Mode: detectar modo y destino
-        void detectAndSetEngineerName(const juce::String& message);
-        void detectAndSetMode(const juce::String& message);
-        void detectAndSetDestination(const juce::String& message);
-        void detectAndSetGenre(const juce::String& message);
+        // V4 Dual Mode: detectar modo y destino (ahora público, declarado arriba)
         juce::String scanAndShowResults() const;
         void advanceFromSetup();
         void sendFallbackWelcome();
@@ -963,12 +1201,26 @@ namespace mixcoach {
         SetupStep setupStep_{SetupStep::NotStarted};
         juce::String setupGenre_;
         juce::String engineerName_; // Nombre del ingeniero (loaded from session or set during setup)
+        int messageCountSinceLastNameUse_{0}; // Contador para personalización cada ~5 mensajes
         bool setupGreetingSent_{false};
+        SetupStepChangedCallback setupStepChangedCb_;
+        StageChangedCallback stageChangedCb_;
+        CriticalIssueCallback criticalIssueCb_;
+        WorkflowEventCallback workflowEventCb_;
+        DirectorEventCallback directorEventCb_;
+        SessionProgression sessionProgression_;
+        ProgressTracker progressTracker_;
+        AnalyzerManager analyzerManager_;
+        SectionDetector sectionDetector_;
+        DensityAnalyzer densityAnalyzer_;
         DiagnosticUpdateCallback diagnosticUpdateCb_; // Opcional, para baja latencia en overlays
         TrackChangeCallback trackChangeCallback_;     // Opcional, usado por AiCoachAdapter
         SessionQueryCallback sessionQueryCallback_;   // Opcional, para /session command
         MessagePushedCallback messagePushedCallback_;
+        ReverbSuggestedCallback reverbSuggestedCb_;
         MatchDataCallback matchDataCallback_;
+        /** Callback fired when a new progress timeline snapshot is taken. */
+        std::function<void(const std::vector<ProgressSnapshot>&)> onTimelineUpdate_;
         LlmResponseCallback llmResponseCallback_;
         LlmStreamingCallback llmStreamingCallback_;
         SetupLlmCallback setupLlmCallback_;
@@ -978,10 +1230,15 @@ namespace mixcoach {
 
         // ─── Streaming UI callbacks (set by editor) ─────────────────────────-
         StreamStartedCallback streamStartedCb_;
-        StreamTokenCallback streamTokenCb_;
-        StreamEndedCallback streamEndedCb_;
+        StreamTokenCallback streamTokenCb_;        StreamEndedCallback streamEndedCb_;
+        LlmResponseCompleteCallback llmResponseCompleteCb_;
+
         bool llmEnabled_{true}; // Habilitado por defecto — el router al LLM en handleUserMessage() usa esta flag
         bool proactiveAnalysisEnabled_{true}; // Análisis automático (tips proactivos + consolidados)
+        CoachPersona coachPersona_{CoachPersona::Default}; // Personalidad activa
+        LlmStatus llmStatus_{LlmStatus::Connected};      // Estado del LLM
+        LlmStatusChangedCallback llmStatusChangedCb_;    // Callback de cambio de estado LLM
+
 
         // ─── Helper de espectro: energía promedio en un rango de bins ─────────
         [[nodiscard]] float spectrumBandEnergy(const float* spectrum, int startBin, int endBin) const noexcept;
@@ -1002,6 +1259,29 @@ namespace mixcoach {
         void analyzePrePostFxComparison();
         void analyzeUnmonitoredTracks();
         void analyzeBusBalance();
+
+        /** Analiza tracks que suenan "secas" y sugiere reverb/espacio.
+            Detecta tracks con correlación alta (>0.92) y señal presente,
+            y genera sugerencias con parámetros específicos por género. */
+        void analyzeSpaceReal();
+
+        // ═══ Plugin suggestion block builder (3-tier) ═════════════════════
+        /** Construye un bloque formateado de sugerencias de plugins 3-tier
+            (Nativo / Gratis / Profesional) para incluir en mensajes del coach.
+            @param domain     Dominio del problema ("gain", "tonal", "dynamics", "phase")
+            @param issueType  Subtipo ("CLIPPING", "EXCESS_BASS", etc.) — puede ser vacío
+            @param trackName  Nombre de la pista afectada — puede ser vacío
+            @param delta      Valor del cambio sugerido (dB) para interpolar en actionText
+            @param frequencyHz Frecuencia (Hz) para interpolar en actionText de EQ
+            @return Bloque de texto formateado listo para append a un mensaje, o vacío si no hay
+                    sugerencias disponibles o el provider no está listo.
+            @note Si el provider no está listo, retorna cadena vacía silenciosamente.
+                  El caller debe hacer el check de isReady() si quiere logging. */
+        [[nodiscard]] juce::String buildPluginSuggestionBlock(const juce::String& domain,
+                                                               const juce::String& issueType = {},
+                                                               const juce::String& trackName = {},
+                                                               float delta = 0.0f,
+                                                               float frequencyHz = 0.0f) const;
 
         // ═══ MASTER MODE ANALYSIS — Pipeline para Master Mode ═══════════════
         /** Analiza loudness del master vs destino seleccionado (LUFS, True Peak, LRA). */
@@ -1047,7 +1327,9 @@ namespace mixcoach {
         void generateFollowUp(int slotIndex, const TrackRecommendation& oldRec);
 
         // ─── CorrectionHistoryEntry — registro de corrección completada ─────
-        struct CorrectionHistoryEntry
+public:
+
+                struct CorrectionHistoryEntry
         {
             int64_t timestampUs = 0;
             int slotIndex       = -1;
@@ -1079,9 +1361,25 @@ namespace mixcoach {
         /** Retorna la recomendación más urgente entre todas las activas (Pending).
             Orden: Clipping > Phase > Crest > Tonal > Gain. */
         [[nodiscard]] const TrackRecommendation* getMostUrgentRecommendation() const;
+        /** Overload no-const para permitir modificar el estado de la recomendación. */
+        [[nodiscard]] TrackRecommendation* getMostUrgentRecommendation() noexcept;
 
         /** Marca una recomendación como reconocida por el usuario (Dismissed). */
         void dismissRecommendation(int slotIndex);
+
+        /** Gap #2: Registra un plugin que el usuario aplicó durante la sesión.
+            Se llama desde verifyTrackCorrections() cuando una corrección se
+            marca como Applied y hay sugerencias de plugins disponibles. */
+        void recordAppliedPlugin(const juce::String& pluginName);
+
+        /** Retorna la lista de plugins aplicados (deduplicada). */
+        [[nodiscard]] const juce::StringArray& getAppliedPluginNames() const noexcept
+        {
+            return appliedPluginNames_;
+        }
+
+        /** Limpia el registro de plugins aplicados (nueva sesión). */
+        void resetAppliedPlugins() noexcept { appliedPluginNames_.clear(); pluginNamesDirty_ = false; }
 
         /** Maneja comandos de usuario para el loop de corrección. */
         void handleCorrectionCommand(const juce::String& command);
@@ -1163,8 +1461,68 @@ namespace mixcoach {
         static constexpr int64_t kIdleThresholdUs =
             150 * 1000 * 1000; // 2.5min sin interacción → considerado "inactivo"
         static constexpr int64_t kCelebrationCooldownUs = 120 * 1000 * 1000; // 2min entre celebraciones
-
         int64_t lastPeriodicAnalysisUs_{0};
+        int64_t lastPlatformWarningUs_{0}; // Cooldown para advertencias de LUFS vs plataforma
+
+        // ═══ Empty Session Detection (5.1) — Guía cuando no hay pistas ═══
+        /** Timestamp del último mensaje de sesión vacía (microsegundos).
+            Se usa para evitar spamear al usuario. Cooldown: 30s. */
+        int64_t lastEmptySessionWarningUs_{0};
+        static constexpr int64_t kEmptySessionCooldownUs = 30 * 1000 * 1000; // 30s entre mensajes de sesión vacía
+
+        /** Envía un mensaje guía al chat cuando el proyecto no tiene pistas activas.
+            Explica cómo insertar Messengers en los tracks y configurar la sesión.
+            Se llama desde periodicAnalysis() cuando activeCount == 0. */
+        void sendEmptySessionGuide();
+
+        // ═══ Automation Suggestions (3.3) — Sugerencias de automatización por sección ═══
+        /** Métrica almacenada por pista y por sección musical.
+            Se usa para comparar el comportamiento de una pista entre
+            secciones (Verso vs Coro) y detectar si el problema es
+            consistente o variable. */
+        struct PerSectionMetric {
+            float peakDb   = -100.0f; // Peak máximo en esa sección
+            float rmsDb    = -100.0f; // RMS promedio en esa sección
+            float crestDb  = 0.0f;    // Crest factor
+            float correlation = 0.0f; // Correlación estéreo
+            float bandEnergy6[6] = {-100.0f, -100.0f, -100.0f, -100.0f, -100.0f, -100.0f}; // 6 regiones
+            int sampleCount = 0;      // Número de muestras recolectadas
+        };
+
+        /** Almacena métricas por pista y por tipo de sección.
+            [slotIndex][SectionType] = metric snapshot
+            Se actualiza en cada analyzeFrame cuando cambia la sección. */
+        std::array<std::array<PerSectionMetric, 6>, SlotRegistry::kMaxSlots> perSectionMetrics_;
+
+        /** Sección en la que se recolectaron las métricas actuales.
+            Se usa para saber cuándo cambió la sección y copiar métricas. */
+        SectionType lastTrackedSection_{SectionType::Unknown};
+
+        /** Timestamp de la última sugerencia de automatización (cooldown 120s). */
+        int64_t lastAutomationSuggestionUs_{0};
+        static constexpr int64_t kAutomationSuggestionCooldownUs = 120 * 1000 * 1000; // 2min
+
+        /** Contador de transiciones consecutivas SIN variación >3dB.
+            Se incrementa cuando generateAutomationSuggestion() no encuentra
+            ninguna pista con delta >3dB. Se resetea a 0 cuando SÍ encuentra.
+            Al llegar a 3+ (con cooldown), envía mensaje de consistencia. */
+        int consistentTransitions_{0};
+        /** Cooldown para el mensaje de consistencia ("Tus pistas se mantienen estables...").
+            Separado del cooldown de sugerencias para evitar spam pero permitir
+            que el mensaje de estabilidad aparezca independientemente. */
+        int64_t lastConsistencyMessageUs_{0};
+        static constexpr int64_t kConsistencyMessageCooldownUs = 180 * 1000 * 1000; // 3min
+
+        /** Genera una sugerencia de automatización cuando un problema varía
+            significativamente entre secciones (>3dB de diferencia).
+            También detecta consistencia: si tras 3+ transiciones ninguna pista
+            varía >3dB, envía mensaje de estabilidad.
+            Se llama desde periodicAnalysis() después de detectar una transición
+            de sección.
+            @param now  Timestamp actual en microsegundos */
+        void generateAutomationSuggestion(int64_t now);
+
+
         int64_t lastFastAnalysisUs_{0};
         int64_t lastCorrectionVerifyUs_{0};
         int64_t lastSemanticAnalysisUs_{0};
@@ -1177,6 +1535,7 @@ namespace mixcoach {
         int64_t lastDynamicWarningUs_{0};
         int64_t lastLoudnessWarningUs_{0};
         int64_t lastMaskingWarningUs_{0};
+        int64_t lastSpaceWarningUs_{0};
         int64_t lastPairwiseMaskingWarningUs_{0};
         int64_t lastPrePostWarningUs_{0};
         int64_t lastUnmonitoredWarningUs_{0};
@@ -1292,6 +1651,7 @@ namespace mixcoach {
         // ═══════════════════════════════════════════════════════════════════════════
         //  REFERENCE-DRIVEN COACHING V2 — Dynamic blending α = sigmoid(matchScore)
         //  Computa el factor de mezcla α entre perfil de género y referencia.
+        std::array<float, SlotRegistry::kMaxSlots> trackRoleConfidences_{}; // Confianza de inferencia (0.0-1.0, 0 = unknown)
         //  α = sigmoid(spectralSimilarity, k=8.0, midpoint=0.5)
         //  • α ≈ 0 (match bajo) → confiar en perfil de género
         //  • α ≈ 0.5 (match=0.5) → 50/50 entre perfil y referencia
@@ -1363,10 +1723,24 @@ namespace mixcoach {
 
         [[nodiscard]] bool isMasterMode() const noexcept { return coachMode_ == CoachMode::Master; }
 
-        /** Setea el destino de masterización (solo relevante en Master Mode). */
+        /** Setea el destino de masterización (Master Mode). */
         void setMasterDestination(MasterDestination dest) noexcept { masterDestination_ = dest; }
 
         [[nodiscard]] MasterDestination getMasterDestination() const noexcept { return masterDestination_; }
+
+        /** Setea el target de plataforma (Mix Mode — influye en recomendaciones LUFS). */
+        void setPlatformTarget(MasterDestination dest) noexcept { masterDestination_ = dest; }
+
+        [[nodiscard]] MasterDestination getPlatformTarget() const noexcept { return masterDestination_; }
+
+        /** Retorna el nombre legible del target de plataforma actual. */
+        [[nodiscard]] const char* getPlatformTargetName() const noexcept
+        {
+            int idx = static_cast<int>(masterDestination_);
+            if (idx >= 0 && idx < static_cast<int>(sizeof(destinationNames) / sizeof(destinationNames[0])))
+                return destinationNames[idx];
+            return "Streaming General";
+        }
 
         [[nodiscard]] float getDestinationLUFS() const noexcept
         {
@@ -1530,10 +1904,10 @@ namespace mixcoach {
         [[nodiscard]] DifferenceProfile buildDifferenceProfile() const;
 
         /** Retorna el DifferenceProfile cachead (último construido). */
-        [[nodiscard]] const DifferenceProfile& getCachedDifferenceProfile() const noexcept
-        {
-            return differenceProfile_;
-        }
+        [[nodiscard]] const DifferenceProfile& getCachedDifferenceProfile() const noexcept;
+
+        /** Retorna el RefinementProfile cachead. */
+        [[nodiscard]] RefinementProfile getCachedRefinementProfile() const noexcept;
 
         /** Establece el DifferenceProfile desde datos cargados (ej: session_memory.json). */
         void setCachedDifferenceProfile(const DifferenceProfile& dp) noexcept { differenceProfile_ = dp; }
@@ -1590,6 +1964,9 @@ namespace mixcoach {
         // saveSessionMapToJson() son const pero actualizan el cache
         mutable SessionMap sessionMap_;
 
+        // ═══ SessionEventLog — Timeline de eventos de sesión ═══════════
+        SessionEventLog eventLog_;
+
         // ═══ TrackFeedCore — Instancia central del event bus + priority engine ═══
         std::unique_ptr<TrackFeedCore> trackFeedCore_;
 
@@ -1601,7 +1978,6 @@ namespace mixcoach {
         bool signalOrderConfirmed_[SlotRegistry::kMaxSlots]{}; // Confirmado por el usuario
         static constexpr float kSignalThresholdDb = -55.0f;
         static constexpr int kMaxSignalOrder      = 10; // Primeras 10 posiciones (incluye vocal)
-
 
         /** Sincroniza TODAS las pistas activas desde SharedData → TrackFeedCore.
             Se llama al inicio de periodicAnalysis() para tener datos frescos
@@ -2032,6 +2408,19 @@ namespace mixcoach {
         int mixHistoryWriteIndex_ = 0;
 
         bool soloActive_{false};
+
+        // ═══ FeedbackCollector — recolecta feedback del usuario ═══
+        // ═══ Gap #2: Plugins aplicados por el usuario (para mostrar en reporte final) ═══
+        juce::StringArray appliedPluginNames_;
+        bool pluginNamesDirty_ = false;
+
+        FeedbackCollector feedbackCollector_;
+        PluginSuggestionsProvider pluginSuggestionsProvider_;
+        // ═══ Pending confirmation state (track identification confidence flow) ═══
+        int pendingConfirmationSlot_ = -1;
+        juce::String pendingConfirmationTrackName_;
+        juce::String pendingConfirmationRoleName_;
+        float pendingConfirmationConfidence_ = 0.0f;
 
         void updateWorkflowDetector();
     };

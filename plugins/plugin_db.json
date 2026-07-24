@@ -1,0 +1,480 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "Plugin inventory for MixCoach — categorized by tier, with per-problem configs and ratings",
+    "tiers": {
+      "native": "DAW-native plugins (Fruity, stock)",
+      "free": "Free third-party plugins",
+      "premium": "Paid professional plugins"
+    },
+    "problem_types": {
+      "gain": "Track level too high/low, clipping, low signal",
+      "clipping": "Digital clipping on master or individual track",
+      "masking": "Spectral masking between tracks",
+      "tonal_excess": "Too much energy in a spectral region",
+      "tonal_deficit": "Not enough energy in a spectral region",
+      "dynamics_overcompressed": "Crest factor too low, over-compressed",
+      "dynamics_toodynamic": "Crest factor too high, too much dynamic range",
+      "phase": "Correlation < 0.3 or negative, phase cancellation",
+      "spatial": "Stereo width issues, lack of depth",
+      "reverb": "Need for ambience/depth/space",
+      "saturation": "Need for harmonic distortion/warmth",
+      "limiting": "Need for brickwall limiting on master"
+    },
+    "daw_compatibility": ["FL Studio", "Ableton Live", "Logic Pro", "Cubase", "Pro Tools", "Studio One", "Reaper"]
+  },
+
+  "plugins": [
+    {
+      "id": "fruity_balance",
+      "name": "Fruity Balance",
+      "developer": "Image-Line",
+      "tier": "native",
+      "daw": "FL Studio",
+      "rating": 4.5,
+      "icon": "🎛",
+      "description": "Simple gain/balance plugin with level meter",
+      "compatibility": ["gain"],
+      "defaultConfig": { "gainDb": -1.5 },
+      "configs": {
+        "gain": { "action": "Ajusta el gain {delta} dB en el plugin", "params": { "gainDb": "{delta}" } },
+        "clipping": { "action": "Reduce {delta} dB con Fruity Balance", "params": { "gainDb": "{delta}" } }
+      }
+    },
+    {
+      "id": "fruity_param_eq2",
+      "name": "Fruity Parametric EQ 2",
+      "developer": "Image-Line",
+      "tier": "native",
+      "daw": "FL Studio",
+      "rating": 4.5,
+      "icon": "🎚",
+      "description": "7-band parametric EQ with spectrum analyzer",
+      "compatibility": ["tonal_excess", "tonal_deficit", "masking"],
+      "defaultConfig": { "band": 2, "frequencyHz": 0, "q": 1.6, "gainDb": -3.0, "mode": "MID" },
+      "configs": {
+        "tonal_excess": {
+          "action": "Selecciona Band {band}, frecuencia {frequencyHz} Hz, Q = {q}, modo {mode}, ganancia {gainDb} dB",
+          "params": { "band": 2, "q": 1.6, "mode": "MID" }
+        },
+        "tonal_deficit": {
+          "action": "Selecciona Band {band}, frecuencia {frequencyHz} Hz, Q = {q}, ganancia +{gainDb} dB",
+          "params": { "band": 2, "q": 1.3 }
+        },
+        "masking": {
+          "action": "Crea un notch suave en {frequencyHz} Hz, Q = {q}, ganancia {gainDb} dB (modo MID)",
+          "params": { "band": 2, "q": 2.0, "mode": "MID" }
+        }
+      }
+    },
+    {
+      "id": "fruity_compressor",
+      "name": "Fruity Compressor",
+      "developer": "Image-Line",
+      "tier": "native",
+      "daw": "FL Studio",
+      "rating": 4.0,
+      "icon": "⚙",
+      "description": "Standard compressor with threshold, ratio, attack, release",
+      "compatibility": ["dynamics_overcompressed", "dynamics_toodynamic"],
+      "defaultConfig": { "threshold": -18.0, "ratio": 4.0, "attack": 10.0, "release": 100.0, "gainDb": 0.0 },
+      "configs": {
+        "dynamics_overcompressed": {
+          "action": "Sube el threshold a {threshold} dB, reduce ratio a {ratio}:1, bajando 2-3 dB de compresión",
+          "params": { "threshold": -12.0, "ratio": 2.0 }
+        },
+        "dynamics_toodynamic": {
+          "action": "Ajusta threshold a {threshold} dB, ratio {ratio}:1 con attack {attack}ms",
+          "params": { "threshold": -24.0, "ratio": 4.0, "attack": 10.0 }
+        }
+      }
+    },
+    {
+      "id": "fruity_stereo_shaper",
+      "name": "Stereo Shaper",
+      "developer": "Image-Line",
+      "tier": "native",
+      "daw": "FL Studio",
+      "rating": 4.0,
+      "icon": "🔊",
+      "description": "Stereo field manipulation: width, pan, phase inversion",
+      "compatibility": ["phase", "spatial"],
+      "defaultConfig": { "mode": "Stereo", "width": 100, "invertLeft": false, "invertRight": false },
+      "configs": {
+        "phase": {
+          "action": "Invierte la polaridad del canal {channel} en Stereo Shaper",
+          "params": { "channel": "izquierdo" }
+        },
+        "spatial": {
+          "action": "Ajusta el ancho estéreo a {width}% en Stereo Shaper",
+          "params": { "width": 80 }
+        }
+      }
+    },
+    {
+      "id": "fruity_reverb2",
+      "name": "Fruity Reeverb 2",
+      "developer": "Image-Line",
+      "tier": "native",
+      "daw": "FL Studio",
+      "rating": 4.0,
+      "icon": "🌊",
+      "description": "Algorithmic reverb with decay, pre-delay, damping, EQ",
+      "compatibility": ["reverb", "spatial"],
+      "defaultConfig": { "preDelayMs": 40, "decaySec": 1.8, "highCut": 7000, "mix": 18 },
+      "configs": {
+        "reverb": {
+          "action": "Configura Pre Delay = {preDelayMs} ms, Decay = {decaySec} s, High Cut = {highCut} Hz, Mix = {mix}%",
+          "params": { "preDelayMs": 40, "decaySec": 1.8, "highCut": 7000, "mix": 18 }
+        }
+      }
+    },
+    {
+      "id": "fruity_limiter",
+      "name": "Fruity Limiter",
+      "developer": "Image-Line",
+      "tier": "native",
+      "daw": "FL Studio",
+      "rating": 4.0,
+      "icon": "⛔",
+      "description": "Brickwall limiter with threshold, ceiling, and lookahead",
+      "compatibility": ["limiting", "clipping"],
+      "defaultConfig": { "threshold": -6.0, "ceiling": -0.3, "lookahead": 5.0 },
+      "configs": {
+        "limiting": {
+          "action": "Ajusta threshold a {threshold} dB, ceiling a {ceiling} dBTP, lookahead {lookahead}ms",
+          "params": { "threshold": -6.0, "ceiling": -0.3, "lookahead": 5.0 }
+        },
+        "clipping": {
+          "action": "Activa Fruity Limiter con ceiling = {ceiling} dBTP para atrapar los picos",
+          "params": { "ceiling": -1.0 }
+        }
+      }
+    },
+    {
+      "id": "tdr_nova",
+      "name": "TDR Nova",
+      "developer": "Tokyo Dawn Records",
+      "tier": "free",
+      "rating": 4.5,
+      "icon": "🎚",
+      "description": "Parallel dynamic EQ with spectrum analyzer — free",
+      "compatibility": ["tonal_excess", "tonal_deficit", "masking"],
+      "defaultConfig": { "frequencyHz": 0, "q": 1.3, "gainDb": 2.0, "dynamic": false },
+      "configs": {
+        "tonal_excess": {
+          "action": "Añade un filtro en {frequencyHz} Hz, Q = {q}, con ganancia de {gainDb} dB (puedes usar modo dinámico si prefieres)",
+          "params": { "q": 1.6 }
+        },
+        "tonal_deficit": {
+          "action": "Añade +{gainDb} dB en {frequencyHz} Hz, Q = {q} con TDR Nova",
+          "params": { "gainDb": 2.0, "q": 1.3 }
+        },
+        "masking": {
+          "action": "Crea un notch dinámico en {frequencyHz} Hz, Q = {q}, con atenuación máxima de {gainDb} dB",
+          "params": { "q": 2.5, "gainDb": -4.0, "dynamic": true }
+        }
+      }
+    },
+    {
+      "id": "tdr_kotelnikov",
+      "name": "TDR Kotelnikov",
+      "developer": "Tokyo Dawn Records",
+      "tier": "free",
+      "rating": 4.5,
+      "icon": "⚙",
+      "description": "Wideband dynamics processor with advanced metering — free",
+      "compatibility": ["dynamics_overcompressed", "dynamics_toodynamic"],
+      "defaultConfig": { "threshold": -18.0, "ratio": 4.0, "attack": 10.0, "release": 50.0 },
+      "configs": {
+        "dynamics_overcompressed": {
+          "action": "Sube el threshold a {threshold} dB, ratio {ratio}:1 (reduce compresión)",
+          "params": { "threshold": -10.0, "ratio": 2.0 }
+        },
+        "dynamics_toodynamic": {
+          "action": "Aplica compresión suave: threshold = {threshold} dB, ratio = {ratio}:1, attack = {attack}ms",
+          "params": { "threshold": -24.0, "ratio": 4.0, "attack": 10.0 }
+        }
+      }
+    },
+    {
+      "id": "melda_mutility",
+      "name": "Melda MUtility",
+      "developer": "MeldaProduction",
+      "tier": "free",
+      "rating": 4.0,
+      "icon": "🎛",
+      "description": "Swiss-army knife utility: gain, MS, phase, polarity — free",
+      "compatibility": ["gain", "phase"],
+      "defaultConfig": { "gainDb": -1.5, "polarity": false },
+      "configs": {
+        "gain": { "action": "Ajusta el gain {delta} dB en MUtility", "params": { "gainDb": "{delta}" } },
+        "phase": {
+          "action": "Activa la inversión de polaridad en {channel} con MUtility",
+          "params": { "channel": "Left" }
+        }
+      }
+    },
+    {
+      "id": "klanghelm_dc1a",
+      "name": "DC1A",
+      "developer": "Klanghelm",
+      "tier": "free",
+      "rating": 4.5,
+      "icon": "⚙",
+      "description": "Simple, punchy compressor with character — free version",
+      "compatibility": ["dynamics_toodynamic"],
+      "defaultConfig": { "drive": 3.0, "mix": 100 },
+      "configs": {
+        "dynamics_toodynamic": {
+          "action": "DC1A con Drive = {drive}, Mix = {mix}% (ganancia de entrada suave)",
+          "params": { "drive": 3.0, "mix": 100 }
+        }
+      }
+    },
+    {
+      "id": "valhalla_supermassive",
+      "name": "Valhalla Supermassive",
+      "developer": "Valhalla DSP",
+      "tier": "free",
+      "rating": 4.5,
+      "icon": "🌊",
+      "description": "Massive reverb/delay hybrid — free",
+      "compatibility": ["reverb", "spatial"],
+      "defaultConfig": { "preset": "Gentle Hall", "mix": 15, "decay": 1.8 },
+      "configs": {
+        "reverb": {
+          "action": "Carga el preset '{preset}', ajusta Mix = {mix}%, Decay = {decay}s",
+          "params": { "preset": "Gentle Hall", "mix": 15, "decay": 1.8 }
+        },
+        "spatial": {
+          "action": "Prueba el preset '{preset}' con Mix = {mix}% para crear profundidad",
+          "params": { "preset": "Wide", "mix": 20 }
+        }
+      }
+    },
+    {
+      "id": "dragonfly_reverb",
+      "name": "Dragonfly Reverb",
+      "developer": "Michael Willis",
+      "tier": "free",
+      "rating": 4.0,
+      "icon": "🌊",
+      "description": "High-quality algorithmic reverb — free / open source",
+      "compatibility": ["reverb"],
+      "defaultConfig": { "roomSize": 0.6, "decay": 1.5, "damping": 0.5, "mix": 20 },
+      "configs": {
+        "reverb": {
+          "action": "Room Size = {roomSize}, Decay = {decay}s, Damping = {damping}, Mix = {mix}%",
+          "params": { "roomSize": 0.6, "decay": 1.5, "damping": 0.5, "mix": 20 }
+        }
+      }
+    },
+    {
+      "id": "voxengo_correlometer",
+      "name": "Correlometer",
+      "developer": "Voxengo",
+      "tier": "free",
+      "rating": 4.0,
+      "icon": "📊",
+      "description": "Stereo correlation metering — free",
+      "compatibility": ["phase"],
+      "defaultConfig": {},
+      "configs": {
+        "phase": {
+          "action": "Usa Correlometer para monitorear la correlación estéreo en tiempo real; busca valores > 0.5",
+          "params": {}
+        }
+      }
+    },
+    {
+      "id": "fabfilter_pro_q4",
+      "name": "FabFilter Pro-Q 4",
+      "developer": "FabFilter",
+      "tier": "premium",
+      "rating": 5.0,
+      "icon": "🎚",
+      "description": "Industry-standard parametric EQ with dynamic bands, spectrum grab, and linear phase modes",
+      "compatibility": ["tonal_excess", "tonal_deficit", "masking"],
+      "defaultConfig": { "band": 2, "frequencyHz": 0, "q": 1.6, "gainDb": -3.0, "mode": "MID/SIDE" },
+      "configs": {
+        "tonal_excess": {
+          "action": "Band {band}: frecuencia {frequencyHz} Hz, Q = {q}, ganancia {gainDb} dB (modo {mode})",
+          "params": { "band": 2, "q": 1.6, "mode": "MID/SIDE" }
+        },
+        "tonal_deficit": {
+          "action": "Band {band}: +{gainDb} dB en {frequencyHz} Hz, Q = {q}, modo {mode}",
+          "params": { "band": 2, "gainDb": 2.0, "q": 1.3, "mode": "Stereo" }
+        },
+        "masking": {
+          "action": "Band {band}: notch dinámico en {frequencyHz} Hz, Q = {q}, rango {gainDb} dB, modo MID",
+          "params": { "band": 2, "q": 2.5, "gainDb": -4.0 }
+        }
+      }
+    },
+    {
+      "id": "fabfilter_pro_c2",
+      "name": "FabFilter Pro-C 2",
+      "developer": "FabFilter",
+      "tier": "premium",
+      "rating": 5.0,
+      "icon": "⚙",
+      "description": "Premium compressor with 8 styles, sidechain, and lookahead",
+      "compatibility": ["dynamics_overcompressed", "dynamics_toodynamic"],
+      "defaultConfig": { "style": "Vocal", "threshold": -18.0, "ratio": 4.0, "attack": 10.0, "release": 50.0 },
+      "configs": {
+        "dynamics_overcompressed": {
+          "action": "Cambia a estilo '{style}', sube threshold a {threshold} dB, baja ratio a {ratio}:1",
+          "params": { "style": "Bus", "threshold": -10.0, "ratio": 2.0 }
+        },
+        "dynamics_toodynamic": {
+          "action": "Estilo '{style}', threshold = {threshold} dB, ratio = {ratio}:1, attack = {attack}ms",
+          "params": { "style": "Vocal", "threshold": -24.0, "ratio": 4.0, "attack": 10.0 }
+        }
+      }
+    },
+    {
+      "id": "fabfilter_pro_g",
+      "name": "FabFilter Pro-G",
+      "developer": "FabFilter",
+      "tier": "premium",
+      "rating": 4.5,
+      "icon": "🎛",
+      "description": "Premium gate/expander with sidechain and lookahead",
+      "compatibility": ["gain"],
+      "defaultConfig": { "threshold": -40.0, "ratio": 3.0, "attack": 1.0, "release": 100.0 },
+      "configs": {
+        "gain": {
+          "action": "Ajusta el gain de salida en Pro-G: {delta} dB (el resto del procesamiento manténlo neutro)",
+          "params": { "gainDb": "{delta}" }
+        }
+      }
+    },
+    {
+      "id": "valhalla_vintage_verb",
+      "name": "Valhalla VintageVerb",
+      "developer": "Valhalla DSP",
+      "tier": "premium",
+      "rating": 5.0,
+      "icon": "🌊",
+      "description": "Premium vintage-inspired reverb with multiple algorithms",
+      "compatibility": ["reverb"],
+      "defaultConfig": { "algorithm": "Hall", "decay": 1.8, "preDelay": 40, "mix": 15 },
+      "configs": {
+        "reverb": {
+          "action": "Algoritmo '{algorithm}', Decay = {decay}s, Pre Delay = {preDelay}ms, Mix = {mix}%",
+          "params": { "algorithm": "Hall", "decay": 1.8, "preDelay": 40, "mix": 15 }
+        }
+      }
+    },
+    {
+      "id": "seventh_heaven",
+      "name": "Seventh Heaven",
+      "developer": "LiquidSonics",
+      "tier": "premium",
+      "rating": 5.0,
+      "icon": "🌊",
+      "description": "Premium Bricasti M7 convolution reverb",
+      "compatibility": ["reverb"],
+      "defaultConfig": { "hall": "Chamber", "decay": 2.0, "mix": 18 },
+      "configs": {
+        "reverb": {
+          "action": "Carga el preset '{hall}', ajusta Decay = {decay}s, Mix = {mix}%",
+          "params": { "hall": "Chamber", "decay": 2.0, "mix": 18 }
+        }
+      }
+    },
+    {
+      "id": "uad_1176",
+      "name": "UAD 1176",
+      "developer": "Universal Audio",
+      "tier": "premium",
+      "rating": 5.0,
+      "icon": "⚙",
+      "description": "Classic FET compressor emulation — aggressive and punchy",
+      "compatibility": ["dynamics_toodynamic"],
+      "defaultConfig": { "ratio": 8.0, "attack": 1.0, "release": 7.0, "inputGain": 0.0 },
+      "configs": {
+        "dynamics_toodynamic": {
+          "action": "Ratio {ratio}:1, attack rápido ({attack}ms), release {release} (modo 'All Buttons' opcional)",
+          "params": { "ratio": 8.0, "attack": 1.0, "release": 7.0 }
+        }
+      }
+    },
+    {
+      "id": "ssl_bus_compressor",
+      "name": "SSL Bus Compressor",
+      "developer": "Various (Brainworx, UAD, etc.)",
+      "tier": "premium",
+      "rating": 4.5,
+      "icon": "⚙",
+      "description": "Classic SSL G-Bus compressor emulation — glue and punch",
+      "compatibility": ["dynamics_overcompressed", "dynamics_toodynamic"],
+      "defaultConfig": { "ratio": 2.0, "attack": 30.0, "release": 100.0, "makeupGainDb": 2.0 },
+      "configs": {
+        "dynamics_overcompressed": {
+          "action": "Baja el ratio a {ratio}:1, attack = {attack}ms para dejar respirar el bus",
+          "params": { "ratio": 1.5, "attack": 30.0 }
+        },
+        "dynamics_toodynamic": {
+          "action": "SSL Bus Comp: ratio = {ratio}:1, attack = {attack}ms, release = {release}ms, con {makeupGainDb} dB de makeup",
+          "params": { "ratio": 2.0, "attack": 30.0, "release": 100.0, "makeupGainDb": 2.0 }
+        }
+      }
+    },
+    {
+      "id": "bx_control_v2",
+      "name": "bx_control V2",
+      "developer": "Brainworx",
+      "tier": "premium",
+      "rating": 4.5,
+      "icon": "🔊",
+      "description": "Premium stereo control: M/S, correlation, width, solo",
+      "compatibility": ["phase", "spatial"],
+      "defaultConfig": { "correlation": 0.0, "width": 100, "monoMakeup": false },
+      "configs": {
+        "phase": {
+          "action": "Ajusta la correlación con bx_control: revisa el medidor de correlación en el panel Stereo",
+          "params": {}
+        },
+        "spatial": {
+          "action": "Ajusta el ancho estéreo a {width}% con bx_control V2 o usa Stereoizer si quieres más amplitud",
+          "params": { "width": 90 }
+        }
+      }
+    },
+    {
+      "id": "ozone_11",
+      "name": "Ozone 11",
+      "developer": "iZotope",
+      "tier": "premium",
+      "rating": 5.0,
+      "icon": "🔮",
+      "description": "Complete mastering suite: EQ, dynamics, stereo, imager, limiter, and more",
+      "compatibility": ["limiting", "tonal_excess", "tonal_deficit", "phase", "spatial", "clipping"],
+      "defaultConfig": { "mode": "Mastering Assistant" },
+      "configs": {
+        "limiting": {
+          "action": "Activa el Maximizer en Ozone 11 con True Peak = {ceiling} dBTP y threshold suave",
+          "params": { "ceiling": -1.0 }
+        },
+        "clipping": {
+          "action": "Usa el Maximizer de Ozone 11 con ceiling = {ceiling} dBTP para capturar los picos",
+          "params": { "ceiling": -0.5 }
+        },
+        "tonal_excess": {
+          "action": "Abre el Equalizer de Ozone 11 y aplica un corte suave de {gainDb} dB en {frequencyHz} Hz con Q = {q}",
+          "params": { "gainDb": -2.0, "q": 1.5 }
+        },
+        "tonal_deficit": {
+          "action": "Usa el Equalizer de Ozone 11 para realzar +{gainDb} dB en {frequencyHz} Hz con Q = {q}",
+          "params": { "gainDb": 2.0, "q": 1.3 }
+        },
+        "phase": {
+          "action": "Activa el Imager de Ozone 11 y revisa la correlación estéreo — busca >0.5",
+          "params": {}
+        }
+      }
+    }
+  ]
+}

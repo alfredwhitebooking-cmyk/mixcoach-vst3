@@ -1,4 +1,5 @@
 #include "CoachEngine.h"
+#include "PluginScanner.h"
 #include "../../Common/types/Constants.h"
 #include "../../Common/types/LogHelper.h"
 #include "../../Common/name/NameInferrer.h"
@@ -19,8 +20,64 @@ namespace mixcoach {
         phaseManager_(phaseManager),
         sharedData_(sharedData),
         audioAnalyzer_(audioAnalyzer),
-        trackFeedCore_(std::make_unique<TrackFeedCore>())
+        trackFeedCore_(std::make_unique<TrackFeedCore>()),
+        sessionProgression_()
     {
+        // Cargar base de datos de plugins
+        pluginSuggestionsProvider_.setDatabasePath("plugins/plugin_db.json");
+        pluginSuggestionsProvider_.initialize();
+
+        // ─── Escanear plugins VST3 instalados y conectar con PluginSuggestionsProvider ──
+        {
+            PluginScanner scanner;
+            scanner.onPluginDetected = [this](const juce::String& pluginId) {
+                pluginSuggestionsProvider_.addKnownPlugin(pluginId);
+            };
+            scanner.onUnknownPluginDetected = [](const juce::String& displayName) {
+                LogHelper::writeToLog("[PluginScanner] Plugin desconocido detectado: " + displayName);
+            };
+            int count = scanner.scanAll();
+            if (count > 0) {
+                LogHelper::writeToLog("[CoachEngine] Plugins escaneados: "
+                                      + juce::String(count) + " bundles VST3, "
+                                      + juce::String((int)scanner.getDetectedPluginIds().size())
+                                      + " conocidos, "
+                                      + juce::String((int)scanner.getUnknownPlugins().size())
+                                      + " desconocidos");
+            }
+        }
+
+        // ─── ProgressTracker: milestone callback (celebración al cruzar umbrales) ─
+        progressTracker_.setMilestoneCallback([this](float oldScore, float newScore, int milestoneIndex) {
+            juce::String msg;
+            switch (milestoneIndex) {
+                case 0: // 25%
+                    msg = "Empezamos a alinear la mezcla con la referencia. "
+                          + juce::String((int)newScore) + "% de match.";
+                    break;
+                case 1: // 45%
+                    msg = "Ya tenemos un **" + juce::String((int)newScore)
+                          + "%** de match. La direccion es correcta.";
+                    break;
+                case 2: // 60%
+                    msg = "**" + juce::String((int)newScore)
+                          + "% de match**! Mas de la mitad del camino. Sigue ajustando.";
+                    break;
+                case 3: // 75%
+                    msg = "Excelente! **" + juce::String((int)newScore)
+                          + "% de match**. Tu mezcla ya suena muy cerca de la referencia.";
+                    break;
+                case 4: // 90%
+                    msg = "**" + juce::String((int)newScore)
+                          + "% de match**! Casi identica a la referencia. Tiempo de afinar detalles.";
+                    break;
+                default:
+                    break;
+            }
+            if (msg.isNotEmpty())
+                respondWithPremium(msg, MentorMessage::Type::Achievement);
+        });
+
         // Inicializar estados de pista
         for (auto& state : trackStates_) {
             state = TrackAnalysisState{};
@@ -54,7 +111,7 @@ namespace mixcoach {
     {
         MentorMessage msg;
         msg.type      = type;
-        msg.text      = text.toStdString();
+        msg.text      = personalize(text).toStdString();
         msg.timestamp = juce::Time::getMillisecondCounter() * 1000;
         msg.context   = "MixCoach";
         sharedData_.pushMessage(msg);
@@ -66,7 +123,7 @@ namespace mixcoach {
     {
         MentorMessage msg;
         msg.type      = type;
-        msg.text      = text.toStdString();
+        msg.text      = personalize(text).toStdString();
         msg.timestamp = juce::Time::getMillisecondCounter() * 1000;
         msg.context   = context.toStdString();
         sharedData_.pushMessage(msg);
@@ -90,6 +147,9 @@ namespace mixcoach {
         lastDynamicWarningUs_  = 0;
         lastLoudnessWarningUs_ = 0;
         lastMaskingWarningUs_  = 0;
+        // Resetear contador de consistencia entre secciones (Automation 3.3)
+        consistentTransitions_ = 0;
+
         // Resetear orden de senial (V13 Silence + Load Order)
         for (auto& ts : firstSignalTimestampsUs_) ts = 0;
         signalOrderCount_ = 0;
@@ -111,6 +171,9 @@ namespace mixcoach {
         lastPeriodicAnalysisUs_ = now;
 
         auto& registry = sharedData_.getSlotRegistry();
+
+        // ═══ Sprint 4: Detectar cambios de fase para emitir DirectorEvent ═══
+        MentorPhase previousPhase = phaseManager_.getCurrentPhase();
 
         // ═══ V8: Solo mode detection — si hay pistas en solo, las no-solistas se silencian
         soloActive_ = false;
@@ -156,7 +219,16 @@ namespace mixcoach {
         }
 
 
-        if (registry.activeCount() == 0) return;
+        // ═══ Empty Session Detection (5.1) — Guía cuando no hay pistas ═══
+        // Si no hay pistas activas por >30s, el coach guía al usuario.
+        // Se re-evalúa cada 30s hasta que aparezcan pistas.
+        if (registry.activeCount() == 0) {
+            if (now - lastEmptySessionWarningUs_ >= kEmptySessionCooldownUs) {
+                lastEmptySessionWarningUs_ = now;
+                sendEmptySessionGuide();
+            }
+            return;
+        }
 
         LogHelper::writeToLog("[CoachEngine] Análisis periódico iniciado (" + juce::String(registry.activeCount())
                               + " pistas activas)");
@@ -172,27 +244,46 @@ namespace mixcoach {
         {
             int offTargetCount = 0;
             for (const auto& adv : allGainAdvice)
-                if (adv.status == TrackGainAdvice::Status::OffTarget) offTargetCount++;
-
-            if (offTargetCount > 0 && now - lastGainAdviceUs_ >= kGainAdviceCooldownUs) {
+                if (adv.status == TrackGainAdvice::Status::OffTarget) offTargetCount++;                if (offTargetCount > 0 && now - lastGainAdviceUs_ >= kGainAdviceCooldownUs) {
                 lastGainAdviceUs_ = now;
                 juce::String examples;
                 int shown = 0;
+                int clipCount = 0;
                 for (const auto& adv : allGainAdvice) {
                     if (adv.status == TrackGainAdvice::Status::OffTarget && shown < 3) {
                         if (shown > 0) examples += "\n";
-                        examples += adv.message;
+                        // ═══ SPRINT: marcar CLIPPING si peak > -0.5 dBFS ═══════
+                        if (adv.currentPeak > -0.5f) {
+                            clipCount++;
+                            juce::String clipMsg = "\xF0\x9F\x94\xB4 **" + adv.trackName
+                                                   + "** est\xC3\xA1 recortando a **"
+                                                   + juce::String(adv.currentPeak, 1) + " dB";
+                            if (adv.peakTarget > -60.0f)
+                                clipMsg += " (target " + juce::String(adv.peakTarget, 1) + " dBFS)";
+                            clipMsg += ". Reduce el gain inmediatamente.";
+                            examples += clipMsg;
+                        } else {
+                            examples += adv.message;
+                        }
                         shown++;
                     }
                 }
                 if (offTargetCount == 1) {
-                    respondWith(examples, MentorMessage::Type::Tip);
+                    respondWith(examples, clipCount > 0 ? MentorMessage::Type::Warning : MentorMessage::Type::Tip);
                 }
                 else {
-                    respondWith("\xF0\x9F\x93\x8A **" + juce::String(offTargetCount)
-                                    + " pistas fuera de rango \xF3\xBE\x90\xA2ptimo:**\n" + examples
+                    juce::String header;
+                    if (clipCount > 0)
+                        header = "\xF0\x9F\x9A\xA8 **" + juce::String(clipCount)
+                                 + (clipCount == 1 ? " pista" : " pistas")
+                                 + " recortando y " + juce::String(offTargetCount - clipCount)
+                                 + " fuera de rango \xF3\xBE\x90\xA2ptimo:**";
+                    else
+                        header = "[CHART] **" + juce::String(offTargetCount)
+                                 + " pistas fuera de rango \xF3\xBE\x90\xA2ptimo:";
+                    respondWith(header + "\n" + examples
                                     + "\n\xF0\x9F\x92\xA1 Ajusta el fader de gain de cada pista.",
-                                MentorMessage::Type::Tip);
+                                MentorMessage::Type::Warning);
                 }
             }
         }
@@ -220,7 +311,7 @@ namespace mixcoach {
                     respondWith(dynExamples, MentorMessage::Type::Tip);
                 }
                 else {
-                    respondWith("\xF0\x9F\x93\x8A **" + juce::String(offTargetDyn)
+                    respondWith("[CHART] **" + juce::String(offTargetDyn)
                                     + " pistas con problemas de din\xC3\xA1mica:**\n" + dynExamples
                                     + "\n\xF0\x9F\x92\xA1 Revisa los compresores de cada pista.",
                                 MentorMessage::Type::Tip);
@@ -265,7 +356,19 @@ namespace mixcoach {
         // ═══ Actualizar datos del ReferenceMatchPanel (comparación mix vs referencia) ═══
         // Esto permite que las barras espectrales y LUFS del ReferenceMatchPanel se
         // actualicen en vivo mientras el usuario ajusta la mezcla.
-        if (referenceFingerprint_.valid) computeAndSendMatchData();
+        if (referenceFingerprint_.valid) {
+            computeAndSendMatchData();
+
+    // ─── ProgressTracker: snapshot cada 120s para timeline UI ────
+    {
+        auto dp = buildDifferenceProfile();
+        if (dp.valid && progressTracker_.takeSnapshot(dp, now)) {
+            // Si se tomó un snapshot nuevo, notificar a la UI via callback
+            if (onTimelineUpdate_)
+                onTimelineUpdate_(progressTracker_.getTimelinePoints(6));
+        }
+    }
+        }
 
         // ═══ SPRINT 1: Continuous role inference during Organización phase ═══
         // inferTrackRoles() is idempotent (skips slots that already have a role),
@@ -340,9 +443,179 @@ namespace mixcoach {
                 break;
             case MentorPhase::Espacio:
                 analyzePhaseReal();
+                analyzeSpaceReal();
                 break;
             default:
                 break;
+        }
+
+        // ═══ Sprint 4: Emitir eventos del Director para SceneManager ═══
+        {
+            // PhaseChanged: detectar si la fase avanzó durante este análisis
+            MentorPhase currentPhase = phaseManager_.getCurrentPhase();
+            if (currentPhase != previousPhase && directorEventCb_) {
+                DirectorEvent phaseEv;
+                phaseEv.type = DirectorEvent::Type::PhaseChanged;
+                phaseEv.numericValue = static_cast<float>(currentPhase);
+                phaseEv.payload = juce::String(phaseManager_.getPhaseName(currentPhase));
+                phaseEv.timestamp = now;
+                directorEventCb_(phaseEv);
+            }
+
+            // PriorityIssueDetected: informar sobre el issue de mayor prioridad
+            // Usamos getMostUrgentRecommendation() como fuente de issue prioritario
+            const TrackRecommendation* urgentRec = getMostUrgentRecommendation();
+            if (urgentRec != nullptr && urgentRec->status == TrackRecommendation::Status::Pending && directorEventCb_) {
+                float severity = 0.5f;
+                if (urgentRec->domain == TrackRecommendation::Domain::Gain) severity = 0.8f;
+                else if (urgentRec->domain == TrackRecommendation::Domain::Dynamics) severity = 0.7f;
+                else if (urgentRec->domain == TrackRecommendation::Domain::Tonal) severity = 0.6f;
+
+                DirectorEvent ev;
+                ev.type = DirectorEvent::Type::PriorityIssueDetected;
+                ev.numericValue = severity;
+                ev.payload = urgentRec->action;
+                ev.timestamp = now;
+                directorEventCb_(ev);
+            }
+
+            // PhaseProgressUpdated: informar progreso de la fase actual
+            float phaseProgress = phaseManager_.getPhaseProgress(currentPhase);
+            if (directorEventCb_) {
+                DirectorEvent progressEv;
+                progressEv.type = DirectorEvent::Type::PhaseProgressUpdated;
+                progressEv.numericValue = phaseProgress;
+                progressEv.timestamp = now;
+                directorEventCb_(progressEv);
+            }
+        }
+
+        // ═══ FASE 2: Loop de Corrección — Verificar recomendaciones pendientes ═══
+        // verifyTrackCorrections() compara métricas actuales vs esperadas para cada
+        // recomendación Pending. Clasifica: Applied (✅), OverApplied (⚠️),
+        // UnderApplied (💪), Ignored (⏭️). Genera feedback contextual en el chat.
+        verifyTrackCorrections();
+
+        // detectUnpromptedChanges() detecta cambios manuales en pistas SIN
+        // recomendación activa (el usuario ajustó algo por su cuenta).
+        // Máximo 1 observación por ciclo, cooldown 120s por pista.
+        detectUnpromptedChanges();
+
+        // ═══ Per-section metric collection (runs every cycle) ═══
+        // Acumula métricas por pista para la sección musical actual en CADA ciclo
+        // de periodicAnalysis(), no solo en transiciones. Esto permite calcular
+        // promedios reales sobre la duración completa de cada sección.
+        {
+            auto currentSectionType = sectionDetector_.getCurrentSection().type;
+            if (currentSectionType != SectionType::Unknown && currentSectionType == lastTrackedSection_) {
+                registry.forEachActive([&](const SlotInfo& info) {
+                    if (info.muted || info.slotIndex < 0 || info.slotIndex >= SlotRegistry::kMaxSlots)
+                        return;
+                    int idx = info.slotIndex;
+                    auto result = sharedData_.getTrackAudioResult(idx);
+                    if (result.timestampUs <= 0) return;
+
+                    auto& metric = perSectionMetrics_[idx][static_cast<int>(currentSectionType)];
+                    // Peak: max hold sobre toda la sección
+                    metric.peakDb = std::max(metric.peakDb, juce::jmax(result.peakLeft, result.peakRight));
+                    // RMS: promedio running sobre toda la sección
+                    float currentRms = (result.rmsLeft + result.rmsRight) * 0.5f;
+                    metric.rmsDb = (metric.rmsDb * static_cast<float>(metric.sampleCount) + currentRms)
+                                   / static_cast<float>(metric.sampleCount + 1);
+                    metric.crestDb = result.crestPerBand[0];
+                    metric.correlation = result.correlation;
+                    for (int b = 0; b < 6; ++b) {
+                        float sum = 0.0f;
+                        for (int sb = b * 5; sb < (b + 1) * 5 && sb < 30; ++sb)
+                            sum += result.bandEnergies[sb];
+                        metric.bandEnergy6[b] = sum / 5.0f;
+                    }
+                    metric.sampleCount++;
+                });
+            }
+        }
+
+        // ═══ Section Detection — detectar cambios de sección musical cada ~2s ═══
+        {
+            float rmsDb    = audioAnalyzer_.getMasterAnalysis().getRMS();
+            float lufs     = audioAnalyzer_.getShortTermLUFS();
+            float corr     = audioAnalyzer_.getMasterAnalysis().getCorrelation();
+            float centroid = 0.0f;
+            float songTime = static_cast<float>(now) / 1000000.0f;
+
+            bool transition = sectionDetector_.analyzeFrame(rmsDb, lufs, corr, centroid, songTime, now);
+
+            if (transition) {
+                // ═══ Automation Suggestion (3.3): Transición detectada ═══
+                // Las métricas de la sección anterior ya fueron acumuladas en el
+                // bloque de recolección periódica (arriba). Aquí solo:
+                // 1. Generamos sugerencia de automatización (compara promedios reales)
+                // 2. Reseteamos el acumulador para la nueva sección
+                // 3. Actualizamos lastTrackedSection_
+                {
+                    generateAutomationSuggestion(now);
+
+                    // Resetear acumulador para la nueva sección
+                    auto newSectionType = sectionDetector_.getCurrentSection().type;
+                    if (newSectionType != lastTrackedSection_ && newSectionType != SectionType::Unknown) {
+                        for (int s = 0; s < SlotRegistry::kMaxSlots; ++s) {
+                            auto& metric = perSectionMetrics_[s][static_cast<int>(newSectionType)];
+                            metric = PerSectionMetric{};
+                        }
+                        lastTrackedSection_ = newSectionType;
+                    }
+                }
+
+                if (directorEventCb_) {
+                    DirectorEvent ev;
+                    ev.type = DirectorEvent::Type::PhaseChanged;
+                    ev.payload = juce::String(sectionTypeName(sectionDetector_.getCurrentSection().type));
+                    ev.numericValue = static_cast<float>(sectionDetector_.getCurrentSection().type);
+                    ev.timestamp = now;
+                    directorEventCb_(ev);
+                }
+            }
+        }
+
+        // ═══ Density Analysis — detectar congestión espectral del arreglo ═══
+        {
+            auto& registry = sharedData_.getSlotRegistry();
+            auto result = densityAnalyzer_.analyze(
+                registry.activeCount(),
+                [&](int slotIdx) -> juce::String {
+                    auto info = registry.getSlotInfo(slotIdx);
+                    return juce::String(info.trackName).trim();
+                },
+                [&](int slotIdx) -> const float* {
+                    return sharedData_.getTrackAudioResult(slotIdx).bandEnergies;
+                },
+                now);
+
+            if (result.valid()) {
+                juce::String msg = result.buildCongestionMessage();
+                if (msg.isNotEmpty())
+                    respondWith(msg, MentorMessage::Type::Tip);
+            }
+        }
+
+        // ═══ Platform Target LUFS Warning — avisar si el master está lejos del target ═══
+        // Cada 60s como máximo, avisa si el LUFS del master se desvía >2 LUFS del target.
+        // Independiente de si hay referencia cargada — el target de plataforma aplica siempre.
+        if (now - lastPlatformWarningUs_ >= 60 * 1000 * 1000) {
+            float currentLUFS = audioAnalyzer_.getShortTermLUFS();
+            float targetLUFS  = getDestinationLUFS();
+            if (currentLUFS > -80.0f && std::abs(currentLUFS - targetLUFS) > 2.0f) {
+                lastPlatformWarningUs_ = now;
+                float diff = currentLUFS - targetLUFS;
+                juce::String msg;
+                msg += "[PLATFORM TARGET] Master at " + juce::String(currentLUFS, 1)
+                       + " LUFS, target for " + juce::String(getPlatformTargetName())
+                       + " is " + juce::String(targetLUFS, 0) + " LUFS.\n";
+                msg += juce::String(std::abs(diff), 1) + " LUFS off target. "
+                       + juce::String((diff > 0) ? "Reduce" : "Increase")
+                       + " overall gain by approximately " + juce::String(std::abs(diff), 1) + " dB.";
+                respondWith(msg, MentorMessage::Type::Tip);
+            }
         }
     }
 
@@ -518,6 +791,7 @@ namespace mixcoach {
                 },
                 [this](const juce::String& response) {
                     if (streamEndedCb_) streamEndedCb_();
+                    if (llmResponseCompleteCb_) llmResponseCompleteCb_(response);
                     LogHelper::writeToLog("[CoachEngine] Reference-Driven Analysis enviada al chat");
                 });
 
@@ -849,7 +1123,7 @@ namespace mixcoach {
                 + " \u2014 sin sen\xC3\xB1""al detectable.";
                 break;
             case TrackGainAdvice::Status::UnknownRole:
-                advice.message = "\xE2\x9D\x93 " + advice.trackName + " \u2014 rol no especificado.";
+                advice.message = "[QUESTION] " + advice.trackName + " \u2014 rol no especificado.";
                 break;
         }
 
@@ -1397,6 +1671,204 @@ namespace mixcoach {
         return info;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  generateAutomationSuggestion — Sugerencias de automatización (3.3)
+    //  Compara métricas por pista entre la sección anterior y la actual.
+    //  Si la diferencia es >3dB en peak/RMS, sugiere automatizar el fader.
+    //  Cooldown: 2 minutos entre sugerencias.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void CoachEngine::generateAutomationSuggestion(int64_t now)
+    {
+        // Cooldown: 2min entre sugerencias
+        if (now - lastAutomationSuggestionUs_ < kAutomationSuggestionCooldownUs)
+            return;
+
+        auto currentSection = sectionDetector_.getCurrentSection();
+        auto previousSection = sectionDetector_.getPreviousSection();
+
+        // Necesitamos al menos 2 secciones diferentes para comparar
+        if (currentSection.type == SectionType::Unknown
+            || previousSection.type == SectionType::Unknown
+            || currentSection.type == previousSection.type)
+            return;
+
+        auto& registry = sharedData_.getSlotRegistry();
+        int prevSecIdx = static_cast<int>(previousSection.type);
+        int currSecIdx = static_cast<int>(currentSection.type);
+
+        // Buscar la pista con mayor variación entre secciones
+        int bestSlot = -1;
+        float maxDeltaDb = 0.0f;
+        juce::String bestTrackName;
+        bool isPeakDelta = true;
+        float prevValue = 0.0f;
+        float currValue = 0.0f;
+
+        registry.forEachActive([&](const SlotInfo& info) {
+            if (info.muted || info.slotIndex < 0 || info.slotIndex >= SlotRegistry::kMaxSlots)
+                return;
+            int idx = info.slotIndex;
+
+            auto& prevMetric = perSectionMetrics_[idx][prevSecIdx];
+            auto& currMetric = perSectionMetrics_[idx][currSecIdx];
+
+            // Saltar si no hay suficientes muestras en alguna sección
+            if (prevMetric.sampleCount < 2 || currMetric.sampleCount < 2)
+                return;
+
+            // Comparar peak
+            float peakDelta = std::abs(currMetric.peakDb - prevMetric.peakDb);
+            // Comparar RMS
+            float rmsDelta = std::abs(currMetric.rmsDb - prevMetric.rmsDb);
+
+            float delta = juce::jmax(peakDelta, rmsDelta);
+
+            if (delta > maxDeltaDb && delta > 3.0f) {
+                maxDeltaDb = delta;
+                bestSlot = idx;
+                bestTrackName = juce::String(info.trackName).trim();
+                isPeakDelta = (peakDelta >= rmsDelta);
+                prevValue = isPeakDelta ? prevMetric.peakDb : prevMetric.rmsDb;
+                currValue = isPeakDelta ? currMetric.peakDb : currMetric.rmsDb;
+            }
+        });
+
+        // ═══ Consistency Detection: si tras 3+ transiciones ninguna pista varía >3dB ═══
+        // Envía mensaje de estabilidad con cooldown de 3min.
+        // El contador se resetea cuando SÍ se genera una sugerencia (abajo).
+        if (bestSlot < 0 || maxDeltaDb < 3.0f) {
+            consistentTransitions_++;
+            if (consistentTransitions_ >= 3
+                && now - lastConsistencyMessageUs_ >= kConsistencyMessageCooldownUs) {
+                lastConsistencyMessageUs_ = now;
+                consistentTransitions_ = 0;
+                juce::String stableMsg;
+                stableMsg += "\xF0\x9F\x93\x8A **Tus pistas se mantienen estables entre secciones**\n\n";
+                stableMsg += "No detecto variaciones significativas (>3dB) entre \""
+                             + juce::String(sectionTypeName(previousSection.type))
+                             + "\" y \"" + juce::String(sectionTypeName(currentSection.type))
+                             + "\".\n\n";
+                stableMsg += "Esto significa que **ajustes fijos son suficientes** "
+                             "para toda la canci\xC3\xB3n — no necesitas automatizar faders\n"
+                             "para compensar cambios de nivel entre secciones.";
+                respondWith(stableMsg, MentorMessage::Type::Info);
+                LogHelper::writeToLog("[CoachEngine] Consistency detected: "
+                                      + juce::String(consistentTransitions_)
+                                      + " transitions without >3dB variation. "
+                                      + "Sent stability message.");
+            }
+            return;
+        }
+
+        // Reseteamos contador de consistencia al generar una sugerencia real
+        consistentTransitions_ = 0;
+
+        if (bestTrackName.isEmpty())
+            bestTrackName = "Pista " + juce::String(bestSlot + 1);
+
+        // ═══ Construir mensaje de sugerencia ═══════════════════════════════
+        // Determinar qué sección es más fuerte
+        bool louderInCurrent = (currValue > prevValue);
+        const char* louderSectionName = louderInCurrent
+            ? sectionTypeName(currentSection.type)
+            : sectionTypeName(previousSection.type);
+        const char* quieterSectionName = louderInCurrent
+            ? sectionTypeName(previousSection.type)
+            : sectionTypeName(currentSection.type);
+        float deltaDb = std::abs(currValue - prevValue);
+
+        // Tiempos para el mensaje (aproximados desde startTimeSec)
+        float louderTimeSec = louderInCurrent
+            ? currentSection.startTimeSec
+            : previousSection.startTimeSec;
+        float quieterTimeSec = louderInCurrent
+            ? previousSection.startTimeSec
+            : currentSection.startTimeSec;
+
+        auto formatTime = [](float sec) -> juce::String {
+            int min = (int)(sec / 60.0f);
+            int seg = (int)sec % 60;
+            return juce::String(min) + ":" + juce::String(seg).paddedLeft('0', 2);
+        };
+
+        juce::String metricLabel = isPeakDelta ? "nivel" : "RMS";
+
+        juce::String msg;
+        msg += "\xE2\x9C\xA8 **Sugerencia de automatizaci\xC3\xB3n**\n\n";
+        msg += "**" + bestTrackName + "** tiene " + juce::String(deltaDb, 1)
+               + " dB m\xC3\xA1s de " + metricLabel + " en el **"
+               + juce::String(louderSectionName) + "** que en el **"
+               + juce::String(quieterSectionName) + "**.\n\n";
+
+        msg += "En vez de un ajuste fijo, prueba **automatizar el fader**:\n";
+        msg += "  \xE2\x80\xA2 En **" + formatTime(louderTimeSec) + "** (" + juce::String(louderSectionName) + "): "
+               + (louderInCurrent ? "baja" : "sube") + " ~" + juce::String(deltaDb, 1) + " dB\n";
+        msg += "  \xE2\x80\xA2 En **" + formatTime(quieterTimeSec) + "** (" + juce::String(quieterSectionName) + "): "
+               + (louderInCurrent ? "sube" : "baja") + " al nivel original\n\n";
+        msg += "Esto mantendr\xC3\xA1 el balance correcto en cada secci\xC3\xB3n "
+               "sin sacrificar din\xC3\xA1mica musical.";
+
+        lastAutomationSuggestionUs_ = now;
+        respondWith(msg, MentorMessage::Type::Tip);
+
+        LogHelper::writeToLog("[CoachEngine] Automation suggestion: " + bestTrackName
+                              + " varia " + juce::String(deltaDb, 1) + "dB entre "
+                              + juce::String(sectionTypeName(previousSection.type)) + " → "
+                              + juce::String(sectionTypeName(currentSection.type)));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  sendEmptySessionGuide — Guía para proyectos sin pistas (5.1)
+    //  Se dispara desde periodicAnalysis() cuando activeCount == 0 por >30s.
+    //  Explica cómo configurar la sesión: insertar tracks, agregar Messenger,
+    //  y ruteo. Se re-evalúa cada 30s hasta que aparezcan pistas.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void CoachEngine::sendEmptySessionGuide()
+    {
+        // ─── Mensaje 1: Guía inicial completa (solo la primera vez) ─────────
+        // Si el setup no ha empezado, damos la bienvenida + guía completa.
+        // Si ya está en setup, damos un recordatorio más corto.
+        bool isFirstWarning = (lastEmptySessionWarningUs_ == 0);
+
+        if (isFirstWarning || setupStep_ == SetupStep::NotStarted) {
+            juce::String msg;
+            msg += "\xF0\x9F\x94\x8D **No detecto pistas en tu proyecto.**\n\n";
+            msg += "Para empezar a usar MixCoach, necesito escuchar tus pistas. "
+                   "Sigue estos pasos:\n\n";
+            msg += "**1. Crea canales de audio** en tu DAW\n";
+            msg += "   \xE2\x80\xA2 Agrega pistas de audio para cada instrumento\n";
+            msg += "   \xE2\x80\xA2 Aseg\xC3\xBArate de que tengan audio grabado o MIDI\n\n";
+            msg += "**2. Inserta MixCoach Messenger** en cada canal\n";
+            msg += "   \xE2\x80\xA2 Busca **Messenger** en tus plugins VST3\n";
+            msg += "   \xE2\x80\xA2 Ins\xC3\xA9rtalo como \xFCltimo plugin en la cadena\n";
+            msg += "   \xE2\x80\xA2 El Messenger enviar\xC3\xA1 el audio al Coach para an\xC3\xA1lisis\n\n";
+            msg += "**3. Conecta el Master**\n";
+            msg += "   \xE2\x80\xA2 MixCoach debe estar en el canal Master\n";
+            msg += "   \xE2\x80\xA2 As\xC3\xAD puedo escuchar toda la mezcla\n\n";
+            msg += "\xF0\x9F\x91\x89 Una vez que insertes los Messengers, "
+                   "yo detectar\xC3\xA9 las pistas autom\xC3\xA1ticamente.";
+
+            respondWith(msg, MentorMessage::Type::Info);
+
+            LogHelper::writeToLog("[CoachEngine] Empty session guide enviada (primera vez)");
+        } else {
+            // ─── Mensaje 2+: Recordatorio corto (cooldown 30s) ────────────
+            juce::String msg;
+            msg += "\xF0\x9F\x94\x8D **Sigo sin detectar pistas.**\n\n";
+            msg += "Recuerda:\n";
+            msg += "   1. Crea canales de audio en tu proyecto\n";
+            msg += "   2. Inserta **Messenger** (VST3) en cada canal\n";
+            msg += "   3. MixCoach debe estar en el Master\n\n";
+            msg += "Te avisar\xC3\xA9 cuando detecte las pistas.";
+
+            respondWith(msg, MentorMessage::Type::Tip);
+
+            LogHelper::writeToLog("[CoachEngine] Empty session recordatorio enviado");
+        }
+    }
+
     void CoachEngine::fastTrackAnalysis()
     {
         auto now = juce::Time::getMillisecondCounter() * 1000;
@@ -1577,10 +2049,160 @@ namespace mixcoach {
         respondWith(text, type);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Acciones Directas desde TrackProblemCard — Día 3-4
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void CoachEngine::recordManualApplication(int slotIndex, const juce::String& domain, const juce::String& trackName)
+    {
+        if (slotIndex < 0) return;
+
+        // 1. Registrar en MixHistory
+        MixHistoryEntry entry;
+        entry.timestampUs = juce::Time::getMillisecondCounter() * 1000;
+        entry.slotIndex   = slotIndex;
+        entry.trackName   = trackName;
+        entry.domain      = domain;
+        entry.source      = MixHistoryEntry::Source::UserAction;
+
+        // Mapear domain a description legible
+        juce::String domainName;
+        if (domain == "gain")        { domainName = "Gain Staging"; entry.description = "Ajuste manual de ganancia"; }
+        else if (domain == "tonal")   { domainName = "EQ"; entry.description = "Ajuste manual de EQ"; }
+        else if (domain == "dynamics") { domainName = "Compresión"; entry.description = "Ajuste manual de compresión"; }
+        else if (domain == "spatial")  { domainName = "Espacio/Estéreo"; entry.description = "Ajuste manual de paneo/espacio"; }
+        else                          { domainName = domain; entry.description = "Ajuste manual: " + domain; }
+
+        pushMixHistory(entry);
+        LogHelper::writeToLog("[AccionDirecta] recordManualApplication slot=" + juce::String(slotIndex)
+                              + " domain=\"" + domain + "\" track=\"" + trackName + "\"");
+
+        // 2. Responder como coach celebrando la acción
+        juce::String msg = personalize("✅ **¡Registrado!** Buen ajuste en **" + domainName + "**");
+        if (trackName.isNotEmpty())
+            msg += " para **" + trackName + "**";
+        msg += ". Sigue así, cada paso cuenta.";
+        respondWithPremium(msg, MentorMessage::Type::Achievement);
+    }
+
+    void CoachEngine::skipProblem(int slotIndex, const juce::String& trackName)
+    {
+        if (slotIndex < 0) return;
+
+        // 1. Registrar en MixHistory
+        MixHistoryEntry entry;
+        entry.timestampUs = juce::Time::getMillisecondCounter() * 1000;
+        entry.slotIndex   = slotIndex;
+        entry.trackName   = trackName;
+        entry.domain      = "skip";
+        entry.description = "Problema omitido por el usuario";
+        entry.source      = MixHistoryEntry::Source::UserAction;
+        pushMixHistory(entry);
+
+        LogHelper::writeToLog("[AccionDirecta] skipProblem slot=" + juce::String(slotIndex)
+                              + " track=\"" + trackName + "\"");
+
+        // 2. Responder como coach validando la decisión
+        juce::String msg = personalize("Entendido, no hay problema. Podemos retomarlo más adelante si quieres.");
+        respondWithPremium(msg, MentorMessage::Type::Info);
+    }
+
+    void CoachEngine::explainProblem(int slotIndex, const juce::String& problemType, const juce::String& trackName)
+    {
+        if (slotIndex < 0 || problemType.isEmpty()) return;
+
+        LogHelper::writeToLog("[AccionDirecta] explainProblem slot=" + juce::String(slotIndex)
+                              + " type=\"" + problemType + "\" track=\"" + trackName + "\"");
+
+        // Construir explicación técnica según el tipo de problema
+        juce::String explanation;
+        juce::String trackPrefix = trackName.isNotEmpty() ? "En **" + trackName + "**, " : "";
+
+        if (problemType.containsIgnoreCase("clipping") || problemType.containsIgnoreCase("peak")) {
+            explanation = trackPrefix + "el **clipping** ocurre cuando la señal supera el límite máximo "
+                          "que el sistema puede manejar (0 dBFS). Esto produce distorsión digital "
+                          "que suena como un 'crujido' desagradable, especialmente en los transitorios.\n\n"
+                          "**Soluciones:**\n"
+                          "  • Reduce el gain del canal\n"
+                          "  • Usa un limitador suave en el master\n"
+                          "  • Revisa los plugins que puedan estar saturando";
+        } else if (problemType.containsIgnoreCase("masking") || problemType.containsIgnoreCase("enmascar")) {
+            explanation = trackPrefix + "el **enmascaramiento** pasa cuando dos pistas compiten por la misma "
+                          "frecuencia. Por ejemplo, si Kick y Bass tienen mucha energía en 60Hz, "
+                          "no se distinguen y la mezcla suena embarrada.\n\n"
+                          "**Soluciones:**\n"
+                          "  • Corta frecuencias bajas de una de las dos pistas\n"
+                          "  • Usa Sidechain EQ para hacer espacio\n"
+                          "  • Prueba la técnica de 'Complementary EQ'";
+        } else if (problemType.containsIgnoreCase("bass") || problemType.containsIgnoreCase("sub")) {
+            explanation = trackPrefix + "cuando hablo de **demasiado subgrave**, me refiero a que las frecuencias "
+                          "entre 20-60Hz están sobreelevadas. En la mayoría de sistemas "
+                          "de escucha esto se traduce en una mezcla que suena 'retumbante' o imprecisa.\n\n"
+                          "**Soluciones:**\n"
+                          "  • Aplica un High-Pass Filter alrededor de 30-40Hz\n"
+                          "  • Reduce 1-2dB en 50Hz con un EQ\n"
+                          "  • Usa un analizador espectral para visualizarlo";
+        } else if (problemType.containsIgnoreCase("gain") || problemType.containsIgnoreCase("nivel")) {
+            explanation = trackPrefix + "el **nivel** de la pista está fuera del rango recomendado. "
+                          "Un nivel adecuado es crucial para tener headroom suficiente "
+                          "y evitar que el master se sature al sumar todas las pistas.\n\n"
+                          "**Rango recomendado:**\n"
+                          "  • Picos entre -18 dBFS y -10 dBFS\n"
+                          "  • RMS alrededor de -24 dBFS a -18 dBFS\n"
+                          "  • Deja al menos 6dB de headroom en el master";
+        } else {
+            explanation = trackPrefix + "este problema se refiere a: **" + problemType + "**.\n\n"
+                          "En términos técnicos, significa que el análisis detectó "
+                          "una desviación significativa respecto al perfil de referencia "
+                          "o al rango recomendado para este tipo de pista.\n\n"
+                          "Te sugiero que revises la sección de herramientas (Analyzers) "
+                          "para ver la evidencia visual mientras ajustas.";
+        }
+
+        respondWithPremium(personalize(explanation), MentorMessage::Type::Info);
+    }
+
     void CoachEngine::respondWithCorrectionFeedback(const juce::String& text)
     {
-        // Wrapper that sends correction feedback as premium message
-        respondWithPremium(text, MentorMessage::Type::Info);
+        MentorMessage msg;
+        msg.type      = MentorMessage::Type::Info;
+        msg.text      = personalize(text).toStdString();
+        msg.timestamp = juce::Time::getMillisecondCounter() * 1000;
+        msg.context   = "Correction";
+        sharedData_.pushMessage(msg);
+        LogHelper::writeToLog("[CoachEngine] CorrectionFeedback: " + text.substring(0, 80));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PERSONALIZE — Inserta el nombre del usuario cada ~5 mensajes
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    juce::String CoachEngine::personalize(const juce::String& text)
+    {
+        if (!hasEngineerName()) return text;
+
+        messageCountSinceLastNameUse_++;
+
+        // Cada ~5 mensajes, insertar el nombre
+        if (messageCountSinceLastNameUse_ < 5) return text;
+
+        messageCountSinceLastNameUse_ = 0;
+
+        juce::String result = text;
+
+        // Si el texto tiene {name}, reemplazarlo
+        if (result.contains("{name}")) {
+            result = result.replace("{name}", engineerName_, false);
+            return result;
+        }
+
+        // Si no tiene marcador, insertar el nombre al inicio
+        // Pero solo si el texto no es muy corto (< 20 chars)
+        if (result.length() >= 20) {
+            result = engineerName_ + ", " + result.substring(0, 1).toLowerCase() + result.substring(1);
+        }
+
+        return result;
     }
 
     std::vector<juce::String> CoachEngine::getDynamicSuggestions() const
@@ -1790,7 +2412,7 @@ namespace mixcoach {
             msg += "\xF0\x9F\x97\xBA **Organizaci\xC3\xB3n completa!** Avanzamos a **"
                    + juce::String(phaseNames[static_cast<int>(newPhase)]) + "**.\n\n";
 
-            msg += "\xF0\x9F\x93\x8B Ahora ajustemos niveles para tener headroom saludable.";
+            msg += "[NOTES] Ahora ajustemos niveles para tener headroom saludable.";
             respondWith(msg, MentorMessage::Type::Achievement);
 
             // Send phase guidance for the new phase
@@ -1801,7 +2423,7 @@ namespace mixcoach {
         }
         else {
             // Phase not complete yet \u2014 acknowledge the map confirmation
-            respondWith("\xE2\x9C\x85 **Mapa de mezcla confirmado.** " + juce::String(bussedCount) + "/"
+            respondWith("[DONE] **Mapa de mezcla confirmado.** " + juce::String(bussedCount) + "/"
                             + juce::String(totalActive) + " pistas con bus asignado.",
                         MentorMessage::Type::Info);
         }
@@ -2069,6 +2691,43 @@ void CoachEngine::clearMixHistory() noexcept
         entry = MixHistoryEntry{};
     mixHistoryCount_ = 0;
     mixHistoryWriteIndex_ = 0;
+}
+
+// ============================================================
+//  requestDiagnosticUpdate — Fires on-demand diagnostic update
+//
+//  Dispara el callback de actualizacion de diagnostico
+//  inmediatamente, para que el DiagnosticBridge se actualice
+//  con datos frescos (pushDiagnosticBridge en PluginEditor).
+//  Util cuando el Coach (LLM) pide ver evidencia visual.
+// ============================================================
+void CoachEngine::requestDiagnosticUpdate()
+{
+    if (diagnosticUpdateCb_) {
+        diagnosticUpdateCb_();
+        LogHelper::writeToLog("[CoachEngine] On-demand diagnostic update fired");
+    }
+}
+
+
+
+const DifferenceProfile& CoachEngine::getCachedDifferenceProfile() const noexcept
+{
+    return differenceProfile_;
+}
+
+RefinementProfile CoachEngine::getCachedRefinementProfile() const noexcept
+{
+    // Stub: differenceProfile_ has no refinementCache field yet
+    juce::ignoreUnused(differenceProfile_);
+    return RefinementProfile{};
+}
+
+ReferenceSummary CoachEngine::getReferenceSummary() const noexcept
+{
+    if (!referenceMetadata_.valid())
+        return ReferenceSummary{};
+    return ReferenceSummary::compute(referenceFingerprint_);
 }
 
 } // namespace mixcoach

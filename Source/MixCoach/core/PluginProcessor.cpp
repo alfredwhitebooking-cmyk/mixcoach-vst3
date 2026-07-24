@@ -111,6 +111,9 @@ namespace mixcoach {
     MixCoachAudioProcessor::~MixCoachAudioProcessor()
     {
         try {
+            // ═══ Detener background service PRIMERO (ya no se necesita análisis) ═══
+            bgService_.stop();
+
             // ═══ Guardar estado de sesión antes de destruir módulos ═══════════
             // Esto asegura que el historial del chat, género, modo, fase,
             // nivel de experiencia y configuración se persistan en
@@ -317,6 +320,34 @@ namespace mixcoach {
                 }
 
                 // ═══ Sub-caso 4B: Primera inicialización completa ═════════════
+
+                // ─── Inicializar sesión IPC con GUID aislamiento ───────────────
+                // MixCoach (brain) genera un GUID único y lo publica en la shared
+                // memory de descubrimiento (SessionDiscovery). Los Messengers leen
+                // este GUID para conectarse a la sesión correcta, evitando que
+                // dos proyectos DAW compartan slots de forma accidental.
+                if (!sessionInitialized_) {
+                    juce::String guid = generateSessionGUID();
+                    sessionGUID_ = guid;
+
+                    if (sessionDiscovery_.initialize()) {
+                        sessionDiscovery_.publishGUID(guid);
+
+                        // Reconectar shared memory con GUID-derived names
+                        bool sessionOK = sharedData_->initializeSession(guid, true);
+                        if (sessionOK) {
+                            sessionInitialized_ = true;
+                            logMessage("[MixCoach] Sesión IPC iniciada: " + guid);
+                        }
+                        else {
+                            logMessage("[MixCoach] Sesión IPC NO disponible aun, retry posterior");
+                        }
+                    }
+                    else {
+                        logMessage("[MixCoach] SessionDiscovery no disponible, usando modo legacy");
+                    }
+                }
+
                 auto& registry = sharedData_->getSlotRegistry();
 
                 phaseManager_ = std::make_unique<PhaseManager>(registry);
@@ -351,9 +382,39 @@ namespace mixcoach {
                 // El editor se registra como listener de este broadcaster.
                 // Al recibir el cambio, el editor refresca sharedData_ y
                 // construye la UI si no se había construido aún.
-                sharedDataChangeBroadcaster_.sendChangeMessage();
+                sharedDataChangeBroadcaster_.sendChangeMessage();                    // ═══ INCREMENTO 1: Start background service ─────────────────
+                    // La telemetría NUNCA se detiene aunque el editor esté cerrado,
+                    // porque el servicio vive en el processor, no en el editor.
+                    if (!bgService_.isRunning()) {
+                        bgService_.start(*sharedData_);
 
-                logMessage("[MixCoach] ChangeBroadcaster enviado al editor");
+                        // Wire reference analysis callback
+                        bgService_.setReferenceAnalysisCallback(
+                            [this](const juce::String& refPath) {
+                                // Run reference analysis on the bg thread
+                                auto* coach = coachEngine_.get();
+                                if (coach != nullptr) {
+                                    auto& refPlayer = refPlayer_;
+                                    const int64_t loadedSamples = refPlayer.getLoadedBufferSize();
+                                    const float* bufL = refPlayer.getRefBufferL();
+                                    const float* bufR = refPlayer.getRefBufferR();
+                                    if (loadedSamples > 0 && bufL != nullptr) {
+                                        coach->applyReferenceAnalysis(
+                                            bufL, bufR, loadedSamples,
+                                            refPlayer.getLoadedNumChannels(),
+                                            refPlayer.getLoadedSampleRate(),
+                                            refPath);
+                                    }
+                                    else {
+                                        coach->applyReferenceAnalysis(refPath);
+                                    }
+                                }
+                            });
+
+                        logMessage("[MixCoach] Background service iniciado (independiente de UI)");
+                    }
+
+                    logMessage("[MixCoach] ChangeBroadcaster enviado al editor");
             }
         }
         catch (const std::exception& e) {
@@ -544,7 +605,7 @@ namespace mixcoach {
                                                       [responseCallback](bool success, const juce::String& response) {
                                                           if (success) responseCallback(response);
                                                           else
-                                                              responseCallback("\xF0\x9F\x94\x84 " + response);
+                                                              responseCallback("[PHASE] " + response);
                                                       });
                         return true;
                     }
@@ -565,7 +626,7 @@ namespace mixcoach {
                             userMessage, onToken, [onComplete](bool success, const juce::String& response) {
                                 if (success) onComplete(response);
                                 else
-                                    onComplete("\xF0\x9F\x94\x84 " + response);
+                                    onComplete("[PHASE] " + response);
                             });
                         return true;
                     }
@@ -599,6 +660,42 @@ namespace mixcoach {
 
             // ═══ Guardar LlmClient como miembro (debe vivir más que el callback) ═══
             llmClient_ = std::move(llmClient);
+
+            // ═══ Auto-aplicar API key guardada de sesión anterior ═══════════════
+            if (apiKey_.isNotEmpty() && llmClient_ != nullptr) {
+                LogHelper::writeToLog("[MixCoach] Aplicando API key guardada de sesi\xC3\xB3n anterior...");
+                auto savedKey = apiKey_;
+                auto config   = llmClient_->getConfig();
+
+                // Detectar proveedor según prefijo (misma lógica que setApiKey)
+                juce::String lowerKey = savedKey.trim().toLowerCase();
+                if (lowerKey.startsWith("nvapi-")) {
+                    config = LlmClient::makeNvidiaConfig(savedKey);
+                }
+                else if (lowerKey.startsWith("gsk_")) {
+                    config.provider    = LlmClient::Provider::OpenAICompatible;
+                    config.endpointUrl = "https://api.groq.com/openai/v1";
+                    config.apiKey      = savedKey;
+                    config.model       = "llama3-70b-8192";
+                    config.timeoutMs   = 15000;
+                }
+                else {
+                    config.provider = LlmClient::Provider::OpenAICompatible;
+                    config.apiKey   = savedKey;
+                }
+
+                llmClient_->setConfig(config);
+
+                // Notificar a la UI (sin checkAvailability — se hará lazy en primer mensaje)
+                if (ollamaStatusCallback_) {
+                    juce::String label = llmClient_->getProviderModelLabel();
+                    juce::MessageManager::callAsync([cb = ollamaStatusCallback_, label]() {
+                        cb(false, label); // false = sin verificar aún
+                    });
+                }
+
+                LogHelper::writeToLog("[MixCoach] API key aplicada: " + llmClient_->getProviderModelLabel());
+            }
 
             // Inicializar LogHelper (usamos un archivo distinto)
             LogHelper::setLogFile(juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
@@ -640,6 +737,7 @@ namespace mixcoach {
 
             audioAnalyzer_.prepare(sampleRate, samplesPerBlock);
             refPlayer_.prepare(sampleRate, samplesPerBlock);
+            celebrationChime_.prepare(sampleRate);
             prepared_ = true;
 
             logMessage("prepareToPlay: sampleRate=" + juce::String(sampleRate)
@@ -658,14 +756,82 @@ namespace mixcoach {
         refPlayer_.releaseResources();
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  P1: readTransportInfo — Lee contexto de transporte del DAW anfitrión
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Usa AudioProcessor::getPlayHead() para obtener PositionInfo con:
+    //   - isPlaying / isRecording
+    //   - BPM (tempo)
+    //   - Time signature (compás)
+    //   - Position in seconds / samples / ppq
+    //
+    // Thread-safe: llamado desde el message thread (timer del editor).
+    // Retorna TransportInfo vacío (valid=false) si no hay playhead disponible.
+    MixCoachAudioProcessor::TransportInfo MixCoachAudioProcessor::readTransportInfo() const noexcept
+    {
+        TransportInfo info;
+
+        auto* playHead = getPlayHead();
+        if (playHead == nullptr) return info;
+
+        auto pos = playHead->getPosition();
+        if (!pos.hasValue()) return info;
+
+        info.isPlaying  = pos->getIsPlaying();
+        info.isRecording = pos->getIsRecording();
+        info.isLooping = pos->getIsLooping();
+        {
+            auto v = pos->getTimeInSeconds();
+            info.timeInSeconds = v.hasValue() ? *v : 0.0;
+        }
+        {
+            auto v = pos->getTimeInSamples();
+            info.timeInSamples = v.hasValue() ? *v : 0;
+        }
+        {
+            auto v = pos->getPpqPosition();
+            info.ppqPosition = v.hasValue() ? *v : 0.0;
+        }
+        {
+            auto v = pos->getPpqPositionOfLastBarStart();
+            info.ppqPositionOfLastBarStart = v.hasValue() ? *v : 0.0;
+        }
+
+        // BPM (tempo)
+        auto bpmOpt = pos->getBpm();
+        if (bpmOpt.hasValue())
+            info.bpm = *bpmOpt;
+
+        // Time signature
+        auto tsOpt = pos->getTimeSignature();
+        if (tsOpt.hasValue()) {
+            info.timeSigNumerator   = tsOpt->numerator;
+            info.timeSigDenominator = tsOpt->denominator;
+        }
+
+        info.valid = true;
+        return info;
+    }
+
     // ═══ Helper NIVEL 1: protege contra C++ exceptions (try/catch) ══════════
     // SEPARADO de safeProcessAudio() porque MSVC C2713 prohibe try/catch
     // y __try/__except en la misma función.
     static void safeProcessAudioInner(MixCoachAudioProcessor& proc, juce::AudioBuffer<float>& buffer)
     {
         try {
+            // ═══ QUICK WIN 2: Render-safe flag ═══════════════════════════════
+            // Si el DAW está en modo render/bounce, activar renderSafe
+            // para que mixIntoBuffer() no mezcle la referencia en el bounce.
+            if (proc.isNonRealtime())
+                proc.getRefPlayer().setRenderSafe(true);
+            else
+                proc.getRefPlayer().setRenderSafe(false);
+
             proc.getAudioAnalyzer().processBlock(buffer);
-            proc.getRefPlayer().mixIntoBuffer(buffer, 0.5f);
+            // Usar ganancia configurable (referenceGain_ interna)
+            proc.getRefPlayer().mixIntoBuffer(buffer, -1.0f);
+            // Celebrar correcciones exitosas con un chime sutil
+            proc.getCelebrationChime().mixIntoBuffer(buffer, 0.35f);
         }
         catch (const std::exception& e) {
             earlyCrashLog("AUDIO_CPP", e.what());
@@ -757,8 +923,8 @@ namespace mixcoach {
     {
         juce::MemoryOutputStream mos(destData, false);
 
-        // ═══ Versión 2: phase + referencias + V4 Dual Mode ═════════════════
-        constexpr int kDataVersion = 2;
+        // ═══ Versión 4: + savedCoachRoomState_ + savedUIFlags_ + savedUserName_ ═════
+        constexpr int kDataVersion = 4;
         mos.writeInt(kDataVersion);
 
         // Phase
@@ -781,7 +947,7 @@ namespace mixcoach {
         mos.writeInt(static_cast<int>(urls.size()));
         for (const auto& u : urls) mos.writeString(u);
 
-        // ═══ V4 Dual Mode: CoachMode + MasterDestination ═══════════════════
+        // ═══ V2 Dual Mode: CoachMode + MasterDestination ═══════════════════
         auto* ce = coachEngine_.get();
         if (ce) {
             mos.writeInt(static_cast<int>(ce->getCoachMode()));
@@ -791,6 +957,14 @@ namespace mixcoach {
             mos.writeInt(static_cast<int>(CoachMode::Mix));
             mos.writeInt(static_cast<int>(MasterDestination::StreamingGeneral));
         }
+
+        // ═══ V3: API key ═════════════════════════════════════════════════════
+        mos.writeString(apiKey_);
+
+        // ═══ V4: UI state persistence ═══════════════════════════════════════
+        mos.writeInt(static_cast<int>(savedCoachRoomState_));
+        mos.writeInt(static_cast<int>(savedUIFlags_));
+        mos.writeString(savedUserName_);
     }
 
     void MixCoachAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
@@ -830,7 +1004,7 @@ namespace mixcoach {
         urls.reserve(numUrls);
         for (int i = 0; i < numUrls; ++i) urls.push_back(mis.readString());
 
-        // ═══ V4 Dual Mode: restauracion desde version 2 ═════════════════════
+        // ═══ V2 Dual Mode: restauracion desde version 2 ═════════════════════
         if (version >= 2 && mis.getNumBytesRemaining() >= 8) {
             CoachMode mode         = static_cast<CoachMode>(mis.readInt());
             MasterDestination dest = static_cast<MasterDestination>(mis.readInt());
@@ -842,12 +1016,42 @@ namespace mixcoach {
             }
         }
 
+        // ═══ V3: API key persistence ═════════════════════════════════════════
+        if (version >= 3 && mis.getNumBytesRemaining() > 0) {
+            juce::String savedKey = mis.readString();
+            if (savedKey.isNotEmpty()) {
+                apiKey_ = savedKey;
+                LogHelper::writeToLog("[MixCoach] API key restaurada de sesi\xC3\xB3n anterior");
+            }
+        }
+
+        // ═══ V4: UI state persistence (coachRoomState + flags + userName) ═══
+        if (version >= 4 && mis.getNumBytesRemaining() >= 8) {
+            int savedState = mis.readInt();
+            if (savedState >= 0 && savedState < static_cast<int>(CoachRoomState::Count)) {
+                savedCoachRoomState_ = static_cast<CoachRoomState>(savedState);
+            }
+            savedUIFlags_ = static_cast<uint32_t>(mis.readInt());
+            savedUserName_ = mis.readString();
+
+            if (savedUserName_.isNotEmpty()) {
+                LogHelper::writeToLog("[MixCoach] Estado UI restaurado: state="
+                                      + juce::String(coachRoomStateLabel(savedCoachRoomState_))
+                                      + ", userName=" + savedUserName_);
+            }
+        }
+
         // Almacenar para que el editor las restaure cuando la UI esté lista
         setPendingReferencePaths(filePaths, urls);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  setApiKey — Actualiza la API key en runtime desde la UI del chat
+    //  Detecta automáticamente el proveedor según el prefijo de la key:
+    //    "nvapi-"   → NVIDIA AI Foundation API (OpenAI-compatible)
+    //    "gsk_"     → Groq
+    //    "sk-"      → OpenAI / DeepSeek / OpenRouter (genérico)
+    //    otro       → se usa como Bearer token genérico (OpenAI-compatible)
     // ═══════════════════════════════════════════════════════════════════════════
     void MixCoachAudioProcessor::setApiKey(const juce::String& apiKey)
     {
@@ -856,14 +1060,55 @@ namespace mixcoach {
         apiKey_ = apiKey;
 
         if (llmClient_ != nullptr) {
-            auto config   = llmClient_->getConfig();
-            config.apiKey = apiKey;
-            llmClient_->setConfig(config);
+            // ─── Detectar proveedor según prefijo de la API key ────────────────
+            juce::String lowerKey = apiKey.trim().toLowerCase();
+
+            if (lowerKey.startsWith("nvapi-")) {
+                // NVIDIA AI Foundation API
+                auto nvConfig = LlmClient::makeNvidiaConfig(apiKey);
+                llmClient_->setConfig(nvConfig);
+                LogHelper::writeToLog("[MixCoach] Proveedor NVIDIA configurado: "
+                                      + nvConfig.model + " @ " + nvConfig.endpointUrl);
+            }
+            else if (lowerKey.startsWith("gsk_")) {
+                // Groq
+                auto config   = llmClient_->getConfig();
+                config.apiKey = apiKey;
+                config.provider = LlmClient::Provider::OpenAICompatible;
+                config.endpointUrl = "https://api.groq.com/openai/v1";
+                config.model = "llama3-70b-8192";
+                config.timeoutMs = 15000;
+                llmClient_->setConfig(config);
+                LogHelper::writeToLog("[MixCoach] Proveedor Groq configurado");
+            }
+            else {
+                // Genérico OpenAI-compatible (OpenRouter, DeepSeek, etc.)
+                // Solo actualiza la key — el usuario debe haber configurado
+                // endpoint y modelo desde la UI o por defecto.
+                auto config   = llmClient_->getConfig();
+                config.apiKey = apiKey;
+                // Si el proveedor actual es Ollama, cambiar a OpenAI por defecto
+                if (config.provider == LlmClient::Provider::Ollama) {
+                    config.provider = LlmClient::Provider::OpenAICompatible;
+                    config.endpointUrl = "https://openrouter.ai/api/v1";
+                    config.model = "meta-llama/llama-3.2-3b-instruct:free";
+                    LogHelper::writeToLog("[MixCoach] API key genérica — cambiando a OpenAI-compatible");
+                }
+                llmClient_->setConfig(config);
+                LogHelper::writeToLog("[MixCoach] API key actualizada desde la UI");
+            }
+
             // Verificar disponibilidad de la API key inmediatamente.
             // El check es ligero (GET /models) y permite que el usuario sepa
             // si la key es valida sin esperar el background worker.
             llmClient_->checkAvailability();
-            LogHelper::writeToLog("[MixCoach] API key actualizada desde la UI");
+            bool available = llmClient_->isAvailable();
+
+            // Notificar a la UI para que muestre el proveedor + modelo actualizados
+            if (ollamaStatusCallback_) {
+                juce::String label = llmClient_->getProviderModelLabel();
+                ollamaStatusCallback_(available, label);
+            }
         }
         else {
             logMessage("[MixCoach] API key guardada para cuando LlmClient se inicialice");
@@ -871,7 +1116,8 @@ namespace mixcoach {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  retryOllamaConnection — Re-intenta conectar con Ollama
+    //  retryOllamaConnection — Re-intenta conectar con el proveedor LLM actual
+    //  Notifica a la UI con el nombre del proveedor + modelo en formato legible.
     // ═══════════════════════════════════════════════════════════════════════════
     void MixCoachAudioProcessor::retryOllamaConnection()
     {
@@ -879,15 +1125,16 @@ namespace mixcoach {
             llmClient_->checkAvailability();
             bool available = llmClient_->isAvailable();
 
-            // Notificar a la UI
+            // Notificar a la UI con display name del proveedor + modelo
             if (ollamaStatusCallback_) {
                 juce::MessageManager::callAsync([this, available]() {
-                    auto config = llmClient_->getConfig();
-                    ollamaStatusCallback_(available, config.model);
+                    juce::String label = llmClient_->getProviderModelLabel();
+                    ollamaStatusCallback_(available, label);
                 });
             }
 
-            LogHelper::writeToLog("[MixCoach] Ollama retry: " + juce::String(available ? "conectado" : "desconectado"));
+            LogHelper::writeToLog("[MixCoach] LLM retry: " + juce::String(available ? "conectado" : "desconectado")
+                                  + " | " + llmClient_->getProviderModelLabel());
         }
     }
 
@@ -897,6 +1144,16 @@ namespace mixcoach {
     bool MixCoachAudioProcessor::isLlmAvailable() const noexcept
     {
         return llmClient_ != nullptr && llmClient_->isAvailable();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  getLlmProviderModelLabel — Label "Proveedor: Modelo" para la UI
+    // ═══════════════════════════════════════════════════════════════════════════
+    juce::String MixCoachAudioProcessor::getLlmProviderModelLabel() const noexcept
+    {
+        if (llmClient_ != nullptr)
+            return llmClient_->getProviderModelLabel();
+        return {};
     }
 
 } // namespace mixcoach

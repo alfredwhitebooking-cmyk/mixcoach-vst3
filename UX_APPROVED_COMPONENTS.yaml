@@ -1,0 +1,513 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  UX_APPROVED_COMPONENTS.yaml — Registro de componentes congelados
+#
+#  FASE 0: CONGELAR EL DESARROLLO
+#  No agregar más features, analizadores, métricas o ventanas
+#  sin aprobación UX explícita.
+#
+#  CUALQUIER archivo nuevo en Source/MixCoach/UI/ que NO esté
+#  registrado aquí será BLOQUEADO por el CI.
+#
+#  Cómo aprobar un nuevo componente:
+#    1. Agregar entrada aquí con:
+#       - name:     Nombre del componente
+#       - path:     Ruta relativa (shorthand File.h/.cpp)
+#       - type:     ui_component | analyzer | meter | panel | tool | utility
+#       - approved: Fecha de aprobación
+#       - by:       Quién aprobó
+#       - reason:   Por qué es necesario (justificación UX)
+#    2. Incluir este archivo en el commit
+#
+#  Versión: 1.0 | Última actualización: 4 julio 2026
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── SHELL & NAVEGACIÓN ──────────────────────────────────────────────────
+# Componentes del shell principal, sidebar y navegación
+
+- name: NavigationShell
+  path: Source/MixCoach/UI/NavigationShell.h/.cpp
+  type: shell
+  approved: 2026-06-23
+  by: initial
+  reason: Shell principal con sidebar + crossfade. ÚNICO navegador del plugin.
+
+- name: SidebarComponent
+  path: Source/MixCoach/UI/SidebarComponent.h/.cpp
+  type: shell
+  approved: 2026-06-23
+  by: initial
+  reason: Sidebar lateral con 7 secciones de navegación.
+
+- name: TabBarComponent
+  path: Source/MixCoach/UI/TabBarComponent.h/.cpp
+  type: shell
+  approved: 2026-06-23
+  by: initial
+  reason: 3 tabs (Coach/Tools/Session) con locking progresivo.
+
+- name: CoachRoomState
+  path: Source/MixCoach/UI/CoachRoomState.h
+  type: shell
+  approved: 2026-06-23
+  by: initial
+  reason: 14 estados de progressive disclosure.
+
+# ─── DASHBOARD ───────────────────────────────────────────────────────────
+
+- name: DashboardScreen
+  path: Source/MixCoach/UI/DashboardScreen.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Pantalla principal de Dashboard con 4 estados y header de sesión.
+
+- name: NextStepComponent
+  path: Source/MixCoach/UI/NextStepComponent.h/.cpp
+  type: component
+  approved: 2026-06-23
+  by: initial
+  reason: Card de próximo paso con prioridades.
+
+- name: RefinementHeroComponent
+  path: Source/MixCoach/UI/RefinementHeroComponent.h/.cpp
+  type: component
+  approved: 2026-06-23
+  by: initial
+  reason: Hero visual de refinamiento artístico con 5 scores.
+
+# ─── CHAT ────────────────────────────────────────────────────────────────
+
+- name: CoachChatComponent
+  path: Source/MixCoach/UI/CoachChatComponent.h/.cpp
+  type: core
+  approved: 2026-06-01
+  by: initial
+  reason: Chat principal — centro de la experiencia UX 2.0.
+
+- name: ChatMessagesComponent
+  path: Source/MixCoach/UI/ChatMessagesComponent.h/.cpp
+  type: component
+  approved: 2026-06-23
+  by: initial
+  reason: Contenedor de burbujas de chat con glassmorphism.
+
+- name: RobotAvatarComponent
+  path: Source/MixCoach/UI/RobotAvatarComponent.h/.cpp
+  type: component
+  approved: 2026-06-01
+  by: initial
+  reason: Avatar del Coach siempre visible.
+
+- name: RobotAvatarImage
+  path: Source/MixCoach/UI/RobotAvatarImage.h/.cpp
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Implementación de renderizado del avatar.
+
+# ─── ANALIZADORES ESPECTRALES ────────────────────────────────────────────
+
+- name: SpectrographComponent
+  path: Source/MixCoach/UI/SpectrographComponent.h/.cpp
+  type: analyzer
+  approved: 2026-06-01
+  by: initial
+  reason: Espectrograma FFT en tiempo real.
+
+- name: SpectrographDrawing
+  path: Source/MixCoach/UI/SpectrographDrawing.cpp
+  type: analyzer
+  approved: 2026-06-01
+  by: initial
+  reason: Renderizado del spectrograma.
+
+- name: SpectrographProcessor
+  path: Source/MixCoach/UI/SpectrographProcessor.cpp
+  type: analyzer
+  approved: 2026-06-01
+  by: initial
+  reason: Procesamiento FFT para el spectrograma.
+
+- name: VectorscopeComponent
+  path: Source/MixCoach/UI/VectorscopeComponent.h/.cpp
+  type: analyzer
+  approved: 2026-06-01
+  by: initial
+  reason: Vectorscopio estéreo para visualización de fase.
+
+- name: PhaseCorrelationMeter
+  path: Source/MixCoach/UI/PhaseCorrelationMeter.h/.cpp
+  type: meter
+  approved: 2026-06-23
+  by: initial
+  reason: Barra de correlación de fase con zonas de color.
+
+- name: PhaseScopePanel
+  path: Source/MixCoach/UI/PhaseScopePanel.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Panel de fase con correlation gauge + crest gauge.
+
+- name: StereoWidthMeter
+  path: Source/MixCoach/UI/StereoWidthMeter.h/.cpp
+  type: meter
+  approved: 2026-06-23
+  by: initial
+  reason: Barra de ancho estéreo con marker animado.
+
+- name: CrestHistogram
+  path: Source/MixCoach/UI/CrestHistogram.h/.cpp
+  type: analyzer
+  approved: 2026-06-23
+  by: initial
+  reason: Histograma de crest factor por banda espectral.
+
+- name: CrestPanel
+  path: Source/MixCoach/UI/CrestPanel.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Panel de crest factor con barras + average.
+
+- name: AudioDNAComponent
+  path: Source/MixCoach/UI/AudioDNAComponent.h/.cpp
+  type: analyzer
+  approved: 2026-06-23
+  by: initial
+  reason: Visualización tipo ADN del espectro de audio.
+
+- name: LUFSMeter
+  path: Source/MixCoach/UI/LUFSMeter.h/.cpp
+  type: meter
+  approved: 2026-06-01
+  by: initial
+  reason: Medidor de loudness LUFS.
+
+- name: MasterMeterPanel
+  path: Source/MixCoach/UI/MasterMeterPanel.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Panel de medidores maestros.
+
+# ─── MEDIDORES (VU, Gradient, etc) ───────────────────────────────────────
+
+- name: AnalogVUMeter
+  path: Source/MixCoach/UI/AnalogVUMeter.h/.cpp
+  type: meter
+  approved: 2026-06-23
+  by: initial
+  reason: VU meter analógico individual con aguja.
+
+- name: VintageVUMeters
+  path: Source/MixCoach/UI/VintageVUMeters.h/.cpp
+  type: meter
+  approved: 2026-06-23
+  by: initial
+  reason: 4 VU meters analógicos estilo Neve.
+
+- name: VerticalGradientMeter
+  path: Source/MixCoach/UI/VerticalGradientMeter.h/.cpp
+  type: meter
+  approved: 2026-06-23
+  by: initial
+  reason: Meter vertical con gradiente de color.
+
+- name: MeterCard
+  path: Source/MixCoach/UI/MeterCard.h/.cpp
+  type: component
+  approved: 2026-06-23
+  by: initial
+  reason: Card individual de meter reutilizable.
+
+- name: MeterPanel
+  path: Source/MixCoach/UI/MeterPanel.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Panel contenedor de MeterCards en grid.
+
+- name: VUMetersPanel
+  path: Source/MixCoach/UI/VUMetersPanel.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Panel de VU meters con selector de tipo.
+
+- name: StereoVUMeter
+  path: Source/MixCoach/UI/StereoVUMeter.h/.cpp
+  type: meter
+  approved: 2026-06-01
+  by: initial
+  reason: VU meters estéreo con gradiente.
+
+- name: SmoothValue
+  path: Source/MixCoach/UI/SmoothValue.h/.cpp
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Suavizado exponencial para meters.
+
+# ─── REFERENCIA ──────────────────────────────────────────────────────────
+
+- name: ReferencePanelComponent
+  path: Source/MixCoach/UI/ReferencePanelComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Pistas de referencia A/B con drag & drop.
+
+- name: ReferenceVisualPanel
+  path: Source/MixCoach/UI/ReferenceVisualPanel.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Panel visual de referencia con 6 regiones espectrales.
+
+- name: ReferenceMatchPanel
+  path: Source/MixCoach/UI/ReferenceMatchPanel.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Panel de match espectral con similitud global.
+
+- name: ReferencePanelIcons
+  path: Source/MixCoach/UI/ReferencePanelIcons.h
+  type: utility
+  approved: 2026-06-23
+  by: initial
+  reason: Iconos SVG/draw para panel de referencia.
+
+- name: DropZoneComponent
+  path: Source/MixCoach/UI/DropZoneComponent.h/.cpp
+  type: component
+  approved: 2026-06-23
+  by: initial
+  reason: Zona de drop para archivos de audio.
+
+- name: RefToggle
+  path: Source/MixCoach/UI/RefToggle.h/.cpp
+  type: utility
+  approved: 2026-06-23
+  by: initial
+  reason: Toggle switch para modos reference-driven.
+
+# ─── MIX MAP ─────────────────────────────────────────────────────────────
+
+- name: MixMapComponent
+  path: Source/MixCoach/UI/MixMapComponent.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Árbol jerárquico de la sesión con routing visual.
+
+# ─── PROGRESO Y REPORTE ─────────────────────────────────────────────────
+
+- name: ProgressScreen
+  path: Source/MixCoach/UI/ProgressScreen.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Timeline gamificado tipo Duolingo con hitos.
+
+- name: EndOfSessionComponent
+  path: Source/MixCoach/UI/EndOfSessionComponent.h/.cpp
+  type: panel
+  approved: 2026-06-23
+  by: initial
+  reason: Reporte final de sesión con MixScore breakdown.
+
+# ─── ANALYZERS PANEL ─────────────────────────────────────────────────────
+
+- name: AnalyzersPanelComponent
+  path: Source/MixCoach/UI/AnalyzersPanelComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Panel de analizadores (Tab 2 original).
+
+- name: AnalyzersPanelDrawing
+  path: Source/MixCoach/UI/AnalyzersPanelDrawing.h
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Funciones de dibujo para analizadores.
+
+- name: ProfessionalAnalyzersComponent
+  path: Source/MixCoach/UI/ProfessionalAnalyzersComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Panel de analizadores profesionales (Tab 3 original).
+
+# ─── MESSENGER / TRACKS ─────────────────────────────────────────────────
+
+- name: MessengerListComponent
+  path: Source/MixCoach/UI/MessengerListComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Lista de Messengers con slots y colores.
+
+- name: MessengerListDrawing
+  path: Source/MixCoach/UI/MessengerListDrawing.cpp
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Renderizado de la lista de Messengers.
+
+- name: MessengerListAdvice
+  path: Source/MixCoach/UI/MessengerListAdvice.h/.cpp
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Sistema de advice para Messengers.
+
+- name: MessengerListRoles
+  path: Source/MixCoach/UI/MessengerListRoles.cpp
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Asignación de roles a Messengers.
+
+- name: MessengerListTelemetry
+  path: Source/MixCoach/UI/MessengerListTelemetry.cpp
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Telemetría de Messengers.
+
+- name: TrackDashboardComponent
+  path: Source/MixCoach/UI/TrackDashboardComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Dashboard de pistas con información de salud.
+
+- name: PlaylistComponent
+  path: Source/MixCoach/UI/PlaylistComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Playlist de tracks agrupada por buses.
+
+- name: VirtualBusesComponent
+  path: Source/MixCoach/UI/VirtualBusesComponent.h/.cpp
+  type: panel
+  approved: 2026-06-01
+  by: initial
+  reason: Gestión de buses virtuales.
+
+# ─── UTILITY ─────────────────────────────────────────────────────────────
+
+- name: MixCoachTheme
+  path: Source/MixCoach/UI/MixCoachTheme.h
+  type: utility
+  approved: 2026-06-01
+  by: initial
+  reason: Tema visual del proyecto. TODOS los componentes lo usan.
+
+- name: DividerBar
+  path: Source/MixCoach/UI/DividerBar.h
+  type: utility
+  approved: 2026-06-23
+  by: initial
+  reason: Barra divisoria con estilo glassmorphism.
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ENGINE — Componentes del motor (no UI, pero se monitorean)
+# ═══════════════════════════════════════════════════════════════════════════
+
+engine_components:
+  - name: CoachEngine
+    path: Source/MixCoach/engine/CoachEngine.h/.cpp
+    type: core
+    approved: 2026-06-01
+    by: initial
+    reason: Motor principal de mentoría.
+
+  - name: ExperienceManager
+    path: Source/MixCoach/engine/ExperienceManager.h/.cpp
+    type: core
+    approved: 2026-06-23
+    by: initial
+    reason: Orquestador de experiencia UX 2.0 Fase 9.
+
+  - name: PanelRevealManager
+    path: Source/MixCoach/engine/PanelRevealManager.h/.cpp
+    type: core
+    approved: 2026-06-23
+    by: initial
+    reason: Gestor de revelación de paneles desde el chat UX 2.0 Fase 2.
+
+  - name: LlmCommandInterpreter
+    path: Source/MixCoach/engine/LlmCommandInterpreter.h/.cpp
+    type: core
+    approved: 2026-06-23
+    by: initial
+    reason: Intérprete de comandos UI del LLM UX 2.0 Fase 10.
+
+  - name: MixPriorityEngine
+    path: Source/MixCoach/engine/MixPriorityEngine.h/.cpp
+    type: core
+    approved: 2026-06-01
+    by: initial
+    reason: Motor de priorización de issues.
+
+  - name: CoachingNarrativeTypes
+    path: Source/MixCoach/engine/CoachingNarrativeTypes.h
+    type: utility
+    approved: 2026-07-19
+    by: refactor
+    reason: Tipos compartidos (NarrativeStep, EvidenceView, EvidenceConfig, NarrativeTiming) extraídos del Director para reducir acoplamiento.
+
+  - name: EvidenceViewMapper
+    path: Source/MixCoach/engine/EvidenceViewMapper.h/.cpp
+    type: utility
+    approved: 2026-07-20
+    by: f4
+    reason: Mapeo estructural TrackProblemData → EvidenceConfig (EvidenceView + highlight + panelTitle). Reemplaza keyword matching de PanelRevealManager por binding tipado desde los datos del problema.
+
+  - name: SessionProgression
+    path: Source/MixCoach/engine/SessionProgression.h/.cpp
+    type: core
+    approved: 2026-06-23
+    by: initial
+    reason: Progresión de sesión para progressive disclosure.
+
+  - name: PhaseManager
+    path: Source/MixCoach/engine/PhaseManager.h/.cpp
+    type: core
+    approved: 2026-06-23
+    by: initial
+    reason: Gestión de fases de sesión.
+
+# ─── AI ──────────────────────────────────────────────────────────────────
+
+ai_components:
+  - name: AiCoachAdapter
+    path: Source/MixCoach/ai/AiCoachAdapter.h/.cpp
+    type: core
+    approved: 2026-06-01
+    by: initial
+    reason: Adaptador del LLM para el Coach.
+
+  - name: LlmClient
+    path: Source/MixCoach/ai/LlmClient.h/.cpp
+    type: core
+    approved: 2026-06-01
+    by: initial
+    reason: Cliente HTTP para comunicación con LLM.
+
+  - name: LlmChatSession
+    path: Source/MixCoach/ai/LlmChatSession.h/.cpp
+    type: core
+    approved: 2026-06-01
+    by: initial
+    reason: Gestión de sesiones de chat con el LLM.
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  TESTS — Siempre permitidos (exentos del feature freeze)
+# ═══════════════════════════════════════════════════════════════════════════
+# NOTA: tests/ está exento del feature freeze. Siempre se pueden agregar tests.

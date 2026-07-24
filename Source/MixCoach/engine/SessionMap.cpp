@@ -132,10 +132,10 @@ namespace mixcoach {
                 // Rol
                 if (entry.roleName.isNotEmpty()) map += "\xE2\x97\x8F " + entry.roleName;
                 else
-                    map += "\xE2\x97\x8B Unknown";
+                    map += "[EMPTY] Unknown";
 
                 // Nombre de pista (si no está duplicado en el rol)
-                if (!entry.trackName.containsIgnoreCase(entry.roleName)) map += "  \xE2\x86\x92 " + entry.trackName;
+                if (!entry.trackName.containsIgnoreCase(entry.roleName)) map += "  [RIGHT] " + entry.trackName;
 
                 // Indicador de nivel
                 if (entry.hasSignal) {
@@ -164,7 +164,7 @@ namespace mixcoach {
            "\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90"
            "\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90"
            "\xE2\x95\x90\xE2\x95\x90\n"
-           "\xF0\x9F\x93\x8A " + juce::String(totalShown) + " tracks organizados. "
+           "[CHART] " + juce::String(totalShown) + " tracks organizados. "
            "Usa **/map** para refrescar o **/next** para continuar.";
 
         return map;

@@ -360,7 +360,7 @@ namespace mixcoach {
             return juce::String(def);
         };
 
-        dp.valid              = false;
+        dp.valid              = readDbl("valid", 0.0) > 0.5;
         dp.timestampUs        = 0;
         dp.referenceName      = readStr("referenceName", "");
         dp.referencePath      = readStr("referencePath", "");

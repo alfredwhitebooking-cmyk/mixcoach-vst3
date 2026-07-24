@@ -22,7 +22,10 @@
 #include "../ai/AiCoachAdapter.h"
 #include "../audio/AudioAnalyzer.h"
 #include "../ui/MixCoachTheme.h"
+#include "../ui/CoachRoomState.h"
 #include "ReferenceAudioPlayer.h"
+#include "CelebrationChime.h"
+#include "MixCoachBgService.h"
 
 namespace mixcoach {
 
@@ -74,6 +77,7 @@ namespace mixcoach {
         AiCoachAdapter* getAiCoachAdapter() noexcept { return aiCoachAdapter_.get(); }
 
         ReferenceAudioPlayer& getRefPlayer() noexcept { return refPlayer_; }
+        CelebrationChime& getCelebrationChime() noexcept { return celebrationChime_; }
 
         // ─── Persistencia de referencias (cache en processor, siempre disponible) ─
         void setPendingReferencePaths(const std::vector<juce::String>& files, const std::vector<juce::String>& urls)
@@ -127,12 +131,55 @@ namespace mixcoach {
         /** Retorna true si el LlmClient est\xC3\xA1 disponible. */
         bool isLlmAvailable() const noexcept;
 
+        /** Retorna el label "Proveedor: Modelo" para mostrar en la UI.
+            Ej: "NVIDIA: Llama 3.1 70B" o "Ollama: Qwen 2.5 7B".
+            Vac\xC3\xADo si LlmClient no est\xC3\xA1 inicializado. */
+        juce::String getLlmProviderModelLabel() const noexcept;
+
         /** Puente de diagnóstico para overlay visual en analizadores. */
         DiagnosticBridge diagnosticBridge_;
 
         [[nodiscard]] DiagnosticBridge& getDiagnosticBridge() noexcept { return diagnosticBridge_; }
 
+        /** Access the background analysis service (lives in processor, not in editor). */
+        MixCoachBgService& getBgService() noexcept { return bgService_; }
+
+        /** Access the session discovery mechanism (GUID negotiation with Messengers).
+            The brain publishes its GUID here; sensors read it to connect to the right session. */
+        SessionDiscovery& getSessionDiscovery() noexcept { return sessionDiscovery_; }
+
+        /** Retorna el GUID de sesión activo, o vacío si aún no se generó. */
+        [[nodiscard]] const juce::String& getSessionGUID() const noexcept { return sessionGUID_; }
+
+        /** Read host transport information (BPM, play/stop, position, time sig).
+            Returns empty struct if no playhead or no transport info available.
+            Thread-safe: called from message thread (timer). */
+        struct TransportInfo
+        {
+            bool valid = false;
+            bool isPlaying = false;
+            bool isRecording = false;
+            bool isLooping = false;         // ═══ V2b: true si el DAW está en modo loop ═══
+            double bpm = 120.0;
+            double timeInSeconds = 0.0;
+            int64_t timeInSamples = 0;
+            int timeSigNumerator = 4;
+            int timeSigDenominator = 4;
+            double ppqPosition = 0.0;
+            double ppqPositionOfLastBarStart = 0.0; // ═══ V2b: PPQ del último compás iniciado ═══
+        };
+
+        TransportInfo readTransportInfo() const noexcept;
+
         juce::ChangeBroadcaster sharedDataChangeBroadcaster_;
+
+        // ═══ V4: UI state persistence (CoachRoomState + UX flags + userName) ═══
+        void setSavedCoachRoomState(CoachRoomState s) noexcept { savedCoachRoomState_ = s; }
+        [[nodiscard]] CoachRoomState getSavedCoachRoomState() const noexcept { return savedCoachRoomState_; }
+        void setSavedUIFlags(uint32_t f) noexcept { savedUIFlags_ = f; }
+        [[nodiscard]] uint32_t getSavedUIFlags() const noexcept { return savedUIFlags_; }
+        void setSavedUserName(const juce::String& n) noexcept { savedUserName_ = n; }
+        [[nodiscard]] const juce::String& getSavedUserName() const noexcept { return savedUserName_; }
 
     private:
         SharedData* sharedData_ = nullptr;
@@ -142,6 +189,13 @@ namespace mixcoach {
         std::unique_ptr<AiCoachAdapter> aiCoachAdapter_;
         std::unique_ptr<LlmClient> llmClient_;
         ReferenceAudioPlayer refPlayer_;
+        CelebrationChime celebrationChime_;
+        MixCoachBgService bgService_;
+
+        // ─── Session isolation (GUID negociado vía SessionDiscovery) ───────
+        SessionDiscovery sessionDiscovery_;
+        juce::String sessionGUID_;
+        bool sessionInitialized_{false};
 
         mutable std::unique_ptr<juce::FileOutputStream> logStream_;
         void logMessage(const juce::String& msg) const;
@@ -161,6 +215,30 @@ namespace mixcoach {
 
         // ─── Callback para actualizar la UI del estado de Ollama ────────────
         std::function<void(bool connected, const juce::String& modelName)> ollamaStatusCallback_;
+
+        // ═══ V4: UI state persistence (CoachRoomState + UX flags) ═══════════
+        /** Almacena el último CoachRoomState conocido para restaurarlo si el editor se recrea.
+            Se actualiza desde NavigationShell::setCoachRoomState(). */
+        CoachRoomState savedCoachRoomState_{CoachRoomState::Welcome};
+
+        /** Packed bitfield de flags UI para restauración.
+            bit 0: welcomeMode
+            bit 1: showModeCards
+            bit 2: showGenreCards
+            bit 3: showSessionPrepCard
+            bit 4: inlineReferenceDropZone
+            bit 5: inlineMessengerStatus
+            bit 6: showSuggestionsOverride
+            bit 7: showCoachingGuide
+            bit 8: showTrackProblemCard
+            bit 9: showMixMap
+            Se actualiza desde NavigationShell cuando cambia algún flag. */
+        uint32_t savedUIFlags_{0};
+
+        /** Nombre del ingeniero guardado para restauración entre sesiones.
+            Se persiste en v4 para que el usuario no tenga que re-ingresarlo. */
+        juce::String savedUserName_;
+
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MixCoachAudioProcessor)
     };

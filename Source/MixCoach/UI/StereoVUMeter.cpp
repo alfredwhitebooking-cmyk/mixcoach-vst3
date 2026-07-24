@@ -4,7 +4,7 @@ namespace mixcoach {
 
     StereoVUMeter::StereoVUMeter()
     {
-        titleLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x93\x88 LEVEL METERS (RMS / PEAK)"),
+        titleLabel_.setText(juce::CharPointer_UTF8("[TREND] LEVEL METERS (RMS / PEAK)"),
                             juce::dontSendNotification);
         titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
         titleLabel_.setJustificationType(juce::Justification::centredLeft);

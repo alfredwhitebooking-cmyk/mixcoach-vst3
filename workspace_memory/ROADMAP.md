@@ -4,8 +4,8 @@
 > Este documento define el norte del producto y los sprints completados/activos.
 > Cualquier feature, UI o cambio debe contrastarse contra este roadmap y el plan 10/10.
 >
-> **Última actualización:** 23 junio 2026
-> **Versión:** 2.1
+> **Última actualización:** Julio 2026
+> **Versión:** 2.2
 
 ---
 
@@ -392,35 +392,111 @@ Vocal:
 
 ---
 
-### 📌 Prioridad Siguiente Sesión
+## 🏃 Bloque Activo: Sprints UX — De 65% → Experiencia Objetivo
+
+> **Ver plan detallado:** `workspace_memory/UX_VISION_PLAN.md`
+>
+> Evaluación de brecha realizada en Julio 2026: el motor de análisis está al ~80%,
+> la experiencia UX visual al ~55%. Los 4 Sprints UX cierran esa brecha.
+>
+> **Descubrimiento crítico:** La arquitectura de flujo (CoachRoomState 14 fases,
+> NavigationShell transitions, setSuggestions) YA EXISTE. Solo faltan los componentes
+> visuales que hacen sentir la experiencia como las imágenes de referencia del fundador.
+
+### Sprint UX-1 — Pantalla de Selección de Modo 🔴 SIGUIENTE
+
+**Objetivo:** La pantalla "\u00bfQu\u00e9 vamos a hacer hoy?" muestra tarjetas grandes (Mezclar / Masterizar).
+
+**Estado:** \u274c Pendiente
+
+| Tarea | Archivo | Estado |
+|:------|:--------|:------:|
+| Crear `ModeSelectionCard.h/.cpp` | `Source/MixCoach/UI/` [NEW] | \u274c |
+| Conectar en `CoachChatComponent` cuando estado == Intention | `CoachChatComponent.cpp` | \u274c |
+| \u00cdconos SVG embebidos para tarjetas | `Source/MixCoach/UI/` [NEW] | \u274c |
+
+**Criterio:** Usuario ve tarjetas grandes al salir del Welcome, las selecciona con animaci\u00f3n.
+
+---
+
+### Sprint UX-2 — Chat-First con Referencia + Barra 0\u2192100% 🔴 SIGUIENTE
+
+**Objetivo:** Coach pide la referencia dentro del chat (no en panel separado). Barra animada al analizar.
+
+**Estado:** \u274c Pendiente
+
+| Tarea | Archivo | Estado |
+|:------|:--------|:------:|
+| Crear `ReferenceOnboardingCard.h/.cpp` | `Source/MixCoach/UI/` [NEW] | \u274c |
+| Crear `ReferenceAnalysisProgressCard.h/.cpp` | `Source/MixCoach/UI/` [NEW] | \u274c |
+| Agregar `onProgress` callback a `ReferenceAnalyzer` | `Source/MixCoach/audio/ReferenceAnalyzer.h/.cpp` | \u274c |
+| Soporte inline cards en `ChatMessagesComponent` | `Source/MixCoach/UI/ChatMessagesComponent.h/.cpp` | \u274c |
+
+**Criterio:** Drag-drop de archivo → barra 0\u2192100% con animaci\u00f3n fluida → coach avanza.
+
+---
+
+### Sprint UX-3 — MixMap con Panel de Detalle Lateral 🔴 SIGUIENTE
+
+**Objetivo:** Clic en un nodo del MixMap → panel lateral con nivel, panorama, EQ, ruta de se\u00f1al.
+
+**Estado:** \u274c Pendiente
+
+| Tarea | Archivo | Estado |
+|:------|:--------|:------:|
+| Crear `MixMapDetailPanel.h/.cpp` | `Source/MixCoach/UI/` [NEW] | \u274c |
+| Switch Mapa/Lista en header de MixMap | `Source/MixCoach/UI/MixMapComponent.h/.cpp` | \u274c |
+| \u00cdconos por TrackRole en nodos del \u00e1rbol | `Source/MixCoach/UI/MixMapComponent.cpp` | \u274c |
+| Conectar onTrackSelected → MixMapDetailPanel | `NavigationShell.cpp` o `CoachChatComponent.cpp` | \u274c |
+
+**Criterio:** Panel lateral visible con datos en tiempo real. Switch Mapa/Lista funciona.
+
+---
+
+### Sprint UX-4 — TrackProblemCard + Quick-Reply Buttons 🔴 SIGUIENTE
+
+**Objetivo:** Coach agrupa problemas por familia en tarjetas ricas. Botones de quick-reply en el chat.
+
+**Estado:** \u274c Pendiente
+
+| Tarea | Archivo | Estado |
+|:------|:--------|:------:|
+| Crear `TrackProblemCard.h/.cpp` | `Source/MixCoach/UI/` [NEW] | \u274c |
+| Crear `QuickReplyBar.h/.cpp` | `Source/MixCoach/UI/` [NEW] | \u274c |
+| Soporte group cards en `ChatMessagesComponent` | `Source/MixCoach/UI/ChatMessagesComponent.h/.cpp` | \u274c |
+| Agrupar por bus en CoachEngine antes de postear al chat | `Source/MixCoach/engine/CoachEngine.cpp` | \u274c |
+
+**Criterio:** Tarjetas agrupadas por familia. Quick-reply avanza la conversaci\u00f3n.
+
+---
+
+**Timeline total:** ~3 semanas → experiencia objetivo ~90%.
+**Ver especificaciones completas:** `workspace_memory/UX_VISION_PLAN.md`
+
+---
+
+## 📌 Prioridad Siguiente Sesión
 
 ```
-🥇 Sprint 7 — TrackFeed Inteligente
-    Mostrar 🟢🟡🔴 por pista en la UI con TrackAdvice consolidado
-    Banner con top issues + clic → detalle del advice
+🥇 Sprint UX-1 — ModeSelectionCard (pantalla de selección de modo)
+    Crear ModeSelectionCard.h/.cpp con las 2 tarjetas visuales
+    Conectar en CoachChatComponent cuando estado == Intention
 
-🥈 LLM Mentor v2
-    Dar al LLM el vector completo de TrackAdvice[] (gain + dynamics + tonal)
-    para que responda como ingeniero: "Juan, empezaría por la voz..."
+🥈 Sprint 7 (Intelligence) — Conectar MixPriorityEngine al LLM
+    AiCoachAdapterPrompts.cpp — tarea 1.3 de PLAN_10_10.md
 
-🥉 Fusión: analyzeGainStagingReal() → analyzeTrackGain()
-    ✅ COMPLETED — mensajes de clipping ya muestran target del rol
-
-④ TrackGainTonalAdvice unificado (opcional)
-    Fusionar los 3 advices (Gain/Dynamics/Tonal) en TrackAdvice único
+🥉 Sprint UX-2 — ReferenceOnboardingCard + barra 0→100%
+    (después de UX-1)
 ```
 
-**Logros de esta sesión (22 junio 2026):**
-- ✅ Sprint 6A — Track Gain Intelligence (analyzeTrackGain + targets por rol)
-- ✅ Fusión gainStaging → analyzeTrackGain (mensajes con target del rol + fix build error)
-- ✅ Sprint 6B — Track Dynamics Intelligence (analyzeTrackDynamics + crest targets)
-- ✅ Sprint 6C — Track Tonal Intelligence (analyzeTrackTonal + 30→6 bandas + spectralOffset)
-- ✅ Integración TrackFeedCore: gain + dynamics + tonal events en banner y health dots
+**Logros de la sesión Julio 2026:**
+- \u2705 Gap analysis completo (65% → experiencia objetivo)
+- \u2705 UX_VISION_PLAN.md creado y registrado en AI_CONTEXT.md
+- \u2705 ROADMAP.md actualizado con los 4 Sprints UX
 
 **Ver archivos:**
-- `Source/MixCoach/engine/CoachEngine.cpp/h` — motor de análisis
-- `Source/MixCoach/engine/TrackRole.h` — ExpectedProfile con targets por rol
-- `Source/MixCoach/UI/MessengerListAdvice.cpp` — conexión con UI
+- `workspace_memory/UX_VISION_PLAN.md` — plan completo con especificaciones técnicas
+- `workspace_memory/PLAN_10_10.md` — plan maestro 10/10
 
 ---
 

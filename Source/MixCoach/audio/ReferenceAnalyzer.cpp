@@ -26,7 +26,7 @@ namespace mixcoach {
         juce::AudioFormatManager formatMgr;
         formatMgr.registerBasicFormats();
 
-        auto* reader = formatMgr.createReaderFor(file);
+        std::unique_ptr<juce::AudioFormatReader> reader(formatMgr.createReaderFor(file));
         if (reader == nullptr) {
             LogHelper::writeToLog("[ReferenceAnalyzer] No se pudo leer: " + filePath + " (formato no soportado)");
             return false;
@@ -39,23 +39,24 @@ namespace mixcoach {
 
         // ─── Leer TODO el archivo en un buffer ─────────────────────────────────
         // Limitamos a 60 segundos para evitar RAM excesiva en referencias largas
-        constexpr int64_t kMaxReferenceSamples = 60 * 44100; // ~60s a 44.1kHz
+        constexpr int64_t kMaxReferenceSamples = 10LL * 60 * 44100; // ~10 min a 44.1kHz (~26M samples)
         int64_t samplesToRead                  = std::min<int64_t>(totalSamples, kMaxReferenceSamples);
 
         audioBuffer_.clear();
         audioBuffer_.setSize(static_cast<int>(numChannels), static_cast<int>(samplesToRead));
 
         reader->read(&audioBuffer_, 0, static_cast<int>(samplesToRead), 0, true, true);
-        delete reader;
+        // BUG #3: reader es unique_ptr, se destruye automáticamente al salir del ámbito            if (onProgress) onProgress(0.10f);
 
-        // ─── Analizar el buffer completo ───────────────────────────────────────
-        analyzeAudioBuffer(audioBuffer_, sampleRate_);
+            // ─── Analizar el buffer completo ───────────────────────────────────────
+            analyzeAudioBuffer(audioBuffer_, sampleRate_);
 
-        loaded_ = true;
+            loaded_ = true;
+            if (onProgress) onProgress(1.0f);
 
-        LogHelper::writeToLog("[ReferenceAnalyzer] Referencia cargada: " + fileName_ + " ("
-                              + juce::String(sampleRate_ / 1000) + " kHz, " + juce::String(duration_, 1) + "s, "
-                              + juce::String(numChannels) + " canales)");
+            LogHelper::writeToLog("[ReferenceAnalyzer] Referencia cargada: " + fileName_ + " ("
+                                  + juce::String(sampleRate_ / 1000) + " kHz, " + juce::String(duration_, 1) + "s, "
+                                  + juce::String(numChannels) + " canales)");
 
         return true;
     }
@@ -82,8 +83,8 @@ namespace mixcoach {
         sampleRate_ = static_cast<int>(sampleRate);
         duration_   = static_cast<double>(numSamples) / sampleRate;
 
-        // ─── Limitar a 60 segundos para evitar RAM excesiva ─────────────────────
-        constexpr int64_t kMaxReferenceSamples = 60 * 44100;
+        // ─── Limitar a ~10 min (~26M samples) para evitar RAM excesiva ────────
+        constexpr int64_t kMaxReferenceSamples = 10LL * 60 * 44100; // ~10 min (G2: igualado al async path)
         int64_t samplesToCopy                  = std::min<int64_t>(numSamples, kMaxReferenceSamples);
 
         audioBuffer_.clear();
@@ -171,10 +172,18 @@ namespace mixcoach {
             else {
                 loudness_.processBlock(buffer.getReadPointer(0, pos), buffer.getReadPointer(0, pos), thisBlock);
             }
+
+            // ─── Progreso: 0.30 (carga) → 0.60 (FFT en curso) ──────────────────
+            float readProgress = 0.30f + 0.30f * ((float)pos / (float)numSamples);
+            if (onProgress) onProgress(readProgress);
         }
+
+        if (onProgress) onProgress(0.60f);
 
         // ─── Calcular energías de banda desde el espectro final ────────────────
         computeBandEnergies();
+
+        if (onProgress) onProgress(0.80f);
 
         LogHelper::writeToLog(
             "[ReferenceAnalyzer] Análisis completado: "

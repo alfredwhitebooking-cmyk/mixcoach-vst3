@@ -7,6 +7,11 @@
 
 namespace mixcoach {
 
+    // Forward declarations
+    class SlotRegistry;
+    class SharedData;
+    struct CorrectionCardData;
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  CorrectionLearner — Aprende de las correcciones del usuario
     //
@@ -80,6 +85,30 @@ namespace mixcoach {
             Si el usuario ha corregido "snare" → "Clap" varias veces,
             devuelve un boost que hace que inferTrackRoleFromName() prefiera Clap
             cuando detecte "snare" en el nombre. */
+        // ═══ Transport window tracking (invalidate by section change) ═══════
+        /** Registra la posición del transporte cuando se propone una corrección.
+            Se llama desde CoachingNarrativeDirector::onOptionSelected() para
+            recordar en qué punto de la canción estábamos cuando recomendamos algo.
+            @param positionSec  Posición actual del transporte en segundos
+            @param bpm          Beats per minute actuales
+            @param tsNum        Time signature numerator (ej: 4)
+            @param tsDen        Time signature denominator (ej: 4) */
+        void startTransportWindow(double positionSec, double bpm, int tsNum, int tsDen) noexcept;
+
+        /** Verifica si el transporte se movió más de 2 compases desde startTransportWindow().
+            Si devuelve true, la verificación debe invalidarse porque la canción
+            cambió de sección y los datos anteriores ya no son representativos.
+            @param currentPositionSec  Posición actual del transporte
+            @param currentBpm          BPM actual (puede haber cambiado)
+            @param tsNum               Time signature numerator actual
+            @param tsDen               Time signature denominator actual
+            @return true si el salto > 2 compases, false si está dentro del rango */
+        [[nodiscard]] bool isSectionChanged(double currentPositionSec, double currentBpm,
+                                              int tsNum, int tsDen) const noexcept;
+
+        /** Retorna true si hay una ventana de transporte activa (se llamó startTransportWindow). */
+        [[nodiscard]] bool hasTransportWindow() const noexcept { return transportValid_; }
+
         [[nodiscard]] float getKeywordBoost(const juce::String& keyword, TrackRole candidateRole) const noexcept;
 
         /** Retorna el rol corregido más probable para un perfil espectral.
@@ -101,6 +130,57 @@ namespace mixcoach {
 
         [[nodiscard]] int getTotalCorrections() const noexcept;
 
+        /** Registra una corrección de mezcla (EQ, compresión, gain, etc.).
+            A diferencia de recordCorrection (que aprende roles), este método
+            trackea qué correcciones se aplicaron durante la sesión para
+            mejorar futuras recomendaciones. */
+        /** Verifica una corrección de mezcla: lee el valor actual del track,
+            compara contra el target, determina el resultado (Verified/Partial/Failed)
+            y actualiza CorrectionCardData.status, verifiedAfter, verifiedDelta y
+            feedbackMessage en el lugar.
+            @param data      Datos de la corrección (se modifica in-place)
+            @param registry  SlotRegistry para buscar el slot por nombre
+            @param shared    SharedData para leer TrackAudioResult
+            @param callback  Función opcional para leer TrackAudioResult específico */
+        void verifyMixCorrection(CorrectionCardData& data,
+                                  const SlotRegistry& registry,
+                                  const SharedData& shared,
+                                  std::function<float(int slotIndex, const juce::String& metric)> readValueCallback = nullptr);
+
+        void recordMixCorrection(const juce::String& trackName,
+                                  const juce::String& domain,
+                                  float beforeValue,
+                                  float afterValue);
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  ═══ V4b: Verify tracking — cuántas verificaciones se intentaron
+        //  y cuántas fueron invalidadas por cambio de sección. Esto alimenta
+        //  la métrica de confianza del reporte final.
+        // ═══════════════════════════════════════════════════════════════════
+
+        /** Registra un intento de verificación (llamado desde CoachingNarrativeDirector
+            antes de iniciar verify loop). */
+        void recordVerifyAttempt() noexcept { ++totalVerifyAttempts_; }
+
+        /** Registra una verificación invalidada por cambio de sección. */
+        void recordVerifyInvalidation() noexcept { ++verifyInvalidatedBySection_; }
+
+        /** Retorna el total de intentos de verificación en esta sesión. */
+        [[nodiscard]] int getTotalVerifyAttempts() const noexcept { return totalVerifyAttempts_; }
+
+        /** Retorna cuántas verificaciones fueron invalidadas por cambio de sección. */
+        [[nodiscard]] int getVerifyInvalidatedCount() const noexcept { return verifyInvalidatedBySection_; }
+
+        /** Retorna la confianza del sistema en los verify (0-100).
+            Fórmula: (total - invalidated) / total * 100
+            Si no hay verificaciones, retorna 100 (default optimista). */
+        [[nodiscard]] int getVerifyConfidencePercent() const noexcept
+        {
+            if (totalVerifyAttempts_ == 0) return 100;
+            float ratio = 1.0f - (float)verifyInvalidatedBySection_ / (float)totalVerifyAttempts_;
+            return juce::jlimit(0, 100, (int)(ratio * 100.0f));
+        }
+
         /** Debug: imprime estado actual de aprendizaje. */
         [[nodiscard]] juce::String dumpState() const;
 
@@ -117,6 +197,17 @@ namespace mixcoach {
         // keyword → (targetRole → count)
         std::map<juce::String, std::map<TrackRole, int>> keywordCorrections_;
         std::vector<SpectralCorrection> spectralCorrections_;
+
+        // ═══ Transport window tracking — fields ════════════════════════════════
+        double transportWindowSec_ = -1.0;
+        double transportWindowBpm_ = 120.0;
+        int transportWindowTsNum_ = 4;
+        int transportWindowTsDen_ = 4;
+        bool transportValid_ = false;
+
+        // ═══ V4b: Verify tracking counters ═══════════════════════════════════
+        int totalVerifyAttempts_ = 0;
+        int verifyInvalidatedBySection_ = 0;
 
         static constexpr int kMinCorrectionsForBoost = 2;     // Min correcciones para aplicar boost
         static constexpr float kBoostPerCorrection   = 0.10f; // +0.1 por corrección

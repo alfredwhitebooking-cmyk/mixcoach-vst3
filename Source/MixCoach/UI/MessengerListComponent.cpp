@@ -4,6 +4,7 @@
 #include "../engine/CoachEngine.h"
 #include "../engine/TrackFeedCore.h"
 #include "../engine/TrackState.h"
+#include "../engine/PanelRevealManager.h"
 #include "../../Common/types/LogHelper.h"
 #include <cmath>
 
@@ -51,12 +52,14 @@ namespace mixcoach {
 
     void MessengerListComponent::timerCallback()
     {
-        if (activeMessengerCount_ <= 0) return;
+                // La telemetría y los refrescos estructurales llegan desde el editor,
+        // que es el propietario de SharedData. Mantener este componente como
+        // consumidor evita punteros persistentes y carreras de datos.
 
-        if (!isPaused_) smoothMeters();
 
-        repaint();
-        if (auto* parent = getParentComponent()) parent->repaint();
+
+        // ─── RENDER LOOP: Suavizado de medidores (120fps) ──────────────────
+        smoothMeters();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -433,17 +436,26 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     //  SPRINT 5: findSlotY — Encuentra la posición Y de un slot en la lista
     // ═══════════════════════════════════════════════════════════════════════════
+    // ─── getBannerHeight — Altura real del banner (0 si colapsado) ───────────
+    static int getBannerHeight(bool collapsed) noexcept
+    {
+        return collapsed ? 0 : kTitleHeight;
+    }
+
     int MessengerListComponent::findSlotY(int slotIndex) const
     {
         if (slotIndex < 0 || slotIndex >= SlotRegistry::kMaxSlots) return -1;
 
         auto area = getLocalBounds().reduced(2, 4);
 
-        // Account for health summary bar + banner
+        // Account for health summary bar + banner (banner colapsado = 0px)
         area.removeFromTop(kTitleHeight); // health summary
         area.removeFromTop(2);
-        area.removeFromTop(kTitleHeight); // TrackFeed banner
-        area.removeFromTop(2);
+        int bannerH = getBannerHeight(bannerCollapsed_);
+        if (bannerH > 0) {
+            area.removeFromTop(bannerH); // TrackFeed banner
+            area.removeFromTop(2);
+        }
 
         int y = area.getY();
 
@@ -464,5 +476,62 @@ namespace mixcoach {
         }
         return -1;
     }
+
+
+// ─── setTrackHighlights — Resalta tracks desde PanelRevealManager ──────
+void MessengerListComponent::setTrackHighlights(const std::vector<TrackHighlightInfo>& highlights)
+{
+    if (highlights.empty()) {
+        setSelectedSlot(-1);
+        repaint();
+        return;
+    }
+    int slot = highlights[0].slotIndex;
+    if (slot >= 0 && slot < SlotRegistry::kMaxSlots) {
+        setSelectedSlot(slot);
+        repaint();
+    }
+}
+
+// ─── getTrackCardBounds — Retorna bounds de una tarjeta de pista ───────
+juce::Rectangle<int> MessengerListComponent::getTrackCardBounds(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= SlotRegistry::kMaxSlots) return {};
+    if (!messengers_[slotIndex].info.active) return {};
+
+    auto area = getLocalBounds().reduced(2, 4);
+
+    // Account for health summary bar + banner (BUG #18: banner colapsado = 0px)
+    area.removeFromTop(kTitleHeight); // health summary
+    area.removeFromTop(2);
+    int bannerH = getBannerHeight(bannerCollapsed_);
+    if (bannerH > 0) {
+        area.removeFromTop(bannerH); // TrackFeed banner
+        area.removeFromTop(2);
+    }
+
+    int y = area.getY();
+
+    for (int busIdx = 0; busIdx <= kNumBuses; ++busIdx) {
+        auto& group = busGroups_[busIdx];
+        if (group.count == 0) continue;
+
+        y += kHeaderHeight;
+
+        if (!collapsedGroups_[busIdx]) {
+            for (int r = 0; r < group.count; ++r) {
+                int idx = group.slotIndices[r];
+                if (idx == slotIndex) {
+                    return {area.getX(), y, area.getWidth(), kCardHeight};
+                }
+                y += kCardHeight;
+            }
+        }
+        y += 4;
+    }
+
+    return {};
+}
+
 
 } // namespace mixcoach

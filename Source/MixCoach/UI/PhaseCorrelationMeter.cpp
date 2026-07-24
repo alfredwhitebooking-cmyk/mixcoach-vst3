@@ -4,7 +4,7 @@ namespace mixcoach {
 
     PhaseCorrelationMeter::PhaseCorrelationMeter()
     {
-        titleLabel_.setText(juce::CharPointer_UTF8("\xCF\x86 Phase Correlation"), juce::dontSendNotification);
+        titleLabel_.setText(juce::CharPointer_UTF8("[PHI] Phase Correlation"), juce::dontSendNotification);
         titleLabel_.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
         titleLabel_.setJustificationType(juce::Justification::centredLeft);
         titleLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textPrimary());
@@ -177,7 +177,7 @@ namespace mixcoach {
         if (corr < -0.3f) {
             g.setColour(MixCoachTheme::error().withAlpha(0.6f));
             g.setFont(juce::Font(juce::FontOptions(8.0f)).boldened());
-            g.drawText("\xE2\x9A\xA0 Out of phase!",
+            g.drawText("[WARN] Out of phase!",
                        barBounds.withTop(barBounds.getBottom() - 18).toNearestInt(),
                        juce::Justification::centred);
         }

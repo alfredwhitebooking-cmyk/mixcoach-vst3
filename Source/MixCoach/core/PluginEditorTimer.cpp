@@ -11,55 +11,32 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     //  safeTimerLogic — Helper separado para evitar MSVC C2712 en timerCallback
     // ═══════════════════════════════════════════════════════════════════════════
-    // timerCallback() tiene el __try/__except pero no puede tener objetos C++
-    // con destructores (lambdas, std::vector, etc.). Este helper tiene TODA
-    // la lógica del timer, SIN __try/__except.
-    ///
-    // Se pasa por referencia para que safeTimerLogic pueda acceder a los
-    // miembros de MixCoachAudioProcessorEditor sin restricciones.
+    // INCREMENTO 1: Ya no usa bgHasNewResults/bgLock/stale sync atoms.
+    // El bg service (MixCoachBgService en PluginProcessor) maneja su propio
+    // estado. El timer solo lee snapshots y actualiza la UI.
     static void safeTimerLogic(MixCoachAudioProcessorEditor& editor,
-                               juce::TabbedComponent* tabbedComp,
+                               NavigationShell* navShell,
                                SharedData* sharedData,
                                MixCoachAudioProcessor& processor,
-                               int timerTick,
-                               std::atomic<bool>& bgHasNewResults,
-                               std::atomic<int>& bgForceSyncResult,
-                               std::atomic<int>& bgBackupResult,
-                               std::atomic<bool>& s_initialFullSyncDone,
-                               bool& initialSyncDone,
-                               juce::CriticalSection& bgLock,
-                               int headerActiveTab,
-                               int& lastActiveSlotCount,
-                               std::array<bool, SlotRegistry::kMaxSlots>& s_announcedSlots)
+                               int timerTick)
     {
-        juce::ignoreUnused(lastActiveSlotCount);
-        juce::ignoreUnused(s_announcedSlots);
-
         // ═══ TRY/CATCH: Capturar excepciones C++ (std::bad_alloc, etc.) ═════
-        // El __try/__except en timerCallback() captura SEH (Access Violations)
-        // pero NO captura C++ exceptions. Este try/catch interno captura
-        // ambas: C++ exceptions aquí, SEH en el __try/__except del caller.
         try {
-            // ─── Step 2: init ligero (solo si UI no está construida aún) ─────────
-            if (!editor.isFullUIBuilt() || tabbedComp == nullptr) {
+            // ─── Step 1: init ligero (solo si UI no está construida aún) ─────────
+            if (!editor.isFullUIBuilt() || navShell == nullptr) {
                 editor.initSharedData();
             }
 
-            if (sharedData == nullptr || !tabbedComp) {
+            if (sharedData == nullptr || !navShell) {
                 return;
             }
 
-            // ═══ Guard: shared memory mapping lost — bail out before touching SlotRegistry ═══
-            // Si sharedData existe pero su mapeo de memoria compartida no está disponible,
-            // cualquier acceso al SlotRegistry causaría un SEH (Access Violation).
-            // Esto pasa cuando Messenger se descarga o FL Studio reinicia su sandbox.
-            // La verificación temprana aquí evita el SEH antes de que safeTimerLogic
-            // intente acceder a registry, slot, etc.
+            // ═══ Guard: shared memory mapping lost ═══
             if (!sharedData->isAvailable()) {
                 return;
             }
 
-            // ─── Bienvenida automática al iniciar sesión ────────────────────────
+            // ─── Startup welcome ────────────────────────────────────────────
             {
                 auto* coach = processor.getCoachEngine();
                 if (coach != nullptr && coach->getSetupStep() == CoachEngine::SetupStep::NotStarted) {
@@ -67,79 +44,31 @@ namespace mixcoach {
                 }
             }
 
-            // ─── Step 3: Procesar resultados del background worker ────────────────
-            if (bgHasNewResults.exchange(false)) {
-                int syncFound   = bgForceSyncResult.exchange(0);
-                int backupFound = bgBackupResult.exchange(0);
+            // ─── UI updates ─────────────────────────────────────────────────
+            if (navShell && sharedData && sharedData->isAvailable()) {
+                // ─── Fast update (60fps) ────────────────────────────────────
+                navShell->smoothMeters();
+                navShell->updateMasterMeters(processor.getAudioAnalyzer());
 
-                if (syncFound > 0 || backupFound > 0) {
-                    if (!s_initialFullSyncDone.load()) {
-                        s_initialFullSyncDone.store(true);
-                    }
-
-                    if (syncFound > 0 && !initialSyncDone) initialSyncDone = true;
-                    if (backupFound > 0 && !initialSyncDone) initialSyncDone = true;
-                }
-
-                if (syncFound > 0 || backupFound > 0) {
-                    if (tabbedComp && bgLock.tryEnter()) {
-                        double sr      = processor.getSampleRate();
-                        auto& registry = sharedData->getSlotRegistry();
-                        ((MainTabbedComponent*)tabbedComp)->updateAllPanels(registry, *sharedData, sr);
-                        bgLock.exit();
-                    }
-                    editor.detectNewMessengers();
-                    tabbedComp->repaint();
-                }
-            }
-
-            // ─── Step 4: UI updates ──────────────────────────────────────────────
-            if (tabbedComp && sharedData && sharedData->isAvailable()) {
-                auto& registry   = sharedData->getSlotRegistry();
-                auto* mainTabbed = (MainTabbedComponent*)tabbedComp;
-
-                // ─── Fast update ────────────────────────────────────────────────
-                mainTabbed->smoothMeters();
-                mainTabbed->updateMasterMeters(processor.getAudioAnalyzer());
-
-                if (headerActiveTab == 1) mainTabbed->smoothAnalyzersPanel(60.0);
-
-                // ─── Poll + Refresh adaptativo ──────────────────────────────────
-                {
-                    int activeForAdapt   = registry.activeCount();
-                    const bool heavyTick = (activeForAdapt > 50) ? ((timerTick & 1) == 0) : true;
-
-                    if (bgLock.tryEnter()) {
-                        if (heavyTick && headerActiveTab == 1) mainTabbed->getAnalyzersPanel().fastUpdateMeters();
-
-                        if (heavyTick) {
-                            mainTabbed->getCoachPanel().refreshMessengerTelemetry(registry, *sharedData);
-
-                            // ═══ TrackFeed: actualizar mensajes por track desde CoachEngine ═══
-                            auto* coach = processor.getCoachEngine();
-                            if (coach != nullptr) mainTabbed->getCoachPanel().updateCoachAdvice(*coach);
-                        }
-
-                        bgLock.exit();
-                    }
-                }
-
-                // ─── Slow update ────────────────────────────────────────────────
+                // ─── Slow update (updateAllPanels + detectNewMessengers) ────
+                // INCREMENTO 1: Ya no usamos bgHasNewResults_ para trigger.
+                // El timer simplemente actualiza la UI cada N ticks.
                 bool didFullUpdate = false;
-                if ((timerTick > 1 && timerTick <= 20) && bgLock.tryEnter()) {
+
+                // Initial burst: first 20 ticks update aggressively
+                if (timerTick > 1 && timerTick <= 20) {
                     double sr = processor.getSampleRate();
-                    mainTabbed->updateAllPanels(registry, *sharedData, sr);
-                    bgLock.exit();
+                    sharedData->getSlotRegistry(); // just check availability
+                    navShell->updateAllPanels(sharedData->getSlotRegistry(), *sharedData, sr);
                     editor.detectNewMessengers();
                     didFullUpdate = true;
                 }
 
                 if (!didFullUpdate) {
                     int slowUpdateRate = (timerTick < 300) ? 4 : 16;
-                    if (timerTick % slowUpdateRate == 0 && bgLock.tryEnter()) {
+                    if (timerTick % slowUpdateRate == 0) {
                         double sr = processor.getSampleRate();
-                        mainTabbed->updateAllPanels(registry, *sharedData, sr);
-                        bgLock.exit();
+                        navShell->updateAllPanels(sharedData->getSlotRegistry(), *sharedData, sr);
                         editor.detectNewMessengers();
                     }
                 }
@@ -156,20 +85,27 @@ namespace mixcoach {
                     if (refPlayer.isPlaying()) {
                         double pos = refPlayer.getPosition();
                         double len = refPlayer.getLength();
-                        if (tabbedComp) {
-                            auto& refPanel = mainTabbed->getCoachPanel().getRefPanel();
+                        if (navShell) {
+                            auto& refPanel = navShell->getCoachPanel().getRefPanel();
                             refPanel.updatePlaybackPosition(pos, len);
                         }
                     }
                 }
 
-                // ─── periodicAnalysis y secciones (cada 300 ticks) ──────────────
+                // ─── P1: Leer transporte del DAW (cada ~16ms — 60fps, caché para no spamear) ──
+                // La info de transporte se lee cada 60 ticks (~1s) para evitar overhead
+                static MixCoachAudioProcessor::TransportInfo s_cachedTransport;
+                if (timerTick % 60 == 0) {
+                    s_cachedTransport = processor.readTransportInfo();
+                }
+
+                // ─── Slow periodic (cada 300 ticks ~5s) ────────────────────────
                 if (timerTick % 300 == 0) {
                     auto* phaseMgr = processor.getPhaseManager();
                     auto* coach    = processor.getCoachEngine();
                     auto* adapter  = processor.getAiCoachAdapter();
-                    if (phaseMgr != nullptr && coach != nullptr && mainTabbed) {
-                        auto& coachPanel = mainTabbed->getCoachPanel();
+                    if (phaseMgr != nullptr && coach != nullptr && navShell) {
+                        auto& coachPanel = navShell->getCoachPanel();
 
                         MentorPhase phase      = phaseMgr->getCurrentPhase();
                         juce::String phaseName = getPhaseName(phase);
@@ -189,44 +125,46 @@ namespace mixcoach {
                         coachPanel.updateFooterInfo(
                             phaseName, genre, juce::String((int)targetLufs) + " LUFS", srStr, expLevel);
                     }
-                }
 
-                // ─── periodicAnalysis y secciones (cada 300 ticks) ──────────────
-                if (timerTick % 300 == 0) {
-                    auto* coach = processor.getCoachEngine();
+                    // ─── Reference analysis delegation to bg service ───────
                     if (coach != nullptr) {
-                        if (tabbedComp) {
-                            auto* safePanel = &mainTabbed->getCoachPanel().getRefPanel();
+                        if (navShell) {
+                            auto* safePanel = &navShell->getCoachPanel().getRefPanel();
                             coach->setMatchDataCallback([safePanel](const DifferenceProfile& data) {
                                 if (safePanel != nullptr) safePanel->updateMatchData(data);
                             });
                         }
 
-                        // ═══ Mover analisis de referencia al background worker ═══
                         if (coach->hasPendingReference()) {
                             juce::String refPath = coach->consumePendingReferencePath();
                             if (refPath.isNotEmpty()) {
                                 editor.signalBgRefAnalysis(refPath);
-                                LogHelper::writeToLog("[MixCoachEditor] Referencia delegada al background worker: "
+                                LogHelper::writeToLog("[MixCoachEditor] Referencia delegada al bg service: "
                                                       + refPath);
                             }
                         }
 
                         coach->periodicAnalysis();
 
-                        // ═══ Push Reference-Driven progress data to panel ═══════════
+                        // ═══ FASE 3: TrackProblemCards + advice agrupado por familia ═══
+                        // updateCoachAdvice() construye grupos de problemas por bus,
+                        // los postea como TrackProblemCards en el chat, y actualiza
+                        // los badges de issues en el MixMap.
+                        navShell->getCoachPanel().updateCoachAdvice(*coach);
+
+                        // ─── Push Reference-Driven progress data ────────────
                         {
-                            auto& refPanel = mainTabbed->getCoachPanel().getRefPanel();
+                            auto& refPanel = navShell->getCoachPanel().getRefPanel();
                             if (coach->isReferenceDrivenMode()) {
                                 const auto& prog = coach->getReferenceProgress();
                                 refPanel.setReferenceProgress(prog.currentMatch, prog.delta);
                             }
                         }
 
-                        // ═══ Push diagnostics to DiagnosticBridge for visual overlay ═══
+                        // ─── Push diagnostics to DiagnosticBridge ────────────
                         pushDiagnosticBridge(*coach, processor.getDiagnosticBridge());
 
-                        // ═══ Push centroid info to spectrograph overlay ═══
+                        // ─── Push centroid info to spectrograph overlay ──────
                         {
                             juce::String centGenre;
                             if (coach->hasReference()) centGenre = coach->getReferenceGenre();
@@ -238,14 +176,14 @@ namespace mixcoach {
                                 specInfo.actualHz   = ceInfo.actualHz;
                                 specInfo.expectedHz = ceInfo.expectedHz;
                                 specInfo.genre      = ceInfo.genre;
-                                mainTabbed->getAnalyzersPanel().setCentroidInfo(specInfo);
+                                navShell->getAnalyzersPanel().setCentroidInfo(specInfo);
                             }
                         }
 
-                        // ═══ Dynamic suggestion chips (cada ~5s) ═══
+                        // ─── Dynamic suggestion chips (cada ~5s) ────────────
                         {
                             auto dynamicSugs = coach->getDynamicSuggestions();
-                            if (!dynamicSugs.empty()) mainTabbed->getCoachPanel().setSuggestions(dynamicSugs);
+                            if (!dynamicSugs.empty()) navShell->getCoachPanel().setSuggestions(dynamicSugs);
                         }
 
                         if (timerTick % 600 == 0) coach->checkAndSendProactiveTip();
@@ -253,11 +191,10 @@ namespace mixcoach {
                             coach->generateProactiveTip();
                     }
 
-                    auto* adapter = processor.getAiCoachAdapter();
                     if (adapter != nullptr) adapter->autoSave();
 
-                    if (coach != nullptr && tabbedComp) {
-                        auto& refPanel       = mainTabbed->getCoachPanel().getRefPanel();
+                    if (coach != nullptr && navShell) {
+                        auto& refPanel       = navShell->getCoachPanel().getRefPanel();
                         const auto& sections = coach->getReferenceSections();
 
                         std::vector<ReferencePanelComponent::SectionInfo> sectionInfos;
@@ -282,13 +219,6 @@ namespace mixcoach {
 
                         refPanel.setSectionData(sectionInfos, activeIdx);
                     }
-                }
-            } // ─── Step 5: Log periódico ──────────────────────────────────────────
-            if (timerTick % 300 == 0) {
-                int activeSlots = 0;
-                if (sharedData && bgLock.tryEnter()) {
-                    activeSlots = sharedData->getSlotRegistry().activeCount();
-                    bgLock.exit();
                 }
             }
 
@@ -323,20 +253,37 @@ namespace mixcoach {
 
         // ═══ __try/__except: captura SEH en el message thread ═══════════════
         __try {
+            // INCREMENTO 1: safeTimerLogic simplificado — ya no recibe
+            // bgHasNewResults_, bgLock_, initialSyncDone_, etc.
+            // El bg service (MixCoachBgService en el processor) maneja
+            // todo eso internamente.
             safeTimerLogic(*this,
                            tabbedComponent_.get(),
                            sharedData_,
                            processorRef_,
-                           timerTick,
-                           bgHasNewResults_,
-                           bgForceSyncResult_,
-                           bgBackupResult_,
-                           s_initialFullSyncDone_,
-                           initialSyncDone_,
-                           bgLock_,
-                           headerActiveTab_,
-                           lastActiveSlotCount_,
-                           s_announcedSlots_);
+                           timerTick);
+
+            // ═══ LLM Status Polling — detecta cambios de conectividad cada ~3s (60 ticks a 20Hz) ═══
+            static int llmPollTick = 0;
+            if (++llmPollTick >= 60) {
+                llmPollTick = 0;
+                auto* coach   = processorRef_.getCoachEngine();
+                auto* adapter = processorRef_.getAiCoachAdapter();
+                if (coach != nullptr && adapter != nullptr) {
+                    bool llmAvailable = adapter->isLlmAvailable();
+                    bool llmEnabled   = adapter->isLlmEnabled();
+                    CoachEngine::LlmStatus newStatus;
+                    if (llmAvailable)
+                        newStatus = CoachEngine::LlmStatus::Connected;
+                    else if (llmEnabled)
+                        newStatus = CoachEngine::LlmStatus::Fallback;
+                    else
+                        newStatus = CoachEngine::LlmStatus::Offline;
+
+                    // setLlmStatus solo dispara el callback si el estado cambió
+                    coach->setLlmStatus(newStatus);
+                }
+            }
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             // ═══ Contador SEH consecutivo: evitar flood de 200+ entradas en el log ═══

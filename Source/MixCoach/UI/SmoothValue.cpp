@@ -40,6 +40,18 @@ namespace mixcoach {
         const bool attacking = target_ > current_;
         const float coeff    = stepCoeff(sampleRateHz, attacking);
         current_ += (target_ - current_) * coeff;
+
+        // ═══ BUG #11: Snap al target si estamos muy cerca ═══
+        // El suavizado exponencial es asintótico: se acerca al target pero
+        // nunca llega exactamente. Con el threshold 0.0002f del return,
+        // podía quedarse a 0.0001f del target para siempre, haciendo que
+        // advance() devolviera true indefinidamente y el timer nunca se
+        // detuviera (CPU gastada en animaciones que ya nadie ve cambiar).
+        constexpr float kSnapThreshold = 0.0005f;
+        if (std::abs(target_ - current_) < kSnapThreshold) {
+            current_ = target_;
+        }
+
         return std::abs(current_ - prev) > 0.0002f;
     }
 

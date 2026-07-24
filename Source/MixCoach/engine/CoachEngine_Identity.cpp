@@ -325,7 +325,25 @@ namespace mixcoach {
         auto& k = kw;
 
         if (k.has808Kick) {
-            result = {TrackRole::Kick808, 0.95f, true};
+            result = {TrackRole::Kick808, 0.98f, true}; // Subimos a 98%
+            return result;
+        }
+        if (k.hasKick) {
+            // Si el nombre es exactamente "Kick", confianza máxima
+            float conf = (k.normalizedName == "kick" || k.normalizedName == "bombo") ? 0.96f : 0.90f;
+            result = {TrackRole::Kick, conf, true};
+            return result;
+        }
+        if (k.has808Bass || (k.has808 && k.hasSub)) {
+            result = {TrackRole::Bass808, 0.95f, true};
+            return result;
+        }
+        
+        // ... (continuando con el resto de roles con confianzas ajustadas al guion) ...
+        
+        if (k.hasSnare) {
+            float conf = (k.normalizedName == "snare" || k.normalizedName == "redoblante") ? 0.95f : 0.90f;
+            result = {TrackRole::Snare, conf, true};
             return result;
         }
         if (k.hasKick) {
@@ -591,6 +609,7 @@ namespace mixcoach {
                     trackRoles_[idx]           = explicitRole;
                     trackRoleWasInferred_[idx] = true;
                     trackRoleConfirmed_[idx]   = false;
+                    trackRoleConfidences_[idx] = 0.90f; // Explicit TrackType = alta confianza
                     rolesInf++;
                     explicitInf++;
                     return;
@@ -606,6 +625,7 @@ namespace mixcoach {
                 trackRoles_[idx]           = combined.role;
                 trackRoleWasInferred_[idx] = true;
                 trackRoleConfirmed_[idx]   = false;
+                trackRoleConfidences_[idx] = combined.confidence;
                 rolesInf++;
                 if (combined.fromName) nameInf++;
                 else
@@ -620,6 +640,8 @@ namespace mixcoach {
         if (rolesInf > 0) {
             LogHelper::writeToLog("[IdentityLayer] Roles inferidos: " + juce::String(rolesInf));
             showIdentitySummary();
+            // Iniciar flujo de confirmación para roles con baja confianza
+            askNextPendingConfirmation();
         }
     }
 
@@ -673,56 +695,56 @@ namespace mixcoach {
             if (role != TrackRole::Unknown && role != TrackRole::Master) {
                 identified++;
                 if (trackRoleWasInferred_[idx] && !trackRoleConfirmed_[idx]) inferred++;
-                juce::String statusEmoji = isRoleConfirmed(idx) ? "\xE2\x9C\x85" : "\xE2\x9A\xA1";
+                juce::String statusEmoji = isRoleConfirmed(idx) ? "[DONE]" : "[BOLT]";
                 juce::String busStr;
                 if (info.bus >= BusType::Drums && info.bus <= BusType::Melody)
                     busStr = getBusIcon(info.bus) + " " + juce::String(busNames[static_cast<int>(info.bus)]);
                 else
                     busStr = "Sin bus";
-                identifiedLines += "  " + statusEmoji + " " + name + " \xE2\x86\x92 " + juce::String(getRoleName(role))
+                identifiedLines += "  " + statusEmoji + " " + name + " [RIGHT] " + juce::String(getRoleName(role))
                                    + " (" + busStr + ")\n";
             }
             else if (role == TrackRole::Unknown) {
                 unknown++;
-                unknownLines += "  \xE2\x9A\xA0\xEF\xB8\x8F \xE2\x80\x9C" + name
-                                + "\xE2\x80\x9D \xE2\x86\x92 \xC2\xBFQu\xC3\xA9 instrumento es?\n";
+                unknownLines += "  [WARN] \xE2\x80\x9C" + name
+                                + "\xE2\x80\x9D [RIGHT] \xC2\xBFQu\xC3\xA9 instrumento es?\n";
             }
         });
 
         juce::String msg;
-        msg += "\xF0\x9F\x93\xA1 **MESSENGER ACTIVO \xE2\x80\x94 PISTAS IDENTIFICADAS**\n\n";
+        msg += "[INFO] **MESSENGER ACTIVO \xE2\x80\x94 PISTAS IDENTIFICADAS**\n\n";
         msg += "\xF0\x9F\x8E\xA7 **Total: " + juce::String(totalActive) + " pistas detectadas**\n\n";
         if (identified > 0)
-            msg += "\xE2\x9C\x85 **Identificadas (" + juce::String(identified) + ")**\n" + identifiedLines + "\n";
+            msg += "[DONE] **Identificadas (" + juce::String(identified) + ")**\n" + identifiedLines + "\n";
         if (unknown > 0)
             msg +=
-                "\xE2\x9A\xA0\xEF\xB8\x8F **Sin identificar (" + juce::String(unknown) + ")**\n" + unknownLines + "\n";
+                "[WARN] **Sin identificar (" + juce::String(unknown) + ")**\n" + unknownLines + "\n";
 
         juce::String famLine;
         if (d > 0)
             famLine +=
-                "\xF0\x9F\xA5\x81 Bater\xC3\xAD"
+                "[DRUM] Bater\xC3\xAD"
                 "a: "
                 + juce::String(d) + " | ";
-        if (b > 0) famLine += "\xF0\x9F\x8E\xB8 Bajo: " + juce::String(b) + " | ";
-        if (g > 0) famLine += "\xF0\x9F\x8E\xB8 Guitarras: " + juce::String(g) + " | ";
-        if (k > 0) famLine += "\xF0\x9F\x8E\xB9 Teclados: " + juce::String(k) + " | ";
-        if (v > 0) famLine += "\xF0\x9F\x8E\xA4 Voces: " + juce::String(v) + " | ";
+        if (b > 0) famLine += "[MUSIC] Bajo: " + juce::String(b) + " | ";
+        if (g > 0) famLine += "[MUSIC] Guitarras: " + juce::String(g) + " | ";
+        if (k > 0) famLine += "[MUSIC] Teclados: " + juce::String(k) + " | ";
+        if (v > 0) famLine += "[MIC] Voces: " + juce::String(v) + " | ";
         if (fx > 0) famLine += "\xF0\x9F\x9B\x9B FX: " + juce::String(fx) + " | ";
         if (m > 0)
             famLine +=
-                "\xF0\x9F\x8E\xB5 Mel\xC3\xB3"
+                "[MUSIC] Mel\xC3\xB3"
                 "dicos: "
                 + juce::String(m) + " | ";
-        if (u > 0) famLine += "\xF0\x9F\x93\xA1 Otros: " + juce::String(u) + " | ";
+        if (u > 0) famLine += "[INFO] Otros: " + juce::String(u) + " | ";
         if (famLine.isNotEmpty())
-            msg += "\xF0\x9F\x93\x8A **Resumen por familias:**\n  " + famLine.substring(0, famLine.length() - 3) + "\n";
+            msg += "[CHART] **Resumen por familias:**\n  " + famLine.substring(0, famLine.length() - 3) + "\n";
         if (inferred > 0 && unknown == 0)
-            msg += "\n\xE2\x9A\xA1 **" + juce::String(inferred) + " pista(s) pendiente(s) de confirmaci\xC3\xB3n.**\n   Usa el bot\xC3\xB3n **Confirmar todo** o haz clic en \xE2\x9A\xA1.";
+            msg += "\n[BOLT] **" + juce::String(inferred) + " pista(s) pendiente(s) de confirmaci\xC3\xB3n.**\n   Usa el bot\xC3\xB3n **Confirmar todo** o haz clic en [BOLT].";
         else if (unknown > 0)
             msg += "\n\xF0\x9F\x92\xA1 **Asigna un rol a cada pista sin identificar** desde el panel Messenger.";
         else if (identified > 0 && unknown == 0 && inferred == 0)
-            msg += "\n\xE2\x9C\x85 **Todas las pistas identificadas y confirmadas.** \xC2\xA1Listo para avanzar!";
+            msg += "\n[DONE] **Todas las pistas identificadas y confirmadas.** \xC2\xA1Listo para avanzar!";
         respondWith(msg, MentorMessage::Type::Info);
     }
 
@@ -759,21 +781,21 @@ namespace mixcoach {
                     busStr =
                         " (" + getBusIcon(info.bus) + " " + juce::String(busNames[static_cast<int>(info.bus)]) + ")";
                 detailLines +=
-                    "  \xE2\x9C\x85 " + name + " \xE2\x86\x92 " + juce::String(getRoleName(role)) + busStr + "\n";
+                    "  [DONE] " + name + " [RIGHT] " + juce::String(getRoleName(role)) + busStr + "\n";
             });
 
             auto currentPhase = phaseManager_.getCurrentPhase();
             if (currentPhase == MentorPhase::Organizacion) {
                 phaseManager_.advanceToNextPhase();
-                respondWith("\xE2\x9C\x85 **" + juce::String(confirmedCount) + " roles confirmados!**\n\n" + detailLines
+                respondWith("[DONE] **" + juce::String(confirmedCount) + " roles confirmados!**\n\n" + detailLines
                                 + "\n\xF0\x9F\x9A\x00 Todos los roles confirmados! Avanzamos a **"
                                 + juce::String(phaseNames[static_cast<int>(phaseManager_.getCurrentPhase())]) + "**.",
                             MentorMessage::Type::Info);
                 sendPhaseGuidance(phaseManager_.getCurrentPhase());
             }
             else {
-                respondWith("\xE2\x9C\x85 **" + juce::String(confirmedCount) + " roles confirmados**\n\n" + detailLines
-                                + "\n\xE2\x9C\x85 Sesi\xC3\xB3n completamente identificada.",
+                respondWith("[DONE] **" + juce::String(confirmedCount) + " roles confirmados**\n\n" + detailLines
+                                + "\n[DONE] Sesi\xC3\xB3n completamente identificada.",
                             MentorMessage::Type::Info);
             }
         }
@@ -786,11 +808,11 @@ namespace mixcoach {
                 if (trackRoles_[idx] == TrackRole::Unknown) unknownCount++;
             });
             if (unknownCount > 0)
-                respondWith("\xE2\x9A\xA0\xEF\xB8\x8F No hay roles pendientes, pero **" + juce::String(unknownCount)
+                respondWith("[WARN] No hay roles pendientes, pero **" + juce::String(unknownCount)
                                 + " pista(s)** a\xC3\xBAn sin rol.",
                             MentorMessage::Type::Info);
             else
-                respondWith("\xE2\x9C\x85 Todos los roles ya est\xC3\xA1n confirmados.", MentorMessage::Type::Info);
+                respondWith("[DONE] Todos los roles ya est\xC3\xA1n confirmados.", MentorMessage::Type::Info);
         }
         return confirmedCount;
     }
@@ -848,6 +870,141 @@ namespace mixcoach {
         TrackType mappedType = getTrackTypeForRole(role);
         if (mappedType != TrackType::None)
             sharedData_.getSlotRegistry().updateSlotTrackType(slotIndex, (int)mappedType);
+    }    // ═══════════════════════════════════════════════════════════════════════════
+    //  askNextPendingConfirmation — Busca la primera pista inferida con confianza
+    //  < 75% y prepara la pregunta en el chat. Si no hay más pendientes, limpia
+    //  el estado y retorna false.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    bool CoachEngine::askNextPendingConfirmation()
+    {
+        auto& registry = sharedData_.getSlotRegistry();
+
+        // Buscar la primera pista inferida con confianza < 0.75 que no esté confirmada
+        int foundSlot = -1;
+        float foundConfidence = 0.0f;
+        TrackRole foundRole = TrackRole::Unknown;
+        juce::String foundTrackName;
+
+        registry.forEachActive([&](const SlotInfo& info) {
+            if (foundSlot >= 0) return; // Ya encontramos una
+            int idx = info.slotIndex;
+            if (idx < 0 || idx >= SlotRegistry::kMaxSlots) return;
+            if (!isInferredRole(idx)) return; // No es inferida o ya confirmada
+
+            float conf = trackRoleConfidences_[idx];
+            if (conf < 0.75f && conf > 0.0f) {
+                foundSlot = idx;
+                foundConfidence = conf;
+                foundRole = trackRoles_[idx];
+                foundTrackName = juce::String(info.trackName).trim();
+                if (foundTrackName.isEmpty())
+                    foundTrackName = "Pista " + juce::String(idx + 1);
+            }
+        });
+
+        if (foundSlot < 0) {
+            // No hay más pendientes — limpiar estado
+            pendingConfirmationSlot_ = -1;
+            pendingConfirmationTrackName_.clear();
+            pendingConfirmationRoleName_.clear();
+            pendingConfirmationConfidence_ = 0.0f;
+            return false;
+        }
+
+        // Almacenar estado pendiente
+        pendingConfirmationSlot_ = foundSlot;
+        pendingConfirmationTrackName_ = foundTrackName;
+        pendingConfirmationRoleName_ = juce::String(getRoleName(foundRole));
+        pendingConfirmationConfidence_ = foundConfidence;
+
+        // Construir mensaje de pregunta
+        int confPct = static_cast<int>(foundConfidence * 100.0f);
+        juce::String msg;
+        msg << "\xC2\xBF" << "Es correcto? Si no es as\xC3\xAD, dime qu\xC3\xA9 instrumento es.";
+
+        respondWith(msg, MentorMessage::Type::Question);
+
+        LogHelper::writeToLog("[ConfidenceFlow] Preguntando confirmaci\xC3\xB3n: Slot "
+                              + juce::String(foundSlot) + " \"" + foundTrackName + "\" → "
+                              + juce::String(getRoleName(foundRole))
+                              + " (confianza=" + juce::String(foundConfidence, 2) + ")");
+
+        return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  handleConfirmationResponse — Maneja la respuesta del usuario a la
+    //  confirmación de rol.
+    //  @param slotIndex       El slot de la pista
+    //  @param confirmed       true = "Sí, es correcto"
+    //  @param alternativeRole Si confirmed=false y hay texto, el usuario escribió un rol
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    void CoachEngine::handleConfirmationResponse(int slotIndex, bool confirmed, const juce::String& alternativeRole)
+    {
+        if (slotIndex < 0 || slotIndex >= SlotRegistry::kMaxSlots) return;
+
+        if (confirmed) {
+            // Usuario confirmó → marcar como confirmado
+            confirmRole(slotIndex);
+            LogHelper::writeToLog("[ConfidenceFlow] Usuario confirm\xF3 rol: Slot "
+                                  + juce::String(slotIndex) + " = " + juce::String(getRoleName(trackRoles_[slotIndex])));
+            respondWith("[DONE] Perfecto! **" + juce::String(getRoleName(trackRoles_[slotIndex]))
+                            + "** confirmado. Sigamos.",
+                        MentorMessage::Type::Info);
+        }
+        else if (alternativeRole.isNotEmpty()) {
+            // Usuario escribió un nombre de rol alternativo
+            // Intentar inferir el TrackRole desde el texto del usuario
+            auto inferred = inferTrackRoleFromName(alternativeRole);
+            if (inferred.isValid() && inferred.confidence >= 0.50f) {
+                TrackRole newRole = inferred.role;
+                setTrackRoleWithLearning(slotIndex, newRole);
+                LogHelper::writeToLog("[ConfidenceFlow] Usuario sugiri\xF3 rol: Slot "
+                                      + juce::String(slotIndex) + " → " + juce::String(getRoleName(newRole)));
+                respondWith("\xF0\x9F\x91\x8C Entendido! Cambio **" + juce::String(getRoleName(trackRoles_[slotIndex]))
+                                + "** → **" + juce::String(getRoleName(newRole)) + "**. \xC2\xA1Gracias por la correcci\xC3\xB3n!"
+                                + " [BRAIN]",
+                            MentorMessage::Type::Info);
+            }
+            else {
+                // No se pudo inferir el rol — dejar como Unknown y seguir
+                trackRoleWasInferred_[slotIndex] = false;
+                trackRoles_[slotIndex] = TrackRole::Unknown;
+            trackRoleConfidences_[slotIndex] = 1.0f; // Suprimir futuras preguntas
+                LogHelper::writeToLog("[ConfidenceFlow] No se pudo inferir rol desde \""
+                                      + alternativeRole + "\" para Slot " + juce::String(slotIndex));
+                respondWith("\xF0\x9F\x91\x8C No reconozco \"" + alternativeRole
+                                + "\" como un instrumento v\xC3\xA1lido. Dejamos **"
+                                + pendingConfirmationTrackName_
+                                + "** sin identificar. Puedes asignarlo manualmente desde el panel de pistas.",
+                            MentorMessage::Type::Info);
+            }
+        }
+        else {
+            // Usuario dijo "No" sin alternativa — dejar rol como Unknown
+            trackRoleWasInferred_[slotIndex] = false;
+            trackRoles_[slotIndex] = TrackRole::Unknown;
+            trackRoleConfidences_[slotIndex] = 1.0f; // Suprimir futuras preguntas
+            trackRoleConfidences_[slotIndex] = 1.0f; // Suprimir futuras preguntas
+            LogHelper::writeToLog("[ConfidenceFlow] Usuario rechaz\xF3 rol: Slot "
+                                  + juce::String(slotIndex) + " marcado como Unknown");
+            respondWith("\xF0\x9F\x91\x8C OK, dejamos **" + pendingConfirmationTrackName_
+                            + "** sin identificar. Av\xC3\ADsame cuando sepas qu\xC3\A9 es.",
+                        MentorMessage::Type::Info);
+        }
+
+        // Limpiar estado pendiente para esta pista
+        if (pendingConfirmationSlot_ == slotIndex) {
+            pendingConfirmationSlot_ = -1;
+            pendingConfirmationTrackName_.clear();
+            pendingConfirmationRoleName_.clear();
+            pendingConfirmationConfidence_ = 0.0f;
+        }
+
+        // Buscar siguiente pista pendiente
+        askNextPendingConfirmation();
     }
 
 } // namespace mixcoach

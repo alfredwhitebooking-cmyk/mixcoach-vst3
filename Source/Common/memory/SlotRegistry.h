@@ -24,6 +24,20 @@ namespace mixcoach {
         void releaseSlot(int slotIndex);
         void setActive(int slotIndex, bool active);
 
+        // ═══ V10: Heartbeat lock-free — SIN spinlock ═════════════════════
+        /** Marca un slot como activo SIN adquirir el spinlock de shared memory.
+            Solo actualiza el estado local + escribe un heartbeat timestamp.
+            Diseñado para ser llamado desde el audio thread de Messenger
+            (~94 veces/segundo/pista a 48kHz).
+            @param slotIndex  Índice del slot a mantener activo
+            @param timestampMs  Heartbeat timestamp (getMillisecondCounter()) */
+        void setActiveHeartbeat(int slotIndex, int64_t timestampMs) noexcept;
+
+        /** Retorna el timestamp del último heartbeat para un slot.
+            @param slotIndex  Índice del slot
+            @return Timestamp en ms, o 0 si no hay heartbeat */
+        int64_t getHeartbeat(int slotIndex) const noexcept;
+
         // Consultas
         [[nodiscard]] int activeCount() const noexcept;
 

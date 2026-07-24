@@ -73,13 +73,13 @@ namespace mixcoach {
         static juce::Colour textAccent() { return juce::Colour(0xFF9D8EC4); } // Lavanda de la referencia
 
         // ─── Brand / Accents (Identidad Visual) ────────────────────────────────
-        static juce::Colour accent() { return juce::Colour(0xFF8A77B5); } // Púrpura Premium equilibrado
+        static juce::Colour accent() { return juce::Colour(0xFFA855F7); } // Púrpura Premium vibrante
 
-        static juce::Colour accentDim() { return juce::Colour(0xFF5B4D80); }
+        static juce::Colour accentDim() { return accent().darker(0.3f); } // ~#7537C5 — derivado armónico
 
-        static juce::Colour accentGlow() { return juce::Colour(0xFF9D8EC4); } // Resplandor Lavanda de la cabecera
+        static juce::Colour accentGlow() { return accent().brighter(0.15f); } // ~#C084FC — resplandor lavanda
 
-        static juce::Colour accentBg() { return juce::Colour(0x1A8A77B5); }
+        static juce::Colour accentBg() { return juce::Colour(0x1AA855F7); }
 
         static juce::Colour accentNeon() { return juce::Colour(0xFF00E5FF); }
 
@@ -275,10 +275,10 @@ namespace mixcoach {
         static constexpr float fontSizeSmall         = 10.0f;
         static constexpr float fontSizeTiny          = 8.0f;
         static constexpr float fontSizeSectionHeader = 11.0f;
-        static constexpr float fontSizeExtraTiny     = 7.5f; // Footer labels, status bars, hints
-        static constexpr float fontSizeMicro         = 7.0f; // Tags, timestamps, badges, role pills
-        static constexpr float fontSizeNano          = 6.5f; // Toolbar chips, compact badges, crest labels
-        static constexpr float fontSizePico          = 6.0f; // Ultra-compact (confidence icons, tick labels)
+        static constexpr float fontSizeExtraTiny     = 8.0f; // Footer labels, status bars, hints (floor 8px)
+        static constexpr float fontSizeMicro         = 8.0f; // Tags, timestamps, badges, role pills (floor 8px)
+        static constexpr float fontSizeNano          = 8.0f; // Toolbar chips, compact badges, crest labels (floor 8px)
+        static constexpr float fontSizePico          = 8.0f; // Ultra-compact (confidence icons, tick labels) (floor 8px)
 
         // ─── Role category colours ───────────────────────────────────────────
         static juce::Colour roleDrums() { return juce::Colour(0xFF8B5CF6); } // Purple

@@ -44,6 +44,13 @@ namespace mixcoach {
                                + juce::String(peakDb, 1) + " dB";
                         if (hasTarget) msg += " (target " + juce::String(peakTarget, 1) + " dBFS)";
                         msg += ". Reduce el gain inmediatamente.";
+
+                        // ═══ Añadir sugerencias de plugins 3-tier para clipping ═══
+                        float clipDelta = (peakTarget > -90.0f && peakTarget < 0.0f)
+                                              ? (peakDb - peakTarget)
+                                              : (peakDb + 3.0f); // delta default: -3 dB
+                        msg += buildPluginSuggestionBlock("gain", "CLIPPING", trackName, clipDelta, 0.0f);
+
                         respondWithContext(msg, trackName, MentorMessage::Type::Warning);
                     }
                 }
@@ -52,7 +59,7 @@ namespace mixcoach {
                 if (now - state.lastWarningUs > kTrackCooldownUs) {
                     state.lastWarningUs = now;
                     juce::String msg;
-                    msg += "\xE2\x9A\xA0\xEF\xB8\x8F **" + trackName + "** est\xC3\xA1 a **" + juce::String(peakDb, 1)
+                    msg += "[WARN] **" + trackName + "** est\xC3\xA1 a **" + juce::String(peakDb, 1)
                            + " dBFS";
                     if (hasTarget) {
                         float delta = peakDb - peakTarget;
@@ -93,7 +100,7 @@ namespace mixcoach {
                 lastHeadroomWarningUs_ = now;
                 float headroom         = -maxGlobalPeak;
                 respondWith(
-                "\xF0\x9F\x93\x8A **Headroom: " + juce::String(headroom, 1) + " dB** \xE2\x80\x94 "
+                "[CHART] **Headroom: " + juce::String(headroom, 1) + " dB** \xE2\x80\x94 "
                 "la pista con m\xC3\xA1s nivel alcanza **" + juce::String(maxGlobalPeak, 1)
                 + " dB**. El rango ideal es -6 dB a -3 dB de pico en el master.",
                 MentorMessage::Type::Tip);
@@ -103,7 +110,7 @@ namespace mixcoach {
             if (now - lastHeadroomWarningUs_ > kWarningCooldownUs) {
                 lastHeadroomWarningUs_ = now;
                 respondWith(
-                "\xF0\x9F\x93\x8A Las pistas est\xC3\xA1n muy bajas (pico m\xC3\xA1ximo: **" + juce::String(maxGlobalPeak, 1)
+                "[CHART] Las pistas est\xC3\xA1n muy bajas (pico m\xC3\xA1ximo: **" + juce::String(maxGlobalPeak, 1)
                 + " dB**). Sube los faders de gain hasta que el master marque "
                 "entre -12 dB y -6 dB.",
                 MentorMessage::Type::Info);
@@ -229,29 +236,29 @@ namespace mixcoach {
 
             if ((subBassDb > -20.0f || lowBassDb > -15.0f) && subBassDb > midsDb + 10.0f) {
                 respondWith(
-                    "\xF0\x9F\x8E\x9B\xEF\xB8\x8F **Exceso de graves**: el sub-bass domina. Prueba HPF en bajo 40-60 "
+                    "[COACH] **Exceso de graves**: el sub-bass domina. Prueba HPF en bajo 40-60 "
                     "Hz.",
                     MentorMessage::Type::Tip);
                 warned = true;
             }
             else if (bassDb < -35.0f && lowBassDb < -30.0f && midsDb > -25.0f) {
-                respondWith("\xF0\x9F\x8E\x9B\xEF\xB8\x8F **Faltan graves**: Revisa que bajo y bombo tengan presencia.",
+                respondWith("[COACH] **Faltan graves**: Revisa que bajo y bombo tengan presencia.",
                             MentorMessage::Type::Info);
                 warned = true;
             }
             else if (presenceDb < -35.0f && highsDb < -40.0f && airDb < -45.0f && midsDb > -25.0f) {
-                respondWith("\xF0\x9F\x8E\x9B\xEF\xB8\x8F **Mezcla opaca**: Prueba realce shelving en 8-12 kHz.",
+                respondWith("[COACH] **Mezcla opaca**: Prueba realce shelving en 8-12 kHz.",
                             MentorMessage::Type::Tip);
                 warned = true;
             }
             else if (presenceDb > -15.0f && presenceDb > midsDb + 8.0f) {
-                respondWith("\xF0\x9F\x8E\x9B\xEF\xB8\x8F **Exceso de agudos**: Prueba low-pass suave en 12-14 kHz.",
+                respondWith("[COACH] **Exceso de agudos**: Prueba low-pass suave en 12-14 kHz.",
                             MentorMessage::Type::Tip);
                 warned = true;
             }
             else if (airDb > -15.0f && airDb > highMidsDb + 6.0f && presenceDb > -20.0f) {
                 respondWith(
-                    "\xF0\x9F\x8E\x9B\xEF\xB8\x8F **Exceso de aire**: Reduce shelving HF o aplica low-pass en 16-18 "
+                    "[COACH] **Exceso de aire**: Reduce shelving HF o aplica low-pass en 16-18 "
                     "kHz.",
                     MentorMessage::Type::Tip);
                 warned = true;
@@ -294,7 +301,7 @@ namespace mixcoach {
                         && now - state.lastWarningUs > kTrackCooldownUs) {
                         state.lastWarningUs = now;
                         lastCrestWarningUs_ = now;
-                        respondWithContext("\xE2\x9A\xA1 **" + trackName
+                        respondWithContext("[BOLT] **" + trackName
                                                + "** poca din\xC3\xA1mica (crest: " + juce::String(telem.crestFactor, 1)
                                                + " dB). Prueba ratio 2:1 o sube threshold 2-3 dB.",
                                            trackName,
@@ -307,7 +314,7 @@ namespace mixcoach {
                         && now - state.lastWarningUs > kTrackCooldownUs) {
                         state.lastWarningUs = now;
                         lastCrestWarningUs_ = now;
-                        respondWithContext("\xE2\x9A\xA1 **" + trackName + "** mucha din\xC3\xA1mica (crest: "
+                        respondWithContext("[BOLT] **" + trackName + "** mucha din\xC3\xA1mica (crest: "
                                                + juce::String(telem.crestFactor, 1)
                                                + " dB). Compresor 4:1 con attack 10ms puede ayudar.",
                                            trackName,
@@ -331,13 +338,13 @@ namespace mixcoach {
             if (now - lastDynamicWarningUs_ > kWarningCooldownUs) {
                 if (globalCrest < 8.0f && lowCrestCount > crestCount / 2) {
                     lastDynamicWarningUs_ = now;
-                    respondWith("\xF0\x9F\x93\x88 **Mezcla comprimida**: crest promedio " + juce::String(globalCrest, 1)
+                    respondWith("[TREND] **Mezcla comprimida**: crest promedio " + juce::String(globalCrest, 1)
                                     + " dB. Revisa compresores.",
                                 MentorMessage::Type::Warning);
                 }
                 else if (globalCrest > 18.0f && highCrestCount > crestCount / 3) {
                     lastDynamicWarningUs_ = now;
-                    respondWith("\xF0\x9F\x93\x88 **Mezcla muy din\xC3\xA1mica**: crest promedio "
+                    respondWith("[TREND] **Mezcla muy din\xC3\xA1mica**: crest promedio "
                                     + juce::String(globalCrest, 1) + " dB. Considera compresores suaves.",
                                 MentorMessage::Type::Info);
                 }

@@ -20,7 +20,7 @@ namespace mixcoach {
             addAndMakeVisible(headerLabel_);
 
             // ─── Info label (selected track) ─────────────────────────────────
-            infoLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x90\xBB Selecciona un Messenger en el panel Mix Coach"),
+            infoLabel_.setText(juce::CharPointer_UTF8("[BOT] Selecciona un Messenger en el panel Mix Coach"),
                                juce::dontSendNotification);
             infoLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeHeader)).boldened());
             infoLabel_.setJustificationType(juce::Justification::centredLeft);
@@ -98,7 +98,7 @@ namespace mixcoach {
         // ─── Buscar el primer slot activo ────────────────────────────────────
         if (registry.activeCount() == 0) {
             currentSlotIndex_ = -1;
-            infoLabel_.setText(juce::CharPointer_UTF8("\xF0\x9F\x90\xBB Conecta un Messenger para ver el an\xC3\xA1"
+            infoLabel_.setText(juce::CharPointer_UTF8("[BOT] Conecta un Messenger para ver el an\xC3\xA1"
                                                       "lisis"),
                                juce::dontSendNotification);
             infoLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textMuted());
@@ -119,7 +119,7 @@ namespace mixcoach {
         if (currentSlotIndex_ < 0) return;
 
         // ─── Actualizar info label ────────────────────────────────────────────
-        juce::String trackInfo = juce::String(juce::CharPointer_UTF8("\xF0\x9F\x8E\xB5 ")) + currentTrackName_
+        juce::String trackInfo = juce::String(juce::CharPointer_UTF8("[MUSIC] ")) + currentTrackName_
                                  + juce::String(juce::CharPointer_UTF8(" \xE2\x80\xA2 Slot #"))
                                  + juce::String(currentSlotIndex_);
         infoLabel_.setText(trackInfo, juce::dontSendNotification);
@@ -157,14 +157,14 @@ namespace mixcoach {
     VectorscopeSystem::VectorscopeSystem()
     {
         // ─── Title ────────────────────────────────────────────────────────────
-        titleLabel_.setText(juce::CharPointer_UTF8("\xE2\x9C\xA6 Vectorscope"), juce::dontSendNotification);
+        titleLabel_.setText(juce::CharPointer_UTF8("[SCOPE] Vectorscope"), juce::dontSendNotification);
         titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeSmall)).boldened());
         titleLabel_.setJustificationType(juce::Justification::centredLeft);
         titleLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textPrimary());
         addAndMakeVisible(titleLabel_);
 
         // ─── Correlation value ────────────────────────────────────────────────
-        corrValueLabel_.setText("\xCF\x86: +1.00", juce::dontSendNotification);
+        corrValueLabel_.setText("[PHI]: +1.00", juce::dontSendNotification);
         corrValueLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeTiny)).boldened());
         corrValueLabel_.setJustificationType(juce::Justification::centredRight);
         corrValueLabel_.setColour(juce::Label::textColourId, MixCoachTheme::success());
@@ -228,7 +228,7 @@ namespace mixcoach {
 
         // Animar pulso para advertencia de fase
         corrValueLabel_.setColour(juce::Label::textColourId, corrColour);
-        corrValueLabel_.setText("\xCF\x86: " + juce::String(smoothCorrelation_, 2), juce::dontSendNotification);
+        corrValueLabel_.setText("[PHI]: " + juce::String(smoothCorrelation_, 2), juce::dontSendNotification);
 
         repaint();
     }
@@ -608,7 +608,7 @@ namespace mixcoach {
     PhaseCorrelationSystem::PhaseCorrelationSystem()
     {
         // ─── Title ────────────────────────────────────────────────────────────
-        titleLabel_.setText(juce::CharPointer_UTF8("\xCF\x86 Phase Correlation"), juce::dontSendNotification);
+        titleLabel_.setText(juce::CharPointer_UTF8("[PHI] Phase Correlation"), juce::dontSendNotification);
         titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeHeader)).boldened());
         titleLabel_.setJustificationType(juce::Justification::centred);
         titleLabel_.setColour(juce::Label::textColourId, MixCoachTheme::textBright());
@@ -622,14 +622,14 @@ namespace mixcoach {
         addAndMakeVisible(valueLabel_);
 
         // ─── Warning labels (added in constructor, toggled via setVisible) ───
-        lWarning_.setText(juce::CharPointer_UTF8("\xE2\x9A\xA0 OUT OF PHASE"), juce::dontSendNotification);
+        lWarning_.setText(juce::CharPointer_UTF8("[WARN] OUT OF PHASE"), juce::dontSendNotification);
         lWarning_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeBody)).boldened());
         lWarning_.setJustificationType(juce::Justification::centred);
         lWarning_.setColour(juce::Label::textColourId, MixCoachTheme::error());
         addAndMakeVisible(lWarning_);
         lWarning_.setVisible(false);
 
-        rWarning_.setText(juce::CharPointer_UTF8("\xE2\x9A\xA0 WIDE / UNUSUAL"), juce::dontSendNotification);
+        rWarning_.setText(juce::CharPointer_UTF8("[WARN] WIDE / UNUSUAL"), juce::dontSendNotification);
         rWarning_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeBody)).boldened());
         rWarning_.setJustificationType(juce::Justification::centred);
         rWarning_.setColour(juce::Label::textColourId, MixCoachTheme::warning());

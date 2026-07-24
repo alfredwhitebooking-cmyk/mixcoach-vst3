@@ -117,6 +117,81 @@ namespace mixcoach {
         return false;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  initializeSession — Conecta a shared memory con GUID-derivated names
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MixCoach genera un GUID y lo publica via SessionDiscovery. Luego llama
+    // a este método para reconectar SharedMemoryManager y SharedAudioMemoryV2
+    // con los nombres derivados del GUID.
+    //
+    // Messenger lee el GUID del SessionDiscovery y llama a este método para
+    // conectarse a la misma sesión.
+    //
+    // Si falla la conexión (porque el otro plugin aún no creó la shared memory),
+    // retorna false y el llamador debe reintentar (como retryInitSharedMemory).
+    bool SharedData::initializeSession(const juce::String& sessionGUID, bool isBrain)
+    {
+        if (sessionGUID.isEmpty()) return false;
+
+        sessionGUID_ = sessionGUID;
+
+        // Construir nombres derivados del GUID
+        juce::String slotShmName = makeSlotShmName(sessionGUID);
+        juce::String audioShmName = makeAudioShmName(sessionGUID);
+
+        juce::String roleStr = isBrain ? juce::String("BRAIN") : juce::String("SENSOR");
+        LogHelper::writeToLog("[SharedData] initializeSession: " + roleStr
+                              + " | Slots=" + slotShmName
+                              + " | Audio=" + audioShmName);
+
+        try {
+            // ─── (1) Cerrar SharedMemoryManager actual ───────────────────────
+            if (shm_) {
+                shm_->close();
+            }
+            else {
+                shm_ = std::make_unique<SharedMemoryManager>();
+            }
+
+            // (Re)abrir con GUID-derived name
+            bool shmOK = shm_->initialize(slotShmName);
+            if (!shmOK) {
+                LogHelper::writeToLog("[SharedData] initializeSession: SHM slota aun no disponible");
+                // Si somos el brain y fallamos, algo anda mal; somos creadores.
+                // Si somos el sensor, el brain aún no creó la shm — reintentar después.
+                if (isBrain) {
+                    // Reintentar como brain
+                    shm_->close();
+                    shm_->initialize(slotShmName);
+                }
+                return false;
+            }
+
+            slotRegistry_.setSharedMemory(shm_.get());
+            shmInitialized_ = true;
+            LogHelper::writeToLog("[SharedData] SharedMemory sesion OK: " + slotShmName);
+
+            // ─── (2) Cerrar SharedAudioMemoryV2 y reconectar ─────────────────
+            audioMemoryV2_.close();
+            bool audioOK = audioMemoryV2_.initialize(audioShmName);
+            if (!audioOK) {
+                LogHelper::writeToLog("[SharedData] initializeSession: Audio SHM aun no disponible");
+                return false;
+            }
+
+            LogHelper::writeToLog("[SharedData] SharedAudioMemoryV2 sesion OK: " + audioShmName);
+            return true;
+        }
+        catch (const std::exception& e) {
+            LogHelper::writeToLog("[SharedData] initializeSession EXCEPTION: " + juce::String(e.what()));
+            return false;
+        }
+        catch (...) {
+            MIXCOACH_LOG_CATCH("SharedData::initializeSession");
+            return false;
+        }
+    }
+
     SharedData::~SharedData()
     {
         // SharedMemoryManager se destruye automáticamente via unique_ptr

@@ -4,7 +4,7 @@ namespace mixcoach {
 
     VirtualBusesComponent::VirtualBusesComponent()
     {
-        titleLabel_.setText(juce::String(juce::CharPointer_UTF8("\xF0\x9F\x94\x8C Buses Virtuales")),
+        titleLabel_.setText(juce::String(juce::CharPointer_UTF8("[PLUGIN] Buses Virtuales")),
                             juce::dontSendNotification);
         titleLabel_.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeHeader)).boldened());
         titleLabel_.setJustificationType(juce::Justification::centredLeft);
@@ -79,11 +79,11 @@ namespace mixcoach {
             // Bus icon
             auto iconArea       = busArea.removeFromLeft(24);
             const char* icons[] = {
-                "\xF0\x9F\xA5\x81", // Bateria
-                "\xF0\x9F\x8E\xB8", // Bajo
-                "\xF0\x9F\x8E\xA8", // Guitarras
-                "\xF0\x9F\x8E\xB9", // Teclados
-                "\xF0\x9F\x8E\xA4", // Voces
+                "[DRUM]", // Bateria
+                "[MUSIC]", // Bajo
+                "[ART]", // Guitarras
+                "[MUSIC]", // Teclados
+                "[MIC]", // Voces
                 "\xF0\x9F\x94\x80"  // FX
             };
             g.setFont(juce::Font(juce::FontOptions(16.0f)));

@@ -19,22 +19,22 @@ namespace mixcoach {
                 msg += "\xF0\x9F\x94\xAE ";
                 break; // 🔮
             case Domain::Crest:
-                msg += "\xE2\x9A\xA1 ";
+                msg += "[BOLT] ";
                 break; // ⚡
             case Domain::Centroid:
-                msg += "\xF0\x9F\x8C\xA1\xEF\xB8\x8F ";
+                msg += "\xF0\x9F\x8C\xA1 ";
                 break; // 🌡️
             case Domain::LUFS:
                 msg += "\xF0\x9F\x94\x8A ";
                 break; // 🔊
             case Domain::PhaseScope:
-                msg += "\xF0\x9F\x94\x84 ";
+                msg += "[PHASE] ";
                 break; // 🔄
             case Domain::SpectralBand:
-                msg += "\xF0\x9F\x8E\x9B\xEF\xB8\x8F ";
+                msg += "[COACH] ";
                 break; // 🎛️
             case Domain::Gain:
-                msg += "\xF0\x9F\x93\x8A ";
+                msg += "[CHART] ";
                 break; // 📊
             case Domain::MidSide:
                 msg += "\xF0\x9F\x94\x80 ";
@@ -1193,7 +1193,7 @@ namespace mixcoach {
 
         juce::String msg;
         msg =
-            "\xF0\x9F\x93\x8A **INTERPRETACI\xC3\x93N DE ANALIZADORES**\n"
+            "[CHART] **INTERPRETACI\xC3\x93N DE ANALIZADORES**\n"
             "═══════════════════════════════════\n\n";
 
         int count = 0;

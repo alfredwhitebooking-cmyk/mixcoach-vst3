@@ -168,8 +168,8 @@ static void test_shared_memory_basic()
     TEST("Header initialized flag set", block->header.initialized == 1);
     TEST("Struct version is V6",
          block->header.structVersion == mixcoach::SharedMemoryHeader::kCurrentStructVersion);
-    TEST("kCurrentStructVersion = 9",
-         mixcoach::SharedMemoryHeader::kCurrentStructVersion == 9);
+    TEST("kCurrentStructVersion = 10",
+         mixcoach::SharedMemoryHeader::kCurrentStructVersion == 10);
     TEST("Change count starts at 0", shm.getChangeCount() == 0);
 
     // Register a slot (identity only — V6)

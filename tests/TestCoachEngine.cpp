@@ -322,10 +322,9 @@ static void test_announce_new_track()
 
     TEST("Announce message pushed",
          sd->getMessageCount() >= 1);
-    TEST("Announce message contains 'Messenger' or 'Nuevo' or 'nuevo'",
-         getMessageText(*sd, 0).contains("Messenger") ||
-         getMessageText(*sd, 0).contains("Nuevo") ||
-         getMessageText(*sd, 0).contains("nuevo"));
+    TEST("Announce message contains 'Escucha' or 'aparecer'",
+         getMessageText(*sd, 0).contains("Escucha") ||
+         getMessageText(*sd, 0).contains("aparecer"));
     TEST("Announce message shows peak level (-10.0)",
          getMessageText(*sd, 0).contains("-10.0"));
 

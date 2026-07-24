@@ -298,15 +298,15 @@ namespace mixcoach {
 
             if (mapConfirmed_) {
                 btnColour = MixCoachTheme::success();
-                btnLabel  = "\xE2\x9C\x93 MAPA CONFIRMADO";
+                btnLabel  = "[OK] MAPA CONFIRMADO";
             }
             else if (complete) {
                 btnColour = MixCoachTheme::success();
-                btnLabel  = "\xE2\x9C\x85 CONFIRMAR MAPA";
+                btnLabel  = "[DONE] CONFIRMAR MAPA";
             }
             else {
                 btnColour = MixCoachTheme::warning();
-                btnLabel  = "\xE2\x9A\xA0 ASIGNAR BUSES";
+                btnLabel  = "[WARN] ASIGNAR BUSES";
             }
 
             // ─── Shadow ───────────────────────────────────────────────────
@@ -369,9 +369,10 @@ namespace mixcoach {
     // ═══════════════════════════════════════════════════════════════════════════
     void MixMapComponent::visibilityChanged()
     {
-        if (isShowing()) startTimerHz(60);
-        else
-            stopTimer();
+        if (isShowing() && !isTimerRunning())
+            startTimerHz(60);
+        // Nunca detener el timer — las animaciones de entrada deben continuar
+        // aunque el componente no sea visible momentáneamente.
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -598,7 +599,7 @@ namespace mixcoach {
             }
             else if (badge.maxSeverity > 0.3f) {
                 badgeColour = MixCoachTheme::warning();
-                badgeIcon   = juce::String::fromUTF8("\xE2\x9A\xA0"); // ⚠
+                badgeIcon   = juce::String::fromUTF8("[WARN]"); // ⚠
             }
             else if (badge.hasIssues) {
                 badgeColour = MixCoachTheme::accentCyan();
@@ -606,7 +607,7 @@ namespace mixcoach {
             }
             else { // isOptimal
                 badgeColour = MixCoachTheme::success();
-                badgeIcon   = juce::String::fromUTF8("\xE2\x9C\x93"); // ✓
+                badgeIcon   = juce::String::fromUTF8("[OK]"); // ✓
             }
 
             int badgeW     = 24;
@@ -637,9 +638,9 @@ namespace mixcoach {
             displayName += " (" + roleStr;
 
             // Add confidence emoji
-            if (node.roleConfidence >= 0.75f) displayName += " \xE2\x9C\x93"; // ✅
+            if (node.roleConfidence >= 0.75f) displayName += " [OK]"; // ✅
             else if (node.roleConfidence >= 0.4f)
-                displayName += " \xE2\x9A\xA0"; // ⚠️
+                displayName += " [WARN]"; // ⚠️
             else if (node.roleConfidence > 0.0f)
                 displayName += " \xE2\x9D\x8C"; // ❌
 
@@ -656,7 +657,7 @@ namespace mixcoach {
         auto nameArea = juce::Rectangle<int>(cx, area.getY(), remainingW, area.getHeight());
         g.setFont(juce::Font(juce::FontOptions(10.0f)));
         g.setColour(MixCoachTheme::textPrimary());
-        g.drawText(displayName, nameArea, juce::Justification::centredLeft);
+        g.drawFittedText(displayName, nameArea, juce::Justification::centredLeft, 1, 0.9f); // BUG #15: ellipsis automático con ...
         cx = nameArea.getRight() + 4;
 
         // ═══ 3. Stereo badge ════════════════════════════════════════════════
@@ -927,7 +928,7 @@ namespace mixcoach {
             case StereoPos::Spread:
                 return "SPREAD";
             case StereoPos::PhaseIssue:
-                return juce::String::fromUTF8("\xE2\x9A\xA0PHASE"); // ⚠PHASE
+                return juce::String::fromUTF8("[WARN]PHASE"); // ⚠PHASE
         }
         return "";
     }
@@ -1061,9 +1062,9 @@ namespace mixcoach {
         // Role confidence
         if (node.roleConfidence > 0.0f) {
             juce::String confidenceLabel;
-            if (node.roleConfidence >= 0.9f) confidenceLabel = "\xE2\x9C\x85 Alta";
+            if (node.roleConfidence >= 0.9f) confidenceLabel = "[DONE] Alta";
             else if (node.roleConfidence >= 0.6f)
-                confidenceLabel = "\xE2\x9A\xA0\xEF\xB8\x8F Media";
+                confidenceLabel = "[WARN] Media";
             else
                 confidenceLabel = "\xE2\x9D\x8C Baja";
             lines.add("Confianza rol: " + confidenceLabel + " (" + juce::String(node.roleConfidence * 100.0f, 0)
@@ -1080,13 +1081,13 @@ namespace mixcoach {
                 else if (badge.maxSeverity > 0.3f)
                     issueLine += "\xF0\x9F\x9F\xA1 " + juce::String(badge.issueCount) + " warning(s)";
                 else
-                    issueLine += "\xE2\x84\xB9\xEF\xB8\x8F " + juce::String(badge.issueCount) + " info";
+                    issueLine += "\xE2\x84\xB9 " + juce::String(badge.issueCount) + " info";
                 lines.add(issueLine);
 
                 if (badge.shortType.isNotEmpty()) lines.add("Tipo: " + badge.shortType);
             }
             else if (badge.isOptimal) {
-                lines.add("\xE2\x9C\x85 Sin issues — \xC3\xB3ptimo");
+                lines.add("[DONE] Sin issues — \xC3\xB3ptimo");
             }
         }
 
@@ -1097,7 +1098,7 @@ namespace mixcoach {
         juce::String busLine;
         if (needsBus) {
             // Track needs bus assignment — show warning + suggestion
-            busLine = "\xE2\x9A\xA0\xEF\xB8\x8F Sin bus asignado";
+            busLine = "[WARN] Sin bus asignado";
             lines.add(busLine);
 
             if (hasSuggestedBus) {
@@ -1112,7 +1113,7 @@ namespace mixcoach {
         else {
             // Bus assigned — show routing info
             busLine = "\xF0\x9F\x94\x80 Enrutamiento: " + juce::String(busNames[static_cast<int>(node.bus)])
-                      + " \xE2\x86\x92 Master";
+                      + " [RIGHT] Master";
             lines.add(busLine);
 
             // If the track's role suggests a different bus, mention it
@@ -1203,7 +1204,7 @@ namespace mixcoach {
                 g.setColour(MixCoachTheme::accentCyan());
                 g.drawText(line, textBounds.toNearestInt(), juce::Justification::centredLeft);
             }
-            else if (line.startsWith("Issues:") || line.startsWith("\xE2\x9C\x85 Sin issues")) {
+            else if (line.startsWith("Issues:") || line.startsWith("[DONE] Sin issues")) {
                 g.setFont(juce::Font(juce::FontOptions(9.0f)));
                 g.setColour(MixCoachTheme::textPrimary());
                 g.drawText(line, textBounds.toNearestInt(), juce::Justification::centredLeft);
@@ -1213,7 +1214,7 @@ namespace mixcoach {
                 g.setColour(MixCoachTheme::textMuted());
                 g.drawText(line, textBounds.toNearestInt(), juce::Justification::centredLeft);
             }
-            else if (line.startsWith("\xE2\x9A\xA0") && line.contains("Sin bus")) {
+            else if (line.startsWith("[WARN]") && line.contains("Sin bus")) {
                 // Warning: sin bus asignado — highlight in warning colour
                 g.setFont(juce::Font(juce::FontOptions(9.0f)).boldened());
                 g.setColour(MixCoachTheme::warning());

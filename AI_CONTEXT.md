@@ -26,6 +26,9 @@
 **Documentos complementarios (standalone):**
 - `workspace_memory/PLAN_10_10.md` — 🏆 **PLAN MAESTRO a 10/10 (leer PRIMERO)**
 - `workspace_memory/ROADMAP.md` — 🎯 Roadmap de producto y sprints activos
+- `workspace_memory/PLAN_UX_V2.md` — 🎯 **PLAN MAESTRO UX V2: comparativa código actual vs experiencia objetivo (LEER PRIMERO al entrar)**
+- `workspace_memory/UX_VISION_PLAN.md` — 🎨 **PLAN UX: de 65% → experiencia objetivo (leer si tocas UI)**
+- `workspace_memory/SCENE_VISUAL_SPEC.md` — 🖼️ **ESPECIFICACIÓN VISUAL: cómo debe verse cada escena píxel a píxel (leer si tocas UI)**
 - `AI_COMPONENT_INDEX.yaml` — Índice semántico de componentes
 - `SAFE_EDIT_GUIDE.md` — Guía de edición segura
 - `PRODUCT_VISION.md` — Experiencia de usuario definitiva
@@ -70,12 +73,13 @@
 ### Orden de Lectura para IA
 
 ```
-1. workspace_memory/PLAN_10_10.md  ← PLAN MAESTRO a 10/10 (leer PRIMERO)
-2. workspace_memory/ROADMAP.md    ← SPRINTS ACTIVOS + estado actual
-3. AI_CONTEXT.md                  ← TODO EL CONTEXTO DEL SISTEMA (12 secciones)
-4. AI_COMPONENT_INDEX.yaml        ← Indice semantico de componentes
-5. SAFE_EDIT_GUIDE.md             ← Guia de modificacion segura
-6. PRODUCT_VISION.md              ← Experiencia de usuario definitiva
+1. workspace_memory/PLAN_10_10.md       ← PLAN MAESTRO a 10/10 (leer PRIMERO)
+2. workspace_memory/ROADMAP.md          ← SPRINTS ACTIVOS + estado actual
+3. workspace_memory/UX_VISION_PLAN.md   ← PLAN UX (leer si tocas cualquier archivo de UI)
+4. AI_CONTEXT.md                        ← TODO EL CONTEXTO DEL SISTEMA (12 secciones)
+5. AI_COMPONENT_INDEX.yaml              ← Indice semantico de componentes
+6. SAFE_EDIT_GUIDE.md                   ← Guia de modificacion segura
+7. PRODUCT_VISION.md                    ← Experiencia de usuario definitiva
 ```
 
 ### Cómo Hacer tu Primer Cambio

@@ -31,9 +31,10 @@ namespace mixcoach {
 
     void ReferenceMatchPanel::visibilityChanged()
     {
-        if (isShowing()) startTimerHz(60);
-        else
-            stopTimer();
+        if (isShowing() && !isTimerRunning())
+            startTimerHz(60);
+        // Nunca detener el timer — el match score y las barras de
+        // comparación deben seguir animándose.
     }
 
     void ReferenceMatchPanel::timerCallback()
@@ -144,6 +145,13 @@ namespace mixcoach {
         drawRegionBars(g, barsArea);
         drawDeltaRow(g, deltaArea);
         drawMetricsRow(g, metricsArea);
+
+        // ─── Progress Timeline (Antes vs Después) en la parte inferior ────
+        if (!timelinePoints_.empty()) {
+            area.removeFromTop(2);
+            auto timelineArea = area.removeFromBottom(28);
+            drawProgressTimeline(g, timelineArea);
+        }
     }
 
     void ReferenceMatchPanel::drawRegionBars(juce::Graphics& g, juce::Rectangle<int> bounds)
@@ -279,6 +287,109 @@ namespace mixcoach {
             g.drawText("M = Mix  |  R = Ref",
                        juce::Rectangle<int>(bounds.getX(), labelY, bounds.getWidth(), 8),
                        juce::Justification::centred);
+        }
+    }
+
+    void ReferenceMatchPanel::drawProgressTimeline(juce::Graphics& g, juce::Rectangle<int> bounds)
+    {
+        if (timelinePoints_.size() < 2) return;
+
+        auto area = bounds.reduced(2, 0);
+        int w = area.getWidth();
+        int h = area.getHeight();
+        int midY = area.getY() + h / 2;
+
+        // ─── Background ──────────────────────────────────────────────────
+        g.setColour(MixCoachTheme::bgDarker().withAlpha(0.12f));
+        g.fillRoundedRectangle(area.toFloat(), 3.0f);
+
+        // ─── Label ───────────────────────────────────────────────────────
+        g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizeExtraTiny)).boldened());
+        g.setColour(MixCoachTheme::textMuted().withAlpha(0.5f));
+        g.drawText("PROGRESO", area.removeFromLeft(36), juce::Justification::centredLeft);
+
+        // ─── Chart area ──────────────────────────────────────────────────
+        auto chartArea = area.reduced(2, 2);
+        int chartW = chartArea.getWidth();
+        int chartH = chartArea.getHeight() - 10; // espacio para labels abajo
+
+        int n = (int)timelinePoints_.size();
+
+        // Encontrar min/max scores para escalar
+        float minScore = 100.0f, maxScore = 0.0f;
+        for (const auto& pt : timelinePoints_) {
+            if (pt.matchScore < minScore) minScore = pt.matchScore;
+            if (pt.matchScore > maxScore) maxScore = pt.matchScore;
+        }
+        float scoreRange = juce::jmax(1.0f, maxScore - minScore);
+
+        // ─── Draw trend line ─────────────────────────────────────────────
+        juce::Path trendPath;
+        for (int i = 0; i < n; ++i) {
+            float x = (float)chartArea.getX() + (float)i / (float)(n - 1) * (float)chartW;
+            float normalized = (timelinePoints_[i].matchScore - minScore) / scoreRange;
+            float y = (float)(chartArea.getBottom() - 10) - normalized * (float)chartH;
+
+            if (i == 0) trendPath.startNewSubPath(x, y);
+            else trendPath.lineTo(x, y);
+        }
+
+        // Fill below the trend line
+        juce::Path fillPath(trendPath);
+        fillPath.lineTo((float)(chartArea.getX() + chartW), (float)(chartArea.getBottom() - 10));
+        fillPath.lineTo((float)chartArea.getX(), (float)(chartArea.getBottom() - 10));
+        fillPath.closeSubPath();
+
+        // Gradient fill
+        juce::Colour trendCol = (timelinePoints_.back().matchScore > timelinePoints_.front().matchScore)
+                                    ? MixCoachTheme::success()
+                                    : MixCoachTheme::warning();
+        g.setGradientFill(juce::ColourGradient(trendCol.withAlpha(0.15f),
+                                                (float)chartArea.getX(), (float)chartArea.getY(),
+                                                trendCol.withAlpha(0.02f),
+                                                (float)chartArea.getX(), (float)(chartArea.getBottom() - 10),
+                                                false));
+        g.fillPath(fillPath);
+
+        // Stroke for the line
+        g.setColour(trendCol.withAlpha(0.7f));
+        g.strokePath(trendPath, juce::PathStrokeType(1.5f));
+
+        // ─── Draw dots at each point ─────────────────────────────────────
+        for (int i = 0; i < n; ++i) {
+            float x = (float)chartArea.getX() + (float)i / (float)(n - 1) * (float)chartW;
+            float normalized = (timelinePoints_[i].matchScore - minScore) / scoreRange;
+            float y = (float)(chartArea.getBottom() - 10) - normalized * (float)chartH;
+
+            // Glow
+            g.setColour(trendCol.withAlpha(0.15f));
+            g.fillEllipse(x - 4.0f, y - 4.0f, 8.0f, 8.0f);
+
+            // Dot
+            bool isLast = (i == n - 1);
+            g.setColour(isLast ? trendCol.brighter(0.3f) : trendCol.withAlpha(0.6f));
+            g.fillEllipse(x - (isLast ? 3.0f : 2.0f), y - (isLast ? 3.0f : 2.0f),
+                          (isLast ? 6.0f : 4.0f), (isLast ? 6.0f : 4.0f));
+
+            // Score label on first and last
+            if (i == 0 || i == n - 1) {
+                g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizePico)).boldened());
+                g.setColour(MixCoachTheme::textDim().withAlpha(0.6f));
+                juce::String label = juce::String((int)timelinePoints_[i].matchScore) + "%";
+                auto labelBounds = juce::Rectangle<int>((int)x - 12, (int)y - (i == 0 ? 10 : -2), 24, 8);
+                g.drawText(label, labelBounds, juce::Justification::centred);
+            }
+        }
+
+        // ─── Progress delta text ─────────────────────────────────────────
+        float delta = timelinePoints_.back().matchScore - timelinePoints_.front().matchScore;
+        if (std::abs(delta) > 0.5f) {
+            g.setFont(juce::Font(juce::FontOptions(MixCoachTheme::fontSizePico)).boldened());
+            juce::Colour deltaCol = (delta > 0) ? MixCoachTheme::success() : MixCoachTheme::error();
+            g.setColour(deltaCol.withAlpha(0.7f));
+            juce::String deltaText = (delta > 0 ? "+" : "") + juce::String((int)delta) + "%";
+            g.drawText(deltaText, chartArea.removeFromRight(30).removeFromBottom(10),
+                       juce::Justification::centredRight);
         }
     }
 

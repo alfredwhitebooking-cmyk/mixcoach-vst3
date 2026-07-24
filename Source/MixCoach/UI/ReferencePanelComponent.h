@@ -2,12 +2,16 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_graphics/juce_graphics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <vector>
 #include "MixCoachTheme.h"
 #include "ReferenceMatchPanel.h"
 #include "DropZoneComponent.h"
 #include "SmoothValue.h"
 
 namespace mixcoach {
+
+    // Forward declaration — ProgressSnapshot del ProgressTracker
+    struct ProgressSnapshot;
 
     // ─── Información de archivo de audio extraída ──────────────────────────────
     struct AudioFileInfo
@@ -56,7 +60,16 @@ namespace mixcoach {
     {
     public:
         ReferencePanelComponent();
-        ~ReferencePanelComponent() override = default;
+        ~ReferencePanelComponent() override
+        {
+            // Unir todos los hilos de fetch antes de destruir
+            for (auto& t : urlFetchThreads_) {
+                if (t.joinable()) {
+                    t.request_stop();
+                    t.join();
+                }
+            }
+        }
 
         void resized() override;
         void paint(juce::Graphics& g) override;
@@ -107,6 +120,10 @@ namespace mixcoach {
         };
         /** Callback cuando el usuario selecciona una accion del menu contextual. */
         std::function<void(RefModeMenuAction)> onRefModeMenuAction;
+
+        // ─── Timeline data from ProgressTracker ─────────────────────────────
+        /** Recibe datos de timeline desde ProgressTracker para dibujar la mini-grafica. */
+        void setTimelineData(const std::vector<ProgressSnapshot>& snapshots);
 
         /** Actualiza la posicion de reproduccion desde el engine (timer ~10Hz). */
         void updatePlaybackPosition(double positionSeconds, double totalSeconds);
@@ -205,6 +222,11 @@ namespace mixcoach {
         SmoothValue progressFillSmooth_{0.0f, 150.0f, 800.0f};
         SmoothValue deltaSmooth_{0.0f, 300.0f, 800.0f};
 
+        // ─── Timeline data ────────────────────────────────────────────────
+        std::vector<ProgressSnapshot> timelinePoints_;
+        juce::Rectangle<int> timelineBounds_;
+        void drawTimelineGraph(juce::Graphics& g, juce::Rectangle<int> bounds);
+
         // ─── Toggle and progress bar bounds ──────────────────────────────────
         juce::Rectangle<int> refModeToggleBounds_;
         juce::Rectangle<int> refProgressBounds_;
@@ -249,6 +271,9 @@ namespace mixcoach {
         /** Extrae un nombre descriptivo de una URL (para SoundCloud: track name;
             para otros: intenta fetch HTTP). Retorna string vacía si no puede. */
         static juce::String extractURLName(const juce::String& url);
+
+        // ═══ URL Title Fetch — Threads para fetch asíncrono de títulos ═══════════
+        std::vector<std::jthread> urlFetchThreads_;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReferencePanelComponent)
     };

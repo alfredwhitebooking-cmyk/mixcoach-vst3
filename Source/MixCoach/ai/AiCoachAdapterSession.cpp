@@ -263,7 +263,11 @@ namespace mixcoach {
 
     juce::File AiCoachAdapter::getDefaultProfileFile()
     {
-        return getMixCoachBaseDir().getChildFile("user_profile.json");
+        // ═══ V2: Guardar en Documents/MixCoach/ (visible para el usuario)
+        // para que pueda ver/editar manualmente su perfil.
+        return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+            .getChildFile("MixCoach")
+            .getChildFile("user_profile.json");
     }
 
     // ===========================================================================
@@ -271,9 +275,9 @@ namespace mixcoach {
     // ===========================================================================
     void AiCoachAdapter::autoSave()
     {
-        // Crear directorio una sola vez (la primera llamada a createDirectory
-        // crea la carpeta; las siguientes son no-op rápidas del OS).
-        getMixCoachBaseDir().createDirectory();
+        // Crear directorios de persistencia
+        getMixCoachBaseDir().createDirectory(); // %LOCALAPPDATA%/MixCoach/ (session state)
+        getDefaultProfileFile().getParentDirectory().createDirectory(); // Documents/MixCoach/ (user profile)
 
         saveSessionMemory(getDefaultSessionFile());
         updateUserProfile();
@@ -284,6 +288,19 @@ namespace mixcoach {
     {
         loadSessionMemory(getDefaultSessionFile());
         loadUserProfile(getDefaultProfileFile());
+
+        // ═══ Sincronizar experienceLevel desde perfil cargado ═══════
+        // Si el usuario editó user_profile.json manualmente, el cambio
+        // en experienceLevel debe propagarse a AiCoachAdapter::experienceLevel_.
+        if (userProfile_.valid && userProfile_.experienceLevel >= 1 && userProfile_.experienceLevel <= 4) {
+            ExperienceLevel profileLevel = static_cast<ExperienceLevel>(userProfile_.experienceLevel - 1);
+            if (profileLevel != experienceLevel_) {
+                LogHelper::writeToLog("[AiCoachAdapter] Syncing experienceLevel from profile: "
+                                      + juce::String(static_cast<int>(profileLevel))
+                                      + " (was " + juce::String(static_cast<int>(experienceLevel_)) + ")");
+                experienceLevel_ = profileLevel;
+            }
+        }
     }
 
     // ===========================================================================
@@ -316,11 +333,16 @@ namespace mixcoach {
         llmClient_->sendPrompt(
             system,
             fullUserMsg,
-            [this, callback, userMessage](bool success, const juce::String& response, const juce::String& error) {
+            [this, callback](bool success, const juce::String& response, const juce::String& error) {
+                juce::String cleanedResponse = response;
                 if (success) {
-                    addConversationTurn(ConversationTurn::Role::Assistant, response);
+                    // Procesar comandos JSON del LLM (switch_tab, highlight_track, etc.)
+                    if (commandInterpreter_ != nullptr) {
+                        cleanedResponse = commandInterpreter_->processResponse(response);
+                    }
+                    addConversationTurn(ConversationTurn::Role::Assistant, cleanedResponse);
                 }
-                if (callback) callback(success, success ? response : error);
+                if (callback) callback(success, success ? cleanedResponse : error);
             });
     }
 
@@ -350,11 +372,17 @@ namespace mixcoach {
                                      fullUserMsg,
                                      onToken,
                                      [this, onComplete](const juce::String& fullResponse, const juce::String& error) {
+                                         juce::String cleanedResponse = fullResponse;
                                          if (error.isEmpty()) {
-                                             addConversationTurn(ConversationTurn::Role::Assistant, fullResponse);
+                                             // Procesar comandos JSON del LLM
+                                             if (commandInterpreter_ != nullptr) {
+                                                 cleanedResponse = commandInterpreter_->processResponse(fullResponse);
+                                             }
+                                             addConversationTurn(ConversationTurn::Role::Assistant, cleanedResponse);
                                          }
                                          if (onComplete)
-                                             onComplete(error.isEmpty(), error.isEmpty() ? fullResponse : error);
+                                             onComplete(error.isEmpty(),
+                                                        error.isEmpty() ? cleanedResponse : error);
                                      });
     }
 
@@ -441,7 +469,101 @@ namespace mixcoach {
         juce::String s;
         s += "[USER PROFILE]\n";
         s += "  Sessions: " + juce::String(sessionCount) + "\n";
-        s += "  Most used genre: " + mostUsedGenre + "\n";
+
+        // Nombre del ingeniero
+        if (engineerName.isNotEmpty()) {
+            s += "  Name: " + engineerName + "\n";
+        }
+
+        // Género más usado
+        if (mostUsedGenre.isNotEmpty() && mostUsedGenre != "Unknown") {
+            s += "  Most used genre: " + mostUsedGenre + "\n";
+        }
+
+        // Tono preferido
+        if (preferredTone.isNotEmpty()) {
+            s += "  Preferred tone: " + preferredTone + "\n";
+        }
+
+        // Géneros favoritos
+        if (favoriteGenres.size() > 0) {
+            s += "  Favorite genres: " + favoriteGenres.joinIntoString(", ") + "\n";
+        }
+
+        // Plugins favoritos
+        if (favoritePlugins.size() > 0) {
+            s += "  Favorite plugins: " + favoritePlugins.joinIntoString(", ") + "\n";
+        }
+
+        // Nivel de experiencia
+        if (experienceLevel >= 1 && experienceLevel <= 4) {
+            static const char* levelNames[] = {"Novice", "Intermediate", "Advanced", "Expert"};
+            s += "  Level: " + juce::String(levelNames[experienceLevel - 1]) + "\n";
+        }
+
+        // Última sesión
+        if (lastSessionDate.isNotEmpty()) {
+            s += "  Last session: " + lastSessionDate + "\n";
+        }
+
+        // ═══ Session History — datos de la última sesión ═══════════════════
+        if (lastSessionDurationS > 0 || lastSessionProblemsDetected > 0
+            || lastSessionReferenceMatchPct > 0 || lastSessionGenre.isNotEmpty()) {
+            s += "  [LAST SESSION SUMMARY]\n";
+            if (lastSessionDurationS > 0) {
+                int hours = lastSessionDurationS / 3600;
+                int mins  = (lastSessionDurationS % 3600) / 60;
+                if (hours > 0)
+                    s += "    Duration: " + juce::String(hours) + "h " + juce::String(mins) + "m\n";
+                else
+                    s += "    Duration: " + juce::String(mins) + "m\n";
+            }
+            if (lastSessionGenre.isNotEmpty())
+                s += "    Genre: " + lastSessionGenre + "\n";
+            if (lastSessionProblemsDetected > 0) {
+                s += "    Problems: " + juce::String(lastSessionProblemsDetected) + " detected, "
+                     + juce::String(lastSessionProblemsResolved) + " resolved ("
+                     + juce::String(lastSessionProblemsResolved * 100 / lastSessionProblemsDetected)
+                     + "% resolution rate)\n";
+            }
+            if (lastSessionReferenceMatchPct > 0) {
+                s += "    Reference match: " + juce::String(lastSessionReferenceMatchPct) + "%\n";
+            }
+            if (lastSessionMixScore > 0) {
+                s += "    MixScore: " + juce::String(lastSessionMixScore) + "/100\n";
+            }
+            s += "\n";
+        }
+
+        // ═══ Accumulated Statistics ═══════════════════════════════════════
+        if (sessionCount >= 3) {
+            s += "  [ACCUMULATED STATISTICS]\n";
+            s += "    Total sessions completed: " + juce::String(sessionCount) + "\n";
+            if (totalProblemsResolved > 0)
+                s += "    Total problems resolved across all sessions: " + juce::String(totalProblemsResolved) + "\n";
+            if (bestReferenceMatchPct > 0)
+                s += "    Best reference match: " + juce::String(bestReferenceMatchPct) + "%\n";
+            if (mostUsedGenre.isNotEmpty())
+                s += "    Favorite genre to mix: " + mostUsedGenre + "\n";
+            s += "\n";
+        }
+
+        // Perfil de comportamiento (solo si hay suficientes datos)
+        if (behavior.totalSessions >= 3) {
+            s += "  Behavior:\n";
+            if (behavior.tendsToOverApply)
+                s += "    - Tends to over-apply corrections (applies more than recommended)\n";
+            if (behavior.tendsToIgnore)
+                s += "    - Tends to ignore some recommendations\n";
+            if (behavior.averageCorrectionTime > 0.0f) {
+                int secs = static_cast<int>(behavior.averageCorrectionTime);
+                if (secs < 60)
+                    s += "    - Average apply time: " + juce::String(secs) + "s\n";
+                else
+                    s += "    - Average apply time: " + juce::String(secs / 60) + "min " + juce::String(secs % 60) + "s\n";
+            }
+        }
+
         return s;
     }
 
@@ -450,10 +572,97 @@ namespace mixcoach {
         return userProfile_.toProfileContext();
     }
 
+    /** Formatea duración de sesión en "Xh Ym" o "Ym Zs" según duración. */
+    static juce::String formatSessionDuration(int totalSeconds) noexcept
+    {
+        if (totalSeconds <= 0) return "<1min";
+        int hours   = totalSeconds / 3600;
+        int minutes = (totalSeconds % 3600) / 60;
+        int seconds = totalSeconds % 60;
+        if (hours > 0)
+            return juce::String(hours) + "h " + juce::String(minutes) + "m";
+        if (minutes > 0)
+            return juce::String(minutes) + "m " + juce::String(seconds) + "s";
+        return juce::String(seconds) + "s";
+    }
+
     void AiCoachAdapter::updateUserProfile()
     {
+        // Sincronizar nivel de experiencia desde el adapter
+        userProfile_.experienceLevel = static_cast<int>(experienceLevel_) + 1;
+
+        // Tono preferido por defecto si no se ha configurado
+        if (userProfile_.preferredTone.isEmpty()) {
+            // Detectar según nivel de experiencia: principiantes reciben tono motivador,
+            // expertos reciben tono técnico
+            switch (experienceLevel_) {
+                case ExperienceLevel::Novice:
+                case ExperienceLevel::Intermediate:
+                    userProfile_.preferredTone = "motivador";
+                    break;
+                case ExperienceLevel::Advanced:
+                    userProfile_.preferredTone = "t\xC3\xA9" "cnico";
+                    break;
+                case ExperienceLevel::Expert:
+                    userProfile_.preferredTone = "directo";
+                    break;
+            }
+        }
+
         userProfile_.sessionCount++;
         userProfile_.valid = true;
+
+        // Timestamp de última sesión
+        userProfile_.lastSessionDate = juce::Time::getCurrentTime().toString(false, false, false, false);
+
+        // ═══ Capturar métricas de la sesión desde CoachEngine ═══════════════
+        {
+            // Duración de la sesión (desde SessionContext)
+            auto ctx = coachEngine_.buildSessionContext();
+            userProfile_.lastSessionDurationS = static_cast<int>(ctx.sessionDurationUs / 1000000);
+
+            // Problemas detectados vs resueltos
+            userProfile_.lastSessionProblemsDetected = ctx.pendingCorrections + ctx.appliedCorrections;
+            userProfile_.lastSessionProblemsResolved = ctx.appliedCorrections;
+            userProfile_.totalProblemsResolved += ctx.appliedCorrections;
+
+            // Reference match %
+            if (coachEngine_.hasReferenceAudio()) {
+                auto refProgress = coachEngine_.getReferenceProgress();
+                int matchPct = static_cast<int>(refProgress.currentMatch * 100.0f);
+                userProfile_.lastSessionReferenceMatchPct = matchPct;
+                if (matchPct > userProfile_.bestReferenceMatchPct)
+                    userProfile_.bestReferenceMatchPct = matchPct;
+            }
+
+            // Género trabajado
+            if (genre_.isNotEmpty() && genre_ != "Unknown")
+                userProfile_.lastSessionGenre = genre_;
+
+            // MixScore — si está disponible, cómputo estático
+            // MixScore solo disponible en ciertas fases, no hardcodear
+            {
+                auto ms = MixScore::compute(coachEngine_, audioAnalyzer_, genre_);
+                if (ms.overall > 0)
+                    userProfile_.lastSessionMixScore = ms.overall;
+            }
+
+            // Resumen textual de la sesión
+            {
+                juce::String summary;
+                summary += "Sesi\xC3\xB3n #" + juce::String(userProfile_.sessionCount);
+                summary += " | Duraci\xC3\xB3n: " + formatSessionDuration(userProfile_.lastSessionDurationS);
+                if (userProfile_.lastSessionGenre.isNotEmpty())
+                    summary += " | G\xC3\xA9" "nero: " + userProfile_.lastSessionGenre;
+                summary += " | Problemas: " + juce::String(userProfile_.lastSessionProblemsDetected)
+                           + " detectados, " + juce::String(userProfile_.lastSessionProblemsResolved) + " resueltos";
+                if (userProfile_.lastSessionReferenceMatchPct > 0)
+                    summary += " | Match ref: " + juce::String(userProfile_.lastSessionReferenceMatchPct) + "%";
+                if (userProfile_.lastSessionMixScore > 0)
+                    summary += " | MixScore: " + juce::String(userProfile_.lastSessionMixScore);
+                userProfile_.lastSessionSummary = summary;
+            }
+        }
 
         if (genre_.isNotEmpty() && genre_ != "Unknown") {
             userProfile_.genreFrequency[genre_]++;
@@ -464,21 +673,40 @@ namespace mixcoach {
                     userProfile_.mostUsedGenre = genre;
                 }
             }
+
+            // Agregar a favoriteGenres si no está ya
+            if (userProfile_.favoriteGenres.size() < 5) {
+                bool found = false;
+                for (const auto& g : userProfile_.favoriteGenres) {
+                    if (g == genre_) { found = true; break; }
+                }
+                if (!found && genre_ != "Unknown")
+                    userProfile_.favoriteGenres.add(genre_);
+            }
         }
 
+        // Sincronizar totalSessions del behavior con sessionCount
+        userProfile_.behavior.totalSessions = userProfile_.sessionCount;
+
         LogHelper::writeToLog("[AiCoachAdapter] User profile updated: " + juce::String(userProfile_.sessionCount)
-                              + " sessions");
+                              + " sessions, level=" + juce::String(userProfile_.experienceLevel)
+                              + ", lastSession='" + userProfile_.lastSessionSummary.substring(0, 80) + "'");
     }
 
     void AiCoachAdapter::saveUserProfile(const juce::File& file) const
     {
         try {
             auto root = juce::DynamicObject::Ptr(new juce::DynamicObject());
+            root->setProperty("version", 2);
+            root->setProperty("engineerName", userProfile_.engineerName);
+            root->setProperty("preferredTone", userProfile_.preferredTone);
             root->setProperty("sessionCount", userProfile_.sessionCount);
+            root->setProperty("lastSessionDate", userProfile_.lastSessionDate);
             root->setProperty("mostUsedGenre", userProfile_.mostUsedGenre);
             root->setProperty("valid", userProfile_.valid);
-            root->setProperty("engineerName", userProfile_.engineerName);
+            root->setProperty("experienceLevel", userProfile_.experienceLevel);
 
+            // Genre frequency
             juce::Array<juce::var> genreEntries;
             for (const auto& [genre, count] : userProfile_.genreFrequency) {
                 auto entry = juce::DynamicObject::Ptr(new juce::DynamicObject());
@@ -487,6 +715,45 @@ namespace mixcoach {
                 genreEntries.add(juce::var(entry));
             }
             root->setProperty("genreFrequency", genreEntries);
+
+            // Favorite genres (V2)
+            if (userProfile_.favoriteGenres.size() > 0) {
+                juce::Array<juce::var> favGenres;
+                for (const auto& g : userProfile_.favoriteGenres)
+                    favGenres.add(juce::var(g));
+                root->setProperty("favoriteGenres", favGenres);
+            }
+
+            // Favorite plugins (V2)
+            if (userProfile_.favoritePlugins.size() > 0) {
+                juce::Array<juce::var> favPlugins;
+                for (const auto& p : userProfile_.favoritePlugins)
+                    favPlugins.add(juce::var(p));
+                root->setProperty("favoritePlugins", favPlugins);
+            }
+
+            // Behavior profile (V2)
+            {
+                auto behaviorObj = juce::DynamicObject::Ptr(new juce::DynamicObject());
+                behaviorObj->setProperty("tendsToOverApply", userProfile_.behavior.tendsToOverApply);
+                behaviorObj->setProperty("tendsToIgnore", userProfile_.behavior.tendsToIgnore);
+                behaviorObj->setProperty("averageCorrectionTime", static_cast<double>(userProfile_.behavior.averageCorrectionTime));
+                behaviorObj->setProperty("totalSessions", userProfile_.behavior.totalSessions);
+                root->setProperty("behaviorProfile", juce::var(behaviorObj));
+            }
+
+            // ═══ Session History fields (V3) ═══════════════════════════════
+            root->setProperty("lastSessionDurationS", userProfile_.lastSessionDurationS);
+            root->setProperty("lastSessionProblemsDetected", userProfile_.lastSessionProblemsDetected);
+            root->setProperty("lastSessionProblemsResolved", userProfile_.lastSessionProblemsResolved);
+            root->setProperty("lastSessionReferenceMatchPct", userProfile_.lastSessionReferenceMatchPct);
+            root->setProperty("lastSessionMixScore", userProfile_.lastSessionMixScore);
+            if (userProfile_.lastSessionGenre.isNotEmpty())
+                root->setProperty("lastSessionGenre", userProfile_.lastSessionGenre);
+            root->setProperty("totalProblemsResolved", userProfile_.totalProblemsResolved);
+            root->setProperty("bestReferenceMatchPct", userProfile_.bestReferenceMatchPct);
+            if (userProfile_.lastSessionSummary.isNotEmpty())
+                root->setProperty("lastSessionSummary", userProfile_.lastSessionSummary);
 
             juce::var json(root);
             juce::String jsonStr = juce::JSON::toString(json, true);
@@ -519,27 +786,99 @@ namespace mixcoach {
             auto root = json.getDynamicObject();
             if (root == nullptr) return;
 
+            // ─── Common fields (V1 + V2) ───────────────────────────────────
+            if (root->hasProperty("engineerName"))
+                userProfile_.engineerName = root->getProperty("engineerName").toString();
             if (root->hasProperty("sessionCount")) userProfile_.sessionCount = root->getProperty("sessionCount");
             if (root->hasProperty("mostUsedGenre"))
                 userProfile_.mostUsedGenre = root->getProperty("mostUsedGenre").toString();
             if (root->hasProperty("valid")) userProfile_.valid = root->getProperty("valid");
-            if (root->hasProperty("engineerName"))
-                userProfile_.engineerName = root->getProperty("engineerName").toString();
+            if (root->hasProperty("lastSessionDate"))
+                userProfile_.lastSessionDate = root->getProperty("lastSessionDate").toString();
 
+            // ═══ V2: New rich profile fields ─────────────────────────────────
+            if (root->hasProperty("preferredTone"))
+                userProfile_.preferredTone = root->getProperty("preferredTone").toString();
+            if (root->hasProperty("experienceLevel"))
+                userProfile_.experienceLevel = static_cast<int>(root->getProperty("experienceLevel"));
+
+            // Favorite genres (V2)
+            if (root->hasProperty("favoriteGenres")) {
+                auto arr = root->getProperty("favoriteGenres").getArray();
+                if (arr != nullptr) {
+                    userProfile_.favoriteGenres.clear();
+                    for (int i = 0; i < arr->size(); ++i) {
+                        userProfile_.favoriteGenres.add((*arr)[i].toString());
+                    }
+                }
+            }
+
+            // Favorite plugins (V2)
+            if (root->hasProperty("favoritePlugins")) {
+                auto arr = root->getProperty("favoritePlugins").getArray();
+                if (arr != nullptr) {
+                    userProfile_.favoritePlugins.clear();
+                    for (int i = 0; i < arr->size(); ++i) {
+                        userProfile_.favoritePlugins.add((*arr)[i].toString());
+                    }
+                }
+            }
+
+            // Behavior profile (V2)
+            if (root->hasProperty("behaviorProfile")) {
+                auto bpObj = root->getProperty("behaviorProfile").getDynamicObject();
+                if (bpObj != nullptr) {
+                    if (bpObj->hasProperty("tendsToOverApply"))
+                        userProfile_.behavior.tendsToOverApply = bpObj->getProperty("tendsToOverApply");
+                    if (bpObj->hasProperty("tendsToIgnore"))
+                        userProfile_.behavior.tendsToIgnore = bpObj->getProperty("tendsToIgnore");
+                    if (bpObj->hasProperty("averageCorrectionTime"))
+                        userProfile_.behavior.averageCorrectionTime =
+                            static_cast<float>(static_cast<double>(bpObj->getProperty("averageCorrectionTime")));
+                    if (bpObj->hasProperty("totalSessions"))
+                        userProfile_.behavior.totalSessions = bpObj->getProperty("totalSessions");
+                }
+            }
+
+            // ═══ Session History fields (V3) ═══════════════════════════════
+            if (root->hasProperty("lastSessionDurationS"))
+                userProfile_.lastSessionDurationS = static_cast<int>(root->getProperty("lastSessionDurationS"));
+            if (root->hasProperty("lastSessionProblemsDetected"))
+                userProfile_.lastSessionProblemsDetected = static_cast<int>(root->getProperty("lastSessionProblemsDetected"));
+            if (root->hasProperty("lastSessionProblemsResolved"))
+                userProfile_.lastSessionProblemsResolved = static_cast<int>(root->getProperty("lastSessionProblemsResolved"));
+            if (root->hasProperty("lastSessionReferenceMatchPct"))
+                userProfile_.lastSessionReferenceMatchPct = static_cast<int>(root->getProperty("lastSessionReferenceMatchPct"));
+            if (root->hasProperty("lastSessionMixScore"))
+                userProfile_.lastSessionMixScore = static_cast<int>(root->getProperty("lastSessionMixScore"));
+            if (root->hasProperty("lastSessionGenre"))
+                userProfile_.lastSessionGenre = root->getProperty("lastSessionGenre").toString();
+            if (root->hasProperty("totalProblemsResolved"))
+                userProfile_.totalProblemsResolved = static_cast<int>(root->getProperty("totalProblemsResolved"));
+            if (root->hasProperty("bestReferenceMatchPct"))
+                userProfile_.bestReferenceMatchPct = static_cast<int>(root->getProperty("bestReferenceMatchPct"));
+            if (root->hasProperty("lastSessionSummary"))
+                userProfile_.lastSessionSummary = root->getProperty("lastSessionSummary").toString();
+
+            // Genre frequency
             if (root->hasProperty("genreFrequency")) {
                 auto arr = root->getProperty("genreFrequency").getArray();
                 if (arr != nullptr) {
                     for (int i = 0; i < arr->size(); ++i) {
                         auto entry = (*arr)[i].getDynamicObject();
                         if (entry == nullptr) continue;
-                        juce::String genre                 = entry->getProperty("genre").toString();
-                        int count                          = entry->getProperty("count");
+                        juce::String genre = entry->getProperty("genre").toString();
+                        int count = entry->getProperty("count");
                         userProfile_.genreFrequency[genre] = count;
                     }
                 }
             }
 
-            LogHelper::writeToLog("[AiCoachAdapter] User profile loaded: " + file.getFullPathName());
+            LogHelper::writeToLog("[AiCoachAdapter] User profile loaded: " + file.getFullPathName()
+                                  + " (" + juce::String(userProfile_.sessionCount) + " sessions"
+                                  + ", V2 fields: " + juce::String(userProfile_.preferredTone.isNotEmpty() ? "tone " : "")
+                                  + juce::String(userProfile_.favoriteGenres.size() > 0 ? "genres " : "")
+                                  + ")");
         }
         catch (const std::exception& e) {
             LogHelper::writeToLog("[AiCoachAdapter] Error loading profile: " + juce::String(e.what()));
@@ -742,6 +1081,70 @@ namespace mixcoach {
         conversationHistory_.clear();
         genre_ = "Unknown";
         trackIntents_.fill(TrackIntent{});
+    }
+
+    // ===========================================================================
+    //  loadSessionHistory - Load multi-session history from persistent file
+    // ===========================================================================
+    std::vector<AiCoachAdapter::SessionSnapshotEntry> AiCoachAdapter::loadSessionHistory()
+    {
+        std::vector<SessionSnapshotEntry> result;
+
+        auto file = getDefaultSessionFile();
+        if (!file.existsAsFile()) return result;
+
+        try {
+            juce::FileInputStream fis(file);
+            if (!fis.openedOk()) return result;
+
+            juce::String jsonStr = fis.readEntireStreamAsString();
+            if (jsonStr.isEmpty()) return result;
+
+            auto json = juce::JSON::parse(jsonStr);
+            if (!json.isObject()) return result;
+
+            auto root = json.getDynamicObject();
+            if (root == nullptr) return result;
+
+            // Try to extract session snapshot data
+            // Check for differenceProfile which may contain session scores
+            if (root->hasProperty("differenceProfile")) {
+                auto dpObj = root->getProperty("differenceProfile").getDynamicObject();
+                if (dpObj != nullptr) {
+                    SessionSnapshotEntry snap;
+                    snap.timestampUs = juce::Time::currentTimeMillis() * 1000;
+                    snap.sessionNumber = 1;
+
+                    if (dpObj->hasProperty("mixScoreOverall"))
+                        snap.mixScoreOverall = static_cast<int>(dpObj->getProperty("mixScoreOverall"));
+                    if (dpObj->hasProperty("domainGain"))
+                        snap.domainGain = static_cast<int>(dpObj->getProperty("domainGain"));
+                    if (dpObj->hasProperty("domainTonal"))
+                        snap.domainTonal = static_cast<int>(dpObj->getProperty("domainTonal"));
+                    if (dpObj->hasProperty("domainDynamics"))
+                        snap.domainDynamics = static_cast<int>(dpObj->getProperty("domainDynamics"));
+                    if (dpObj->hasProperty("domainSpatial"))
+                        snap.domainSpatial = static_cast<int>(dpObj->getProperty("domainSpatial"));
+                    if (dpObj->hasProperty("domainReference"))
+                        snap.domainReference = static_cast<int>(dpObj->getProperty("domainReference"));
+
+                    result.push_back(snap);
+                }
+            }
+
+            // If no differenceProfile data, create a simple entry from the session metadata
+            if (result.empty()) {
+                SessionSnapshotEntry snap;
+                snap.timestampUs = juce::Time::currentTimeMillis() * 1000;
+                snap.sessionNumber = 1;
+                result.push_back(snap);
+            }
+        }
+        catch (const std::exception& e) {
+            LogHelper::writeToLog("[AiCoachAdapter] Error loading session history: " + juce::String(e.what()));
+        }
+
+        return result;
     }
 
 } // namespace mixcoach

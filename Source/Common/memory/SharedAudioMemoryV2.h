@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+#include <atomic>
 #include <juce_core/juce_core.h>
 #include "SharedAudioMemory.h"
 
@@ -10,11 +11,24 @@ namespace mixcoach {
 
     struct SharedAudioSlotStereo
     {
-        // Atomic positions for lock‑free ring buffers per channel
-        volatile int64_t writePosL; // writer (Messenger) left channel
-        volatile int64_t writePosR; // writer right channel
-        volatile int64_t readPosL;  // reader (MixCoach) left channel
-        volatile int64_t readPosR;  // reader MixCoach right channel
+        // ═══ QUICK WIN 3: std::atomic en vez de volatile ═══════════════════
+        // volatile NO garantiza visibilidad entre procesos en Windows moderno.
+        // std::atomic con memory_order_release/acquire SÍ garantiza
+        // orden de memoria correcto cross-process cuando se usa sobre
+        // memoria compartida mapeada (CreateFileMapping + MapViewOfFile).
+        //
+        // Nota: std::atomic<int64_t> sobre shared memory es válido en MSVC
+        // porque el layout es POD (sin vtable, sin mutex interno).
+        // En MSVC, std::atomic<int64_t> para tipos lock-free (is_always_lock_free)
+        // no contiene locks internos — solo usa intrínsecos como InterlockedExchange.
+        std::atomic<int64_t> writePosL{0}; // writer (Messenger) left channel
+        std::atomic<int64_t> writePosR{0}; // writer right channel
+        std::atomic<int64_t> readPosL{0};  // reader (MixCoach) left channel
+        std::atomic<int64_t> readPosR{0};  // reader MixCoach right channel
+        /** Contador de overruns: se incrementa cuando el reader detecta
+            que el writer ha sobrescrito samples no leídos (available > buffer size).
+            Usado para diagnóstico de congestión IPC. */
+        std::atomic<uint32_t> overrunCount{0};
         float bufferL[kAudioBufferSize];
         float bufferR[kAudioBufferSize];
     };
@@ -66,6 +80,9 @@ namespace mixcoach {
 
         [[nodiscard]] bool hasData(int slotIndex) const noexcept;
         [[nodiscard]] int available(int slotIndex) const noexcept;
+
+        /** Retorna el contador de overruns para un slot, o 0 si el slot no existe. */
+        [[nodiscard]] uint32_t getOverrunCount(int slotIndex) const noexcept;
 
     private:
         void* fileMapping_         = nullptr;

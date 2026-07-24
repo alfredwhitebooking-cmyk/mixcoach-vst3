@@ -27,6 +27,17 @@ namespace mixcoach {
         void setValues(float peak, float rms);
         bool advanceVisuals(double sampleRateHz = 60.0, bool allowRepaint = true);
 
+        /** Establece un target de crest para mostrar como marca en el gauge.
+            Dibuja un arco coloreado + tick en la posición del target.
+            @param targetDb  Valor de crest objetivo (dB)
+            @param label     Etiqueta opcional (ej: "Target: 10dB") */
+        void setTargetCrest(float targetDb, const juce::String& label = {});
+
+        /** Limpia la marca de target del gauge. */
+        void clearTargetCrest();
+
+        [[nodiscard]] bool hasTargetCrest() const noexcept { return hasTargetCrest_; }
+
     private:
         SmoothValue peak_{-80.0f, 1.0f, 100.0f};
         SmoothValue rms_{-80.0f, 5.0f, 250.0f};
@@ -35,6 +46,11 @@ namespace mixcoach {
         float rawPeak_ = -80.0f;
         float rawRms_  = -80.0f;
 
+        // Target crest overlay state
+        bool hasTargetCrest_ = false;
+        float targetCrestDb_ = 8.0f;
+        juce::String targetCrestLabel_;
+
         static constexpr float kMaxCrest   = 30.0f;
         static constexpr float kGaugeStart = 3.14159f; // 180° (left)
         static constexpr float kGaugeEnd   = 6.28319f; // 360° (right) = 180° arc
@@ -42,6 +58,7 @@ namespace mixcoach {
 
         void drawGauge(juce::Graphics& g, juce::Rectangle<float> bounds);
         void drawScale(juce::Graphics& g, float cx, float cy, float radius);
+        void drawTargetMarker(juce::Graphics& g, float cx, float cy, float radius);
         void drawNeedle(juce::Graphics& g, float cx, float cy, float radius, float crestNorm);
         void drawDigitalReading(juce::Graphics& g, juce::Rectangle<float> bounds, float crest);
         void drawMetricsTable(juce::Graphics& g, juce::Rectangle<float> bounds);

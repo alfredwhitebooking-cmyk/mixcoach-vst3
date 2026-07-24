@@ -82,7 +82,7 @@ namespace mixcoach {
                 s += "\xF0\x9F\x94\xB5 ";
                 break; // 🔵
             case GapSeverity::Praise:
-                s += "\xE2\x9C\x85 ";
+                s += "[DONE] ";
                 break; // ✅
         }
         s += juce::String(ReferenceDrivenEngine::domainName(domain)) + ": " + description;
@@ -173,7 +173,7 @@ namespace mixcoach {
             case GapSeverity::Info:
                 return "\xF0\x9F\x94\xB5 Info     "; // 🔵
             case GapSeverity::Praise:
-                return "\xE2\x9C\x85 Praise    "; // ✅
+                return "[DONE] Praise    "; // ✅
         }
         return "?";
     }

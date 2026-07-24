@@ -96,3 +96,23 @@ ci_logs*.zip
 
 # Build artefacts
 # Nota: build/ ya esta ignorado arriba
+
+# === CLEANUP: Legacy files moved to _legacy/ ===
+Source/_legacy/
+
+# === CLEANUP: One-off scripts and debug logs ===
+scripts/*.txt
+scripts/*.bin
+scripts/*.wav
+scripts/fix_*.py
+scripts/patch_*.py
+scripts/pulir_*.py
+scripts/reconstruct_*.py
+scripts/clean_*.py
+scripts/remove_*.py
+scripts/rewrite_*.py
+scripts/generate_*.py
+scripts/deploy_vst3*.bat
+scripts/check_damage.py
+scripts/clean_execute_command.py
+

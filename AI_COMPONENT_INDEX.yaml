@@ -58,6 +58,13 @@ components:
     dependencies: []
     tests: [TestPhaseManager (80 tests)]
 
+  - name: CoachingNarrativeTypes
+    path: Source/MixCoach/engine/CoachingNarrativeTypes.h
+    type: infra
+    criticality: LOW
+    description: Tipos compartidos del sistema de coaching narrativo: NarrativeStep (9 estados del ciclo 7 pasos), EvidenceView (8 vistas de analyzer), EvidenceConfig (configuración de evidencia), NarrativeTiming (delays del prototipo HTML). Header-only, sin .cpp. Usado por CoachingNarrativeDirector y EvidenceViewMapper.
+    dependencies: []
+
   # UI — Tab 1: MixCoachPanel
   - name: MainTabbedComponent
     path: Source/MixCoach/UI/MainTabbedComponent.h/.cpp

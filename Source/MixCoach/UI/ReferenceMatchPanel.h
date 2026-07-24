@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_graphics/juce_graphics.h>
 #include <array>
+#include <vector>
 #include "MixCoachTheme.h"
 #include "SmoothValue.h"
 #include "../engine/CoachEngine.h"
@@ -34,6 +35,10 @@ namespace mixcoach {
         /** Retorna el puntaje de matching general (0-100). */
         [[nodiscard]] int getMatchScore() const noexcept { return matchScore_; }
 
+        /** Establece los puntos del timeline de progreso para dibujar la línea de tendencia.
+            @param points  Hasta 6 puntos igualmente espaciados en el tiempo. */
+        void setTimelinePoints(const std::vector<ProgressSnapshot>& points) { timelinePoints_ = points; }
+
     private:
         static constexpr int kNumRegions = 6;
 
@@ -54,6 +59,9 @@ namespace mixcoach {
         float lastLufsMix_                = -100.0f;
         float lastLufsRef_                = -100.0f;
 
+        // ─── Timeline de progreso (Antes vs Después) ───────────────────────
+        std::vector<ProgressSnapshot> timelinePoints_;
+
         // ─── Timer callback (60fps animation) ──────────────────────────────
         void timerCallback() override;
         void visibilityChanged() override;
@@ -66,6 +74,7 @@ namespace mixcoach {
         void drawMetricsRow(juce::Graphics& g, juce::Rectangle<int> bounds);
         void drawMatchScore(juce::Graphics& g, juce::Rectangle<int> bounds);
         void drawDeltaRow(juce::Graphics& g, juce::Rectangle<int> bounds);
+        void drawProgressTimeline(juce::Graphics& g, juce::Rectangle<int> bounds);
 
         /** Calcula el match score 0-100 desde los datos actuales. */
         int computeMatchScore() const noexcept;

@@ -68,6 +68,51 @@ namespace mixcoach {
         /** Retorna el slotIndex actualmente seleccionado (-1 si ninguno). */
         [[nodiscard]] int getSelectedSlot() const noexcept { return selectedSlotIndex_; }
 
+        // ─── Bounds access for FocusOverlay ─────────────────────────────────
+        /** Retorna las bounds en coordenadas LOCALES de la fila de un track.
+            Retorna un rectángulo vacío si el slot no está visible en el mapa. */
+        [[nodiscard]] juce::Rectangle<int> getTrackRowBounds(int slotIndex) const noexcept
+        {
+            for (const auto& [sIdx, bounds] : trackRowBounds_)
+                if (sIdx == slotIndex) return bounds;
+            return {};
+        }
+
+        /** Retorna las bounds agregadas (LOCALES) de todos los tracks en un bus.
+            Retorna un rectángulo vacío si el bus no tiene tracks visibles. */
+        [[nodiscard]] juce::Rectangle<int> getBusGroupBounds(BusType bus) const noexcept
+        {
+            for (const auto& group : busGroups_) {
+                if (group.bus != bus) continue;
+                if (group.tracks.empty()) return {};
+
+                // Encontrar la primera y última fila de tracks de este grupo
+                int minY = std::numeric_limits<int>::max();
+                int maxY = 0;
+                int minX = std::numeric_limits<int>::max();
+                int maxX = 0;
+                bool found = false;
+
+                for (const auto& [sIdx, bounds] : trackRowBounds_) {
+                    juce::ignoreUnused(sIdx);
+                    for (const auto& track : group.tracks) {
+                        if (track.slotIndex == sIdx) {
+                            minY = juce::jmin(minY, bounds.getY());
+                            maxY = juce::jmax(maxY, bounds.getBottom());
+                            minX = juce::jmin(minX, bounds.getX());
+                            maxX = juce::jmax(maxX, bounds.getRight());
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found) return {};
+                return {minX, minY, maxX - minX, maxY - minY};
+            }
+            return {};
+        }
+
         /** Setea la selección externamente (ej: desde la lista de pistas). */
         void setSelectedSlot(int slotIndex) noexcept
         {
@@ -117,6 +162,18 @@ namespace mixcoach {
 
         /** Retorna true si el mapa ya fue confirmado. */
         [[nodiscard]] bool isMapConfirmed() const noexcept { return mapConfirmed_; }
+
+        /** Limpia el mapa (resetea grupos, selección y estado de confirmación). */
+        void clear() noexcept
+        {
+            busGroups_.clear();
+            totalTracks_ = 0;
+            selectedSlotIndex_ = -1;
+            hoveredSlotIndex_ = -1;
+            mapConfirmed_ = false;
+            trackRowBounds_.clear();
+            repaint();
+        }
 
     private:
         // ─── Datos de una pista individual ────────────────────────────────

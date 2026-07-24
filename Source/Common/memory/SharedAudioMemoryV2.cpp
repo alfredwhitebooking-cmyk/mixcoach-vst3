@@ -90,17 +90,18 @@ namespace mixcoach {
             || numSamples <= 0)
             return;
         auto& slot  = block_->slots[slotIndex];
-        int64_t wpL = slot.writePosL;
-        int64_t wpR = slot.writePosR;
+        // Leer posiciones de escritura con memory_order_relaxed porque somos
+        // el ÚNICO escritor (cada Messenger escribe solo su propio slot).
+        int64_t wpL = slot.writePosL.load(std::memory_order_relaxed);
+        int64_t wpR = slot.writePosR.load(std::memory_order_relaxed);
         for (int i = 0; i < numSamples; ++i) {
             slot.bufferL[(wpL + i) % kAudioBufferSize] = left[i];
             slot.bufferR[(wpR + i) % kAudioBufferSize] = right[i];
         }
-#if defined(_MSC_VER)
-        _WriteBarrier();
-#endif
-        slot.writePosL = wpL + numSamples;
-        slot.writePosR = wpR + numSamples;
+        // Publicar escritura: release garantiza que el lector vea los datos
+        // antes de ver la posición actualizada.
+        slot.writePosL.store(wpL + numSamples, std::memory_order_release);
+        slot.writePosR.store(wpR + numSamples, std::memory_order_release);
     }
 
     int SharedAudioMemoryV2::readStereoSamples(int slotIndex, float* outLeft, float* outRight, int maxSamples) noexcept
@@ -109,25 +110,36 @@ namespace mixcoach {
             || maxSamples <= 0)
             return 0;
         auto& slot  = block_->slots[slotIndex];
-        int64_t wpL = slot.writePosL;
-        int64_t wpR = slot.writePosR;
-#if defined(_MSC_VER)
-        _ReadBarrier();
-#endif
-        int64_t rpL        = slot.readPosL;
-        int64_t rpR        = slot.readPosR;
+        // Adquirir posición de escritura con acquire para ver los datos
+        // que el escritor publicó con release.
+        int64_t wpL = slot.writePosL.load(std::memory_order_acquire);
+        int64_t wpR = slot.writePosR.load(std::memory_order_acquire);
+        // Leer posición de lectura con relax (somos el único lector)
+        int64_t rpL = slot.readPosL.load(std::memory_order_relaxed);
+        int64_t rpR = slot.readPosR.load(std::memory_order_relaxed);
         int64_t availableL = wpL - rpL;
         int64_t availableR = wpR - rpR;
         int64_t available  = (availableL < availableR) ? availableL : availableR;
         if (available <= 0) return 0;
-        if (available > kAudioBufferSize) available = kAudioBufferSize;
+
+        // ═══ Overrun detection: si el writer ha publicado más de lo que cabe
+        // en el buffer, significa que samples se han perdido por sobrescritura.
+        // El ring buffer tiene tamaño fijo, así que solo podemos leer hasta
+        // kAudioBufferSize samples como máximo.
+        if (available > kAudioBufferSize) {
+            available = kAudioBufferSize;
+            // Incrementar contador de overrun (atómico, relajado — solo diagnóstico)
+            slot.overrunCount.fetch_add(1, std::memory_order_relaxed);
+        }
+
         int64_t toRead = std::min<int64_t>(available, maxSamples);
         for (int64_t i = 0; i < toRead; ++i) {
             outLeft[i]  = slot.bufferL[(rpL + i) % kAudioBufferSize];
             outRight[i] = slot.bufferR[(rpR + i) % kAudioBufferSize];
         }
-        slot.readPosL = rpL + toRead;
-        slot.readPosR = rpR + toRead;
+        // Publicar lectura: release para que el escritor vea el avance
+        slot.readPosL.store(rpL + toRead, std::memory_order_release);
+        slot.readPosR.store(rpR + toRead, std::memory_order_release);
         return static_cast<int>(toRead);
     }
 
@@ -137,13 +149,10 @@ namespace mixcoach {
         peakR = 0.0f;
         if (!block_ || slotIndex < 0 || slotIndex >= kMaxAudioSlots) return;
         const auto& slot = block_->slots[slotIndex];
-        int64_t wpL      = slot.writePosL;
-        int64_t wpR      = slot.writePosR;
-#if defined(_MSC_VER)
-        _ReadBarrier();
-#endif
-        int64_t rpL = slot.readPosL;
-        int64_t rpR = slot.readPosR;
+        int64_t wpL      = slot.writePosL.load(std::memory_order_acquire);
+        int64_t wpR      = slot.writePosR.load(std::memory_order_acquire);
+        int64_t rpL = slot.readPosL.load(std::memory_order_relaxed);
+        int64_t rpR = slot.readPosR.load(std::memory_order_relaxed);
 
         int64_t availableL = wpL - rpL;
         int64_t availableR = wpR - rpR;
@@ -165,18 +174,29 @@ namespace mixcoach {
     {
         if (!block_ || slotIndex < 0 || slotIndex >= kMaxAudioSlots) return false;
         const auto& slot = block_->slots[slotIndex];
-        return (slot.writePosL != slot.readPosL) || (slot.writePosR != slot.readPosR);
+        return (slot.writePosL.load(std::memory_order_acquire)
+                != slot.readPosL.load(std::memory_order_relaxed))
+            || (slot.writePosR.load(std::memory_order_acquire)
+                != slot.readPosR.load(std::memory_order_relaxed));
     }
 
     int SharedAudioMemoryV2::available(int slotIndex) const noexcept
     {
         if (!block_ || slotIndex < 0 || slotIndex >= kMaxAudioSlots) return 0;
         const auto& slot = block_->slots[slotIndex];
-        int64_t diffL    = slot.writePosL - slot.readPosL;
-        int64_t diffR    = slot.writePosR - slot.readPosR;
-        int64_t diff     = (diffL > diffR) ? diffL : diffR;
+        int64_t diffL = slot.writePosL.load(std::memory_order_acquire)
+                        - slot.readPosL.load(std::memory_order_relaxed);
+        int64_t diffR = slot.writePosR.load(std::memory_order_acquire)
+                        - slot.readPosR.load(std::memory_order_relaxed);
+        int64_t diff = (diffL > diffR) ? diffL : diffR;
         if (diff > kAudioBufferSize) diff = kAudioBufferSize;
         return static_cast<int>(diff);
+    }
+
+    uint32_t SharedAudioMemoryV2::getOverrunCount(int slotIndex) const noexcept
+    {
+        if (!block_ || slotIndex < 0 || slotIndex >= kMaxAudioSlots) return 0;
+        return block_->slots[slotIndex].overrunCount.load(std::memory_order_relaxed);
     }
 
 } // namespace mixcoach
