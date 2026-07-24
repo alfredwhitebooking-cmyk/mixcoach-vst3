@@ -1,5 +1,5 @@
 ﻿#include "CoachingNarrativeDirector.h"
-#include "CoachingScriptConstants.h"
+#include "../../_legacy/CoachingScriptConstants.h"
 #include "ProblemAnalyzerMap.h"
 #include "PluginSuggestionsProvider.h"
 #include "TrackGainAnalyzer.h"

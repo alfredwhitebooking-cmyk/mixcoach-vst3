@@ -1,5 +1,6 @@
 ﻿#include "WelcomeComponent.h"
 #include "MixCoachTheme.h"
+#include "../../Common/types/LogHelper.h"
 #include <cmath>
 
 namespace mixcoach {
@@ -779,6 +780,7 @@ namespace mixcoach {
 
     void WelcomeComponent::onStartClicked()
     {
+        LogHelper::writeToLog("[DIAG] WelcomeComponent::onStartClicked() called");
         auto userName = nameEditor_.getText().trim();
 
         if (userName.isEmpty()) {

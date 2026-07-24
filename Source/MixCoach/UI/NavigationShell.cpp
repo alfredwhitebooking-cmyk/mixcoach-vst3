@@ -83,6 +83,8 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
         // ─── WelcomeComponent (STATE 0) ────────────────────────────────────
         welcomeComponent_ = std::make_unique<WelcomeComponent>();
         welcomeComponent_->onStart = [this](const juce::String& rawUserName) {
+            LogHelper::writeToLog("[DIAG] Welcome onStart DISPARADO con nombre: "" + rawUserName + """);
+            LogHelper::writeToLog("[DIAG] Welcome onStart coachRoomState=" + juce::String(static_cast<int>(getCoachRoomState())) + " coachEngine=" + juce::String(processorRef_.getCoachEngine() != nullptr ? "ok" : "null"));
             // Sanitizar nombre de usuario: trim + length limit + character whitelist
             juce::String userName = rawUserName.trim();
             if (userName.length() > 40) userName = userName.substring(0, 40).trim();
@@ -123,6 +125,7 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
             // applyScene() llama a setCoachRoomState(Intention) + postea coachMessage
             updateTabLockState();
             processDirectorEvent({DirectorEvent::Type::UserNameEntered});
+            LogHelper::writeToLog("[DIAG] onStart: post-processDirectorEvent UserNameEntered, coachRoomState=" + juce::String(static_cast<int>(getCoachRoomState())));
 
             // ═══ Crossfade NOW: sobre layout ya estable ═══════════════════
             startCrossfade(welcomeComponent_.get(), coachPanel_.get());
@@ -134,6 +137,7 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
             setAvatarWave(true);
             setAvatarNod(400);
             callAfterDelaySafe(400, [this]() {
+                LogHelper::writeToLog("[DIAG] onStart: callAfterDelaySafe 400ms fired, calling setShowModeCards(true)");
                 // ═══ Mode cards en vez de chips: dos tarjetas grandes centradas ═══
                 coachPanel_->setShowModeCards(true);
 
@@ -1015,6 +1019,15 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
                 callAfterDelaySafe(400, [this]() {
                     coachPanel_->setGreetingText("¡Excelente! ¿Qué género vamos a mezclar? Elige uno.");
                     coachPanel_->setShowGenreCards(true);
+
+                    // ═══ Walkthrough (4.3): mostrar tutorial interactivo si primera sesión ═══
+                    // Se muestra DESPUÉS de la selección de modo para NO interceptar clics en
+                    // mode cards (BUG FIX: antes se mostraba durante mode selection y rompía los clics).
+                    auto* adapter = processorRef_.getAiCoachAdapter();
+                    if (adapter != nullptr && !adapter->isWalkthroughCompleted()) {
+                        LogHelper::writeToLog("[DIAG] Walkthrough: primera sesión — mostrando tutorial interactivo");
+                        showWalkthrough();
+                    }
                 });
             }
             else if (getCoachRoomState() == CoachRoomState::Genre) {
@@ -1130,6 +1143,33 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
         };
 
         wireReportPanel();
+
+        // ═══ Timeline de Progreso: cablear ProgressTracker → ReferencePanel ═══
+        {
+            auto* coach = processorRef_.getCoachEngine();
+            if (coach != nullptr) {
+                // Propagate timeline snapshots to ReferencePanel (6-point trend line)
+                coach->setOnTimelineUpdateCallback([this](const std::vector<ProgressSnapshot>& snapshots) {
+                    coachPanel_->getRefPanel().setTimelineData(snapshots);
+                });
+
+                // Milestone celebration messages at 25%, 45%, 60%, 75%, 90%
+                coach->getProgressTracker().setMilestoneCallback([this](float oldScore, float newScore, int milestoneIndex) {
+                    juce::ignoreUnused(oldScore, newScore);
+                    juce::String msg;
+                    switch (milestoneIndex) {
+                        case 0: msg = "🎉 **25% de match con la referencia!** Sigue así."; break;
+                        case 1: msg = "🔥 **45% de match!** Notable progreso en tu mezcla."; break;
+                        case 2: msg = "⚡ **60% de match!** Mitad del camino, vas muy bien."; break;
+                        case 3: msg = "🏆 **75% de match!** Excelente — casi listo."; break;
+                        case 4: msg = "💎 **90% de match!** Tu mezcla es casi idéntica a la referencia."; break;
+                        default: msg = "🎯 **" + juce::String(static_cast<int>(newScore)) + "% de match!** Sigue mejorando."; break;
+                    }
+                    if (msg.isNotEmpty())
+                        coachPanel_->addSystemMessage(msg);
+                });
+            }
+        }
 
         // --- Restore saved references ---
         if (processorRef_.hasPendingReferences()) {
@@ -1460,25 +1500,35 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
             updateTabLockState();
         }
 
-        // ═══ Conectar QuickReplyBar ═══════════════════════════════════════
+        // ═══ Conectar QuickReplyBar — ENRUTADOR CENTRAL ═══════════════════
+        // Si hay una confirmación pendiente (pregunta Sí/No del coach), manejar aquí.
+        // Si NO hay confirmación pendiente, redirigir a onSuggestionClicked() según estado.
+        // Esto EVITA que el handler genérico pise el cableado de setShowModeCards().
         coachPanel_->getQuickReplyBar().onReplySelected = [this](const juce::String& reply) {
             auto* coach = processorRef_.getCoachEngine();
-            if (coach == nullptr || !coach->hasPendingConfirmation()) return;
-            int slotIndex = coach->getPendingConfirmationSlot();
-            juce::String lower = reply.trim().toLowerCase();
-            if (lower == "s\xC3\xAD" || lower == "si" || lower == "yes") {
-                coach->handleConfirmationResponse(slotIndex, true);
-                coachPanel_->hideQuickReplies();
+            if (coach != nullptr && coach->hasPendingConfirmation()) {
+                int slotIndex = coach->getPendingConfirmationSlot();
+                juce::String lower = reply.trim().toLowerCase();
+                if (lower == "s\xC3\xAD" || lower == "si" || lower == "yes") {
+                    coach->handleConfirmationResponse(slotIndex, true);
+                    coachPanel_->hideQuickReplies();
+                }
+                else if (lower == "no") {
+                    coach->handleConfirmationResponse(slotIndex, false);
+                    coachPanel_->hideQuickReplies();
+                }
+                else {
+                    coachPanel_->hideQuickReplies();
+                }
+                if (coach->hasPendingConfirmation()) {
+                    coachPanel_->showQuickReplies({"S\xC3\xAD", "No", "Otro..."});
+                }
+                return;
             }
-            else if (lower == "no") {
-                coach->handleConfirmationResponse(slotIndex, false);
-                coachPanel_->hideQuickReplies();
-            }
-            else {
-                coachPanel_->hideQuickReplies();
-            }
-            if (coach->hasPendingConfirmation()) {
-                coachPanel_->showQuickReplies({"S\xC3\xAD", "No", "Otro..."});
+            // ═══ NO hay confirmación pendiente → rutear por estado (setup flow) ═══
+            LogHelper::writeToLog("[DIAG] QuickReplyBar onReplySelected (POR ESTADO): " + reply);
+            if (coachPanel_->onSuggestionClicked) {
+                coachPanel_->onSuggestionClicked(reply);
             }
         };
 

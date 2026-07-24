@@ -231,7 +231,7 @@ target_sources(MixCoach PRIVATE
     Source/MixCoach/UI/MainTabbedComponent.h
     Source/MixCoach/UI/MainTabbedComponent.cpp
     Source/MixCoach/UI/CoachChatComponent.h            Source/MixCoach/UI/CoachChatComponent.cpp
-    Source/MixCoach/UI/CoachChatComponent_Sprint1.cpp
+    # Source/MixCoach/UI/CoachChatComponent_Sprint1.cpp — MERGED into CoachChatComponent.cpp
     Source/MixCoach/UI/ChatMessagesComponent_InlineCards.cpp
             Source/MixCoach/UI/MixMapComponent.cpp
     Source/MixCoach/UI/MasterMeterPanel.h
