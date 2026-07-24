@@ -239,6 +239,19 @@ namespace mixcoach {
         // ═══ SPRINT 7: Per-track consolidated analysis ═══════════════
         analyzeAllTracks();
 
+        // ═══ CoachingStageManager: evaluar completitud de etapa actual ═══
+        if (stageManager_.isInitialized()) {
+            stageManager_.update(*this, audioAnalyzer_);
+        }
+
+        // ═══ SessionProgression: auto-detección de fase ════════════════
+        // Detecta automáticamente si avanzamos a DeepAnalysis, GuidedCoaching,
+        // Refinement, etc. basado en el estado del motor.
+        if (sessionProgression_.updateFromEngine(*this, audioAnalyzer_)) {
+            LogHelper::writeToLog("[CoachEngine] SessionProgression avanzó a fase: "
+                                  + juce::String(SessionProgression::phaseShortName(sessionProgression_.currentPhase)));
+        }
+
         // ═══ SPRINT 6A: Per-track gain analysis ═══════════════
         auto allGainAdvice = analyzeAllTracksGain();
         {

@@ -1049,6 +1049,10 @@ struct BusGroupSummary
         [[nodiscard]] SessionProgression& getSessionProgression() noexcept { return sessionProgression_; }
         [[nodiscard]] const SessionProgression& getSessionProgression() const noexcept { return sessionProgression_; }
 
+        /** Acceso al CoachingStageManager para el flujo de etapas guiadas. */
+        [[nodiscard]] CoachingStageManager& getStageManager() noexcept { return stageManager_; }
+        [[nodiscard]] const CoachingStageManager& getStageManager() const noexcept { return stageManager_; }
+
         /** Acceso al SessionEventLog para registrar eventos desde la UI. */
         [[nodiscard]] SessionEventLog& getEventLog() noexcept { return eventLog_; }
         [[nodiscard]] const SessionEventLog& getEventLog() const noexcept { return eventLog_; }
@@ -1065,6 +1069,10 @@ struct BusGroupSummary
         /** Retorna el ProgressTracker para acceso a snapshots y resumen de sesión. */
         [[nodiscard]] ProgressTracker& getProgressTracker() noexcept { return progressTracker_; }
         [[nodiscard]] const ProgressTracker& getProgressTracker() const noexcept { return progressTracker_; }
+
+        /** Callback when a new progress timeline snapshot is taken (6-point trend data). */
+        using TimelineUpdateCallback = std::function<void(const std::vector<ProgressSnapshot>&)>;
+        void setOnTimelineUpdateCallback(TimelineUpdateCallback cb) noexcept { onTimelineUpdate_ = std::move(cb); }
 
         // ═══ AnalyzerManager — Abrir/cerrar analizadores como evidencia ═══
         [[nodiscard]] AnalyzerManager& getAnalyzerManager() noexcept { return analyzerManager_; }
@@ -1209,6 +1217,7 @@ struct BusGroupSummary
         WorkflowEventCallback workflowEventCb_;
         DirectorEventCallback directorEventCb_;
         SessionProgression sessionProgression_;
+        CoachingStageManager stageManager_{phaseManager_};
         ProgressTracker progressTracker_;
         AnalyzerManager analyzerManager_;
         SectionDetector sectionDetector_;
@@ -1395,6 +1404,9 @@ public:
         };
 
         [[nodiscard]] const AdaptiveThresholds& getAdaptiveThresholds() const noexcept { return adaptiveThresholds_; }
+
+        /** Restaura thresholds adaptativos desde perfil persistido. */
+        void restoreAdaptiveThresholds(const AdaptiveThresholds& at) noexcept { adaptiveThresholds_ = at; }
 
         void recalcAdaptiveThresholds();
 

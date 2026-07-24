@@ -742,6 +742,18 @@ namespace mixcoach {
                 root->setProperty("behaviorProfile", juce::var(behaviorObj));
             }
 
+            // ═══ AdaptiveThresholds (V4) — persistir thresholds adaptativos para restaurar entre sesiones ═══
+            {
+                auto at = coachEngine_.getAdaptiveThresholds();
+                auto atObj = juce::DynamicObject::Ptr(new juce::DynamicObject());
+                atObj->setProperty("underApplyRatio", static_cast<double>(at.underApplyRatio));
+                atObj->setProperty("goodStartRatio", static_cast<double>(at.goodStartRatio));
+                atObj->setProperty("underApplyTarget", static_cast<double>(at.underApplyTarget));
+                atObj->setProperty("overApplyTarget", static_cast<double>(at.overApplyTarget));
+                atObj->setProperty("maxRetriesBeforeIgnore", at.maxRetriesBeforeIgnore);
+                root->setProperty("adaptiveThresholds", juce::var(atObj));
+            }
+
             // ═══ Session History fields (V3) ═══════════════════════════════
             root->setProperty("lastSessionDurationS", userProfile_.lastSessionDurationS);
             root->setProperty("lastSessionProblemsDetected", userProfile_.lastSessionProblemsDetected);
@@ -837,6 +849,26 @@ namespace mixcoach {
                             static_cast<float>(static_cast<double>(bpObj->getProperty("averageCorrectionTime")));
                     if (bpObj->hasProperty("totalSessions"))
                         userProfile_.behavior.totalSessions = bpObj->getProperty("totalSessions");
+                }
+            }
+
+            // ═══ AdaptiveThresholds (V4) — restaurar thresholds adaptativos ═══
+            if (root->hasProperty("adaptiveThresholds")) {
+                auto atObj = root->getProperty("adaptiveThresholds").getDynamicObject();
+                if (atObj != nullptr) {
+                    CoachEngine::AdaptiveThresholds at;
+                    if (atObj->hasProperty("underApplyRatio"))
+                        at.underApplyRatio = static_cast<float>(static_cast<double>(atObj->getProperty("underApplyRatio")));
+                    if (atObj->hasProperty("goodStartRatio"))
+                        at.goodStartRatio = static_cast<float>(static_cast<double>(atObj->getProperty("goodStartRatio")));
+                    if (atObj->hasProperty("underApplyTarget"))
+                        at.underApplyTarget = static_cast<float>(static_cast<double>(atObj->getProperty("underApplyTarget")));
+                    if (atObj->hasProperty("overApplyTarget"))
+                        at.overApplyTarget = static_cast<float>(static_cast<double>(atObj->getProperty("overApplyTarget")));
+                    if (atObj->hasProperty("maxRetriesBeforeIgnore"))
+                        at.maxRetriesBeforeIgnore = static_cast<int>(atObj->getProperty("maxRetriesBeforeIgnore"));
+                    coachEngine_.restoreAdaptiveThresholds(at);
+                    LogHelper::writeToLog("[AiCoachAdapter] AdaptiveThresholds restored from profile");
                 }
             }
 

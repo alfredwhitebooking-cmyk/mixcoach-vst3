@@ -14,12 +14,18 @@ namespace mixcoach {
         auto lower = command.toLowerCase();
 
         if (lower == "/next" || lower == "/avanzar") {
-            phaseManager_.advanceToNextPhase();
-            auto phase = phaseManager_.getCurrentPhase();
-            respondWith("[DONE] **Avanzando a fase:** " + juce::String(phaseNames[static_cast<int>(phase)]),
-                        MentorMessage::Type::Achievement);
-            respondWith("[NOTES] " + juce::String(phaseManager_.phaseDescription(phase)),
-                        MentorMessage::Type::Tip);
+            // ═══ Usar CoachingStageManager.forceAdvance() si está inicializado ═══
+            if (stageManager_.isInitialized()) {
+                stageManager_.forceAdvance();
+            } else {
+                // Fallback al PhaseManager si el stage manager no está activo
+                phaseManager_.advanceToNextPhase();
+                auto phase = phaseManager_.getCurrentPhase();
+                respondWith("[DONE] **Avanzando a fase:** " + juce::String(phaseNames[static_cast<int>(phase)]),
+                            MentorMessage::Type::Achievement);
+                respondWith("[NOTES] " + juce::String(phaseManager_.phaseDescription(phase)),
+                            MentorMessage::Type::Tip);
+            }
         }
         else if (lower == "/status" || lower == "/progreso") {
             auto issues      = collectAllIssues();

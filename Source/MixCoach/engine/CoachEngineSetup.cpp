@@ -330,6 +330,27 @@ namespace mixcoach {
     {
         setupStep_ = SetupStep::Complete;
 
+        // ═══ Inicializar CoachingStageManager — comienza en GainStaging ═══
+        stageManager_.initialize();
+
+        // ═══ Cablear callbacks del StageManager: mensajes al chat + cambios de etapa ═══
+        stageManager_.setSendMessageCallback(
+            [this](const juce::String& text, MentorMessage::Type type) {
+                this->respondWithPremium(text, type);
+            });
+        stageManager_.setStageChangedCallback(
+            [this](CoachingStage oldStage, CoachingStage newStage) {
+                juce::ignoreUnused(oldStage);
+                LogHelper::writeToLog("[CoachingStageManager] Stage changed: "
+                                      + juce::String(StageInfo::name(oldStage)) + " -> "
+                                      + juce::String(StageInfo::name(newStage)));
+                // Propagar a la UI (NavigationShell) si hay callback cableado
+                if (stageChangedCb_)
+                    stageChangedCb_(oldStage, newStage);
+            });
+
+        LogHelper::writeToLog("[CoachingStageManager] Inicializado + callbacks cableados: Gain Staging — setup completado");
+
         // Avanzar a la siguiente fase (la 1, sea Mix o Master)
         phaseManager_.advanceToNextPhase();
         auto newPhase = phaseManager_.getCurrentPhase();

@@ -11,6 +11,47 @@ namespace mixcoach {
     {
         auto lower = message.toLowerCase();
 
+        // ═══ CoachingStageManager: detectar respuestas de aprobación ═══
+        // Solo cuando el stage manager está esperando aprobación explícita.
+        // Usamos split por espacios para evitar falsos positivos ("si" dentro de "silla").
+        if (stageManager_.isInitialized() && stageManager_.isAwaitingApproval()) {
+            auto tokens = juce::StringArray::fromTokens(lower, " \t\r\n", "");
+            // Separar palabras compuestas ("sigue así" → "sigue", "así") y frases comunes
+            static const juce::StringArray approvalTokens = {
+                "listo", "listos", "preparado", "preparados", "ready",
+                "sí", "si", "yes", "dale", "vamos", "ok", "okay",
+                "confirmar", "confirmo", "adelante", "avanzar", "continue",
+                "siguiente", "next", "continuar", "claro"};
+
+            bool matched = false;
+            for (const auto& token : tokens) {
+                auto t = token.trim().toLowerCase();
+                if (t.isEmpty()) continue;
+                // Solo hacer match exacto, no contains, para evitar falsos positivos
+                for (const auto& at : approvalTokens) {
+                    if (t == at) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (matched) break;
+            }
+
+            if (matched) {
+                bool advanced = stageManager_.approveAdvance();
+                if (advanced) {
+                    setUserInteracted();
+                    return;
+                }
+            }
+            // ═══ No rechazar automáticamente — solo ignorar el mensaje
+            // y dejar que el stage manager siga esperando.
+            // El usuario puede estar escribiendo algo normal ("¿cómo va la mezcla?")
+            // mientras el coach espera aprobación. No debemos penalizar eso.
+            setUserInteracted();
+            return;
+        }
+
         // Comandos de sistema
         if (lower.startsWith("/")) {
             executeCommand(message);

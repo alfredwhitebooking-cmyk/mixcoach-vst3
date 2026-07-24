@@ -80,6 +80,33 @@ static_assert(NavigationShell::SetupFadeAnim::kFadeInStart == 0.3f);
             }
         };
 
+        // ═══ CoachingStageManager: suscribirse a cambios de etapa ═══
+        // El callback se dispara desde CoachEngineSetup::advanceFromSetup()
+        // cuando se inicializa el stageManager y cada vez que el usuario
+        // avanza aprobando una etapa. Actualiza el label de fase en el footer.
+        if (auto* coach = processorRef_.getCoachEngine()) {
+            // Guardar valores actuales para usar dentro del lambda (no podemos capturar coach* directamente)
+            auto setupGenre = coach->getSetupGenre();
+            auto masterDest = coach->getMasterDestination();
+            float targetLufs = ::mixcoach::getDestinationLUFS(masterDest);
+
+            coach->setStageChangedCallback(
+                [this, setupGenre, targetLufs](CoachingStage oldStage, CoachingStage newStage) {
+                    juce::ignoreUnused(oldStage);
+                    LogHelper::writeToLog("[NavigationShell] CoachingStage cambiado: "
+                                          + juce::String(StageInfo::name(oldStage)) + " -> "
+                                          + juce::String(StageInfo::name(newStage)));
+                    // Actualizar el label de fase en el footer sin cambiar room state
+                    if (coachPanel_ != nullptr) {
+                        coachPanel_->updateFooterInfo(
+                            juce::String(StageInfo::icon(newStage)) + " " + juce::String(StageInfo::name(newStage)),
+                            setupGenre,
+                            juce::String(targetLufs, 1) + " LUFS",
+                            {}, 0);
+                    }
+                });
+        }
+
         // ─── WelcomeComponent (STATE 0) ────────────────────────────────────
         welcomeComponent_ = std::make_unique<WelcomeComponent>();
         welcomeComponent_->onStart = [this](const juce::String& rawUserName) {
